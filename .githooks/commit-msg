@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Git hook for validating commit messages.
+#
+# Expected format:
+#   [module-name] (B|E|F|W): Short Description
+#
+# Type tags:
+#   B - Bug fix
+#   E - Enhancement
+#   F - Feature
+#   W - Work in progress
+#
+
+#==================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#==================================================================================================
+# Global Constants
+#==================================================================================================
+
+# Maximum length for commit message title.
+MAX_COMMIT_MSG_TITLE_LENGTH=50
+
+# Valid module names for nanvix_zutil.
+VALID_MODULES="zutils ci doc git tests"
+
+#==================================================================================================
+# Logging Helpers
+#==================================================================================================
+
+print_error() {
+    echo "error: $1" >&2
+}
+
+print_info() {
+    echo "  $1" >&2
+}
+
+#==================================================================================================
+# Functions
+#==================================================================================================
+
+#
+# Description
+#   Validate the commit message format.
+#
+# Arguments
+#   $1 - The path to the commit message file.
+#
+# Return Value
+#   0 on success, 1 on failure.
+#
+validate_commit_msg() {
+    local commit_msg_file="$1"
+    local commit_msg
+    local commit_msg_title
+    local modules_pattern
+
+    # Read commit message.
+    commit_msg=$(cat "${commit_msg_file}")
+    commit_msg_title=$(echo "${commit_msg}" | head -n 1)
+
+    # Check commit message title length.
+    if [[ "${#commit_msg_title}" -gt "${MAX_COMMIT_MSG_TITLE_LENGTH}" ]]; then
+        print_error "Commit message title is too long (maximum ${MAX_COMMIT_MSG_TITLE_LENGTH} characters)"
+        return 1
+    fi
+
+    # Combine modules into a regex pattern.
+    modules_pattern=$(echo "${VALID_MODULES}" | tr ' ' '|')
+
+    # Check if commit message matches the pattern.
+    if ! echo "${commit_msg_title}" | grep -q -E "^\[(${modules_pattern})\] (B|E|F|W): .+"; then
+        print_error "Commit message does not match pattern: '[module] (B|E|F|W): Short Description'"
+        print_info "Example: '[config] F: Add env var override support'"
+        print_info ""
+        print_info "Type tags:"
+        print_info "  B - Bug fix"
+        print_info "  E - Enhancement"
+        print_info "  F - Feature"
+        print_info "  W - Work in progress"
+        print_info ""
+        print_info "Valid modules:"
+        for mod in ${VALID_MODULES}; do
+            print_info "  ${mod}"
+        done
+        return 1
+    fi
+
+    return 0
+}
+
+#==================================================================================================
+# Main Script
+#==================================================================================================
+
+main() {
+    local commit_msg_file="$1"
+
+    if ! validate_commit_msg "${commit_msg_file}"; then
+        exit 1
+    fi
+}
+
+main "$@"
