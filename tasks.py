@@ -12,6 +12,7 @@ Commands:
   format     Fix code formatting with black
   typecheck  Run strict type checking with basedpyright
   test       Run the test suite with pytest
+  ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean      Remove Python bytecode caches and build artifacts
 """
 
@@ -74,12 +75,65 @@ def clean() -> int:
     return 0
 
 
+def ci() -> int:
+    """Run CI locally using gh act (requires Docker + nanvix toolchain image).
+
+    Runs the specified CI job (or all jobs) locally using nektos/act via the
+    gh CLI extension. The nanvix/toolchain:latest-minimal Docker image must
+    be available locally.
+
+    Usage:
+        uv run tasks.py ci            # run all CI jobs
+        uv run tasks.py ci test       # run only the test job
+        uv run tasks.py ci lint       # run only the lint job
+    """
+    if shutil.which("gh") is None:
+        print("error: gh CLI not found. Install from https://cli.github.com/")
+        return 1
+
+    result = subprocess.run(
+        ["gh", "act", "--help"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        print("error: gh act extension not found.")
+        print("  Install with: gh extension install nektos/gh-act")
+        return 1
+
+    target = sys.argv[2] if len(sys.argv) > 2 else "all"
+
+    job_map: dict[str, list[str]] = {
+        "lint": ["lint-and-typecheck"],
+        "test": ["test"],
+        "all": ["lint-and-typecheck", "test"],
+    }
+
+    jobs = job_map.get(target)
+    if jobs is None:
+        print(f"error: Unknown CI target: {target}")
+        print(f"  Available: {', '.join(job_map)}")
+        return 2
+
+    act_flags = ["--container-architecture", "linux/amd64", "--pull=false"]
+
+    for job in jobs:
+        print(f"ci: Running job: {job}")
+        rc = _run("gh", "act", "-j", job, *act_flags)
+        if rc != 0:
+            print(f"ci: Job '{job}' failed.")
+            return rc
+
+    print("ci: All jobs passed.")
+    return 0
+
+
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (lint, "Check code formatting with black"),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
+    "ci": (ci, "Run CI locally using gh act (requires Docker + nanvix toolchain image)"),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
 }
 
