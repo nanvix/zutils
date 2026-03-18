@@ -1,0 +1,33 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+.nanvix/venv/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checker caches
+.basedpyright/
+.pyright/
+pyrightconfig.json
+
+# Editor
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
