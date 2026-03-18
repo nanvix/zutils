@@ -89,7 +89,7 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
 
     def test_downloads_and_writes_file(self) -> None:
         dest = Path(self._tmpdir.name)
-        asset_name = "zlib-hyperlight-multiprocess-128mb.tar.bz2"
+        asset_name = "zlib-hyperlight-multi-process-128mb.tar.bz2"
         download_url = "https://example.com/" + asset_name
         file_content = b"archive-bytes"
 

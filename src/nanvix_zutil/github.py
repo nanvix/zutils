@@ -54,7 +54,7 @@ def download_release_asset(
         tag: Release tag (e.g. ``"v1.2.3"``).
         asset_name: The file name of the release asset.  When
             *match_prefix* is ``True`` this is treated as a name prefix
-            and the first asset whose name starts with *asset_name* is
+            and a matching asset whose name starts with *asset_name* is
             selected.
         dest: Directory where the asset will be written.
         gh_token: Optional GitHub personal access token.
@@ -73,10 +73,23 @@ def download_release_asset(
 
     # Fast path: check cache.
     if match_prefix:
-        for cached in dest.iterdir():
-            if cached.is_file() and cached.name.startswith(asset_name):
-                log.info(f"Asset already present: {cached}")
-                return cached
+        # Collect all matching cached files and select deterministically to
+        # avoid relying on filesystem iteration order.
+        matches = [
+            cached
+            for cached in dest.iterdir()
+            if cached.is_file() and cached.name.startswith(asset_name)
+        ]
+        if matches:
+            # Prefer the most recently modified file; break ties by name for
+            # deterministic behavior across platforms.
+            matches.sort(
+                key=lambda p: (p.stat().st_mtime, p.name),  # type: ignore[attr-defined]
+                reverse=True,
+            )
+            cached = matches[0]
+            log.info(f"Asset already present: {cached}")
+            return cached
     else:
         out_path = dest / asset_name
         if out_path.exists():
