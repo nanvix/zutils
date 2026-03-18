@@ -20,8 +20,18 @@ hello-world/
 ## Prerequisites
 
 One of:
-- **Native toolchain** at `/opt/nanvix/` (`i686-nanvix-gcc`)
+- **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
 - **Docker** with `nanvix/toolchain:latest-minimal` image (auto-detected fallback)
+
+If you built the Nanvix toolchain locally (e.g. from `nanvix/nanvix`), point
+`NANVIX_TOOLCHAIN` at it:
+
+```bash
+export NANVIX_TOOLCHAIN=~/repos/nanvix/nanvix/toolchain
+```
+
+In CI, the workflow runs inside the `nanvix/toolchain:latest-minimal` Docker
+container where the toolchain is pre-installed at `/opt/nanvix`.
 
 ## Running
 
