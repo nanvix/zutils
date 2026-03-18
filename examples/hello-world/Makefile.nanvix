@@ -128,7 +128,8 @@ test-smoke: $(BINARY)
 
 test-integration: $(BINARY)
 	@echo "=== hello-world integration tests ==="
-	@file $(BINARY) | grep -q "ELF" || { echo "  FAIL: $(BINARY) is not an ELF binary"; exit 1; }
+	@head -c 4 $(BINARY) | od -A n -t x1 | grep -q "7f 45 4c 46" || \
+	  { echo "  FAIL: $(BINARY) is not an ELF binary"; exit 1; }
 	@echo "  OK: $(BINARY) is a valid ELF binary"
 	@echo "  PASS: hello-world integration tests"
 
