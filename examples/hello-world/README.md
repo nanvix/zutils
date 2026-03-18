@@ -11,16 +11,16 @@ hello-world/
 ├── .nanvix/
 │   └── z.py       # ZScript subclass (build logic lives here)
 ├── src/
-│   └── main.c     # Hello world C program
-├── Makefile       # Build rules
+│   └── hello.py   # Hello world Python program
 └── README.md
 ```
 
 ## Running
 
 ```bash
-./z setup    # verify gcc is available
-./z build    # compile src/main.c → build/hello
-./z test     # run the binary
+./z setup    # verify Python >= 3.12
+./z build    # copy src/hello.py → build/
+./z test     # run the built artifact
 ./z clean    # remove build artifacts
 ```
+

@@ -1,0 +1,114 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+"""Integration tests for the hello-world example.
+
+These tests exercise the full bootstrap-and-lifecycle chain by invoking
+the example's ``z.py`` as a subprocess — the same way an end-user would
+run ``./z <command>``.
+
+On the first run the bootstrap creates a virtualenv inside the example's
+``.nanvix/venv/`` directory and installs ``nanvix_zutil`` from the local
+source tree.  Subsequent runs reuse the cached environment.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-world"
+_Z_PY = _EXAMPLE_DIR / ".nanvix" / "z.py"
+
+
+class TestHelloWorldExample(unittest.TestCase):
+    """End-to-end tests for the hello-world example."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _run_z(*args: str) -> subprocess.CompletedProcess[str]:
+        """Run the example ``z.py`` with the given arguments."""
+        return subprocess.run(
+            [sys.executable, str(_Z_PY), *args],
+            cwd=str(_EXAMPLE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def test_full_lifecycle(self) -> None:
+        """Run setup → build → test → clean and verify each step."""
+        # setup
+        r = self._run_z("setup")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        # build
+        r = self._run_z("build")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(
+            (_EXAMPLE_DIR / "build" / "hello.py").exists(),
+            "build/ should contain hello.py after build",
+        )
+
+        # test
+        r = self._run_z("test")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Hello, World!", r.stdout)
+
+        # clean
+        r = self._run_z("clean")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(
+            (_EXAMPLE_DIR / "build").exists(),
+            "build/ should not exist after clean",
+        )
+
+    # ------------------------------------------------------------------
+    # CLI flags
+    # ------------------------------------------------------------------
+
+    def test_help_returns_zero(self) -> None:
+        """``--help`` exits successfully."""
+        r = self._run_z("--help")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_json_mode(self) -> None:
+        """``--json`` produces parseable JSON on stdout."""
+        r = self._run_z("--json", "setup")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        json_lines = [
+            ln for ln in r.stdout.splitlines() if ln.startswith("{")
+        ]
+        self.assertTrue(json_lines, "expected at least one JSON line on stdout")
+        for line in json_lines:
+            obj: object = json.loads(line)
+            self.assertIsInstance(obj, dict)
+            assert isinstance(obj, dict)
+            self.assertIn("level", obj)
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Remove build artifacts left over from test runs."""
+        build_dir = _EXAMPLE_DIR / "build"
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+
+
+if __name__ == "__main__":
+    unittest.main()
