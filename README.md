@@ -46,6 +46,11 @@ Then invoke via the bootstrap wrapper at the repo root:
 ./z test
 ```
 
+## Example
+
+See [`examples/hello-world/`](examples/hello-world/) for a complete runnable
+example that builds a trivial C project using `ZScript`.
+
 ## Developer Setup
 
 Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).

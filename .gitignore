@@ -8,6 +8,9 @@ dist/
 build/
 *.egg-info/
 
+# Example build artifacts
+examples/**/build/
+
 # Virtual environments
 .venv/
 venv/
