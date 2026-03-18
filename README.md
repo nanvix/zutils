@@ -48,11 +48,24 @@ Then invoke via the bootstrap wrapper at the repo root:
 
 ## Developer Setup
 
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 ```bash
 git clone https://github.com/nanvix/zutils
 cd zutils
-make setup    # activates git hooks and installs dev dependencies
+uv sync                       # install project + dev dependencies
+uv run tasks.py setup         # configure git hooks
 ```
+
+### Dev Commands
+
+| Command                       | Description                        |
+|-------------------------------|------------------------------------|
+| `uv run tasks.py lint`       | Check formatting (black)           |
+| `uv run tasks.py format`    | Fix formatting (black)             |
+| `uv run tasks.py typecheck` | Strict type checking (basedpyright)|
+| `uv run tasks.py test`      | Run test suite (pytest)            |
+| `uv run tasks.py clean`     | Remove caches and build artifacts  |
 
 ## License
 
