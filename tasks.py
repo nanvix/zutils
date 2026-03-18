@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from collections.abc import Callable
 
 SOURCES = ["src/", "tests/"]
 
@@ -31,8 +32,7 @@ def _run(*args: str) -> int:
 
 def setup() -> int:
     """Configure git hooks and sync dev dependencies."""
-    _run("git", "config", "--local", "core.hooksPath", ".githooks")
-    return 0
+    return _run("git", "config", "--local", "core.hooksPath", ".githooks")
 
 
 def lint() -> int:
@@ -74,7 +74,7 @@ def clean() -> int:
     return 0
 
 
-COMMANDS: dict[str, tuple[callable, str]] = {  # type: ignore[type-arg]
+COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (lint, "Check code formatting with black"),
     "format": (format_code, "Fix code formatting with black"),

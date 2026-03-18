@@ -37,8 +37,19 @@ _DEFAULTS: dict[str, str] = {
 class Config:
     """Persistent key-value configuration stored at ``.nanvix/env.json``.
 
-    Reads defaults from environment variables, then from the persisted file.
-    Environment variables always win.
+    Initialisation order:
+
+    1. Seed with built-in defaults.
+    2. Override with values from the persisted ``.nanvix/env.json`` file,
+       if it exists.
+    3. Override with environment variables (including extra ``NANVIX_*`` keys
+       and ``GH_TOKEN``), which always take precedence.
+
+    Effective precedence (highest to lowest) is therefore:
+
+    1. Environment variables
+    2. Persisted ``.nanvix/env.json``
+    3. Built-in defaults
 
     Attributes:
         machine: Target machine identifier (e.g. ``"hyperlight"``).
@@ -65,6 +76,8 @@ class Config:
         # Load persisted values (environment still wins below).
         if self._config_path.exists():
             self.load()
+            # Never persist secrets such as GH_TOKEN; strip if present.
+            self._data.pop("GH_TOKEN", None)
 
         # Apply environment variable overrides.
         for key in list(self._data.keys()):
@@ -74,7 +87,7 @@ class Config:
 
         # Apply any extra env vars not in defaults.
         for key, val in os.environ.items():
-            if key.startswith("NANVIX_") or key == "GH_TOKEN":
+            if key.startswith("NANVIX_"):
                 self._data[key] = val
 
     # ------------------------------------------------------------------

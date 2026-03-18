@@ -26,6 +26,7 @@ from nanvix_zutil import log
 _GITHUB_API_BASE = "https://api.github.com"
 _MAX_RETRIES = 5
 _BACKOFF_BASE = 2.0  # seconds
+_HTTP_TIMEOUT = 30.0  # seconds
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ def download_release_asset(
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
                 raw: object = json.loads(resp.read())
                 if not isinstance(raw, dict):
                     log.fatal(
@@ -121,7 +122,11 @@ def download_release_asset(
         try:
             dl_req = urllib.request.Request(asset_url, headers=headers)
             with urllib.request.urlopen(dl_req) as resp, out_path.open("wb") as out_fh:
-                out_fh.write(resp.read())
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out_fh.write(chunk)
             log.success(f"Downloaded {asset_name}")
             return out_path
         except urllib.error.URLError as exc:
