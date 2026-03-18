@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import unittest
 from pathlib import Path
+from typing import cast
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-world"
@@ -91,15 +92,14 @@ class TestHelloWorldBash(unittest.TestCase):
         """``--json`` produces parseable JSON on stdout."""
         r = self._run_z("--json", "setup")
         self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [
-            ln for ln in r.stdout.splitlines() if ln.startswith("{")
-        ]
+        json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stdout")
         for line in json_lines:
             obj: object = json.loads(line)
             self.assertIsInstance(obj, dict)
             assert isinstance(obj, dict)
-            self.assertIn("level", obj)
+            typed = cast(dict[str, object], obj)
+            self.assertIn("level", typed)
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -182,15 +182,14 @@ class TestHelloWorldPS1(unittest.TestCase):
         """``z.ps1 --json setup`` produces parseable JSON on stdout."""
         r = self._run_z_ps1("--json", "setup")
         self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [
-            ln for ln in r.stdout.splitlines() if ln.startswith("{")
-        ]
+        json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stdout")
         for line in json_lines:
             obj: object = json.loads(line)
             self.assertIsInstance(obj, dict)
             assert isinstance(obj, dict)
-            self.assertIn("level", obj)
+            typed = cast(dict[str, object], obj)
+            self.assertIn("level", typed)
 
     # ------------------------------------------------------------------
     # Cleanup
