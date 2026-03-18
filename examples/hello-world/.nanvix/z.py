@@ -33,10 +33,10 @@ if not sys.prefix.startswith(str(_VENV)):
     if not _VENV.exists():
         print("bootstrap: creating venv …", flush=True)
         subprocess.check_call([sys.executable, "-m", "venv", str(_VENV)])
-    print("bootstrap: installing nanvix-zutil from source …", flush=True)
-    subprocess.check_call(
-        [str(_VENV_PYTHON), "-m", "pip", "install", "-q", str(_ZUTILS_SRC)]
-    )
+        print("bootstrap: installing nanvix-zutil (editable) …", flush=True)
+        subprocess.check_call(
+            [str(_VENV_PYTHON), "-m", "pip", "install", "-q", "-e", str(_ZUTILS_SRC)]
+        )
     rc = subprocess.call(
         [str(_VENV_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]]
     )
