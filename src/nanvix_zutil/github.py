@@ -128,7 +128,10 @@ def download_release_asset(
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             dl_req = urllib.request.Request(asset_url, headers=headers)
-            with urllib.request.urlopen(dl_req, timeout=_HTTP_TIMEOUT) as resp, out_path.open("wb") as out_fh:
+            with (
+                urllib.request.urlopen(dl_req, timeout=_HTTP_TIMEOUT) as resp,
+                out_path.open("wb") as out_fh,
+            ):
                 while True:
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
