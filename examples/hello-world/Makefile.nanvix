@@ -1,0 +1,159 @@
+# Makefile.nanvix - hello-world cross-compilation for Nanvix
+#
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# Targets:
+#   all              Build hello.elf
+#   test-smoke       Verify build artifact exists
+#   test-integration Verify ELF binary is valid
+#   test-functional  Run on nanvixd.elf (requires KVM)
+#   test             Run all test levels
+#   clean            Remove build artifacts
+
+# ===========================================================================
+# Toolchain Detection
+# ===========================================================================
+
+NANVIX_DOCKER_IMAGE ?= nanvix/toolchain:latest-minimal
+
+ifdef CONFIG_NANVIX
+  NANVIX_TOOLCHAIN ?= /opt/nanvix
+  NANVIX_HOME ?= $(HOME)/nanvix
+
+  ifndef CONFIG_NANVIX_DOCKER
+    ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc),)
+      DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+      ifdef DOCKER_AVAILABLE
+        DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+        ifdef DOCKER_IMAGE_EXISTS
+          CONFIG_NANVIX_DOCKER := y
+          $(info [nanvix] Using Docker (native toolchain not found at $(NANVIX_TOOLCHAIN)))
+        else
+          $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+        endif
+      else
+        $(error Nanvix toolchain not found at $(NANVIX_TOOLCHAIN) and Docker not available)
+      endif
+    endif
+  else
+    DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+    ifndef DOCKER_AVAILABLE
+      $(error CONFIG_NANVIX_DOCKER=y but Docker is not installed)
+    endif
+    DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+    ifndef DOCKER_IMAGE_EXISTS
+      $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+    endif
+    $(info [nanvix] Using Docker (explicitly requested))
+  endif
+
+  EXE = .elf
+  SYSROOT_PATH := $(abspath $(NANVIX_HOME))
+
+  ifdef CONFIG_NANVIX_DOCKER
+    DOCKER_TOOLCHAIN_PATH := /opt/nanvix
+    DOCKER_SYSROOT_PATH := /mnt/sysroot
+    DOCKER_WORKSPACE_PATH := /mnt/workspace
+    DOCKER_UID := $(shell id -u)
+    DOCKER_GID := $(shell id -g)
+    DOCKER_RUN := docker run --rm --user $(DOCKER_UID):$(DOCKER_GID) \
+      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
+      -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH):ro \
+      -w $(DOCKER_WORKSPACE_PATH) \
+      -e HOME=/tmp \
+      $(NANVIX_DOCKER_IMAGE)
+    DOCKER_KVM_GID := $(shell stat -c '%g' /dev/kvm 2>/dev/null || echo 0)
+    DOCKER_RUN_FUNCTIONAL := docker run --rm --device /dev/kvm \
+      --user $(DOCKER_UID):$(DOCKER_GID) --group-add $(DOCKER_KVM_GID) \
+      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
+      -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH) \
+      -w $(DOCKER_SYSROOT_PATH) \
+      -e HOME=/tmp \
+      -e USER=$(shell whoami) \
+      $(NANVIX_DOCKER_IMAGE)
+    CC := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-gcc
+    NANVIX_LDFLAGS := -T$(DOCKER_SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack
+    NANVIX_LIBS := -Wl,--start-group \
+      $(DOCKER_SYSROOT_PATH)/lib/libposix.a \
+      $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libc.a \
+      $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libm.a \
+      -Wl,--end-group
+  else
+    CC := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc
+    NANVIX_LDFLAGS := -T$(SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack
+    NANVIX_LIBS := -Wl,--start-group \
+      $(SYSROOT_PATH)/lib/libposix.a \
+      $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a \
+      $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a \
+      -Wl,--end-group
+  endif
+else
+  ifneq ($(MAKECMDGOALS),clean)
+    $(error CONFIG_NANVIX must be set to 'y'. Usage: make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/sysroot)
+  endif
+  EXE = .elf
+endif
+
+# ===========================================================================
+# Build Configuration
+# ===========================================================================
+
+CFLAGS = -O2 -Wall -msse2 -mfpmath=sse
+BINARY = hello$(EXE)
+
+# ===========================================================================
+# Build Targets
+# ===========================================================================
+
+all: $(BINARY)
+
+hello.o: src/hello.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BINARY): hello.o
+	$(CC) $(CFLAGS) $(NANVIX_LDFLAGS) -o $@ $< $(NANVIX_LIBS)
+
+# ===========================================================================
+# Test Targets
+# ===========================================================================
+
+test-smoke: $(BINARY)
+	@echo "=== hello-world smoke tests ==="
+	@test -f $(BINARY) || { echo "  FAIL: $(BINARY) not found"; exit 1; }
+	@size=$$(wc -c < $(BINARY)); \
+	  if [ "$$size" -lt 1000 ]; then echo "  FAIL: $(BINARY) too small ($$size bytes)"; exit 1; fi
+	@echo "  OK: $(BINARY) ($$(wc -c < $(BINARY)) bytes)"
+	@echo "  PASS: hello-world smoke tests"
+
+test-integration: $(BINARY)
+	@echo "=== hello-world integration tests ==="
+	@file $(BINARY) | grep -q "ELF" || { echo "  FAIL: $(BINARY) is not an ELF binary"; exit 1; }
+	@echo "  OK: $(BINARY) is a valid ELF binary"
+	@echo "  PASS: hello-world integration tests"
+
+test-functional: test-integration
+	@echo "=== hello-world functional tests ==="
+ifdef CONFIG_NANVIX_DOCKER
+	@echo "  Running hello$(EXE) via nanvixd.elf (Docker)..."
+	$(DOCKER_RUN_FUNCTIONAL) sh -c \
+	  'timeout --foreground 60 ./bin/nanvixd.elf -- $(DOCKER_WORKSPACE_PATH)/hello$(EXE)'
+	@echo "  PASS: hello-world ran successfully"
+else
+	@echo "  Running hello$(EXE) via nanvixd.elf..."
+	cd "$(SYSROOT_PATH)" && timeout --foreground 60 ./bin/nanvixd.elf -- $(abspath $(BINARY))
+	@echo "  PASS: hello-world ran successfully"
+endif
+	@echo "  PASS: hello-world functional tests"
+
+test: test-smoke test-integration test-functional
+	@echo "=== All hello-world tests PASSED ==="
+
+# ===========================================================================
+# Clean
+# ===========================================================================
+
+clean:
+	rm -f *.o $(BINARY)
+
+.PHONY: all clean test test-smoke test-integration test-functional

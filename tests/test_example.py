@@ -3,13 +3,16 @@
 
 """Integration tests for the hello-world example.
 
-These tests exercise the full bootstrap chain by invoking the example
-through the actual ``z`` (Bash) and ``z.ps1`` (PowerShell) wrappers —
-the same way an end-user would run ``./z <command>`` or ``./z.ps1 <command>``.
+These tests exercise the bootstrap chain by invoking the example through
+the actual ``z`` (Bash) and ``z.ps1`` (PowerShell) wrappers — the same
+way an end-user would run ``./z <command>``.
 
-On the first run the bootstrap creates a virtualenv inside the example's
-``.nanvix/venv/`` directory and installs ``nanvix_zutil`` from the local
-source tree.  Subsequent runs reuse the cached environment.
+The full lifecycle test (setup → build → test → clean) requires either
+the native Nanvix toolchain at ``/opt/nanvix/`` or the Docker image
+``nanvix/toolchain:latest-minimal``, plus network access to download
+the sysroot from GitHub.  It is skipped when neither is available.
+
+CLI flag tests (--help, --json) work without any external dependencies.
 """
 
 from __future__ import annotations
@@ -27,6 +30,23 @@ _Z_BASH = _EXAMPLE_DIR / "z"
 _Z_PS1 = _EXAMPLE_DIR / "z.ps1"
 _HAS_PWSH = shutil.which("pwsh") is not None
 _HAS_BASH = shutil.which("bash") is not None
+
+
+def _has_nanvix_toolchain() -> bool:
+    """Return True if the Nanvix cross-compiler or Docker image is available."""
+    if Path("/opt/nanvix/bin/i686-nanvix-gcc").exists():
+        return True
+    if shutil.which("docker"):
+        result = subprocess.run(
+            ["docker", "image", "inspect", "nanvix/toolchain:latest-minimal"],
+            capture_output=True,
+        )
+        return result.returncode == 0
+    return False
+
+
+_HAS_TOOLCHAIN = _has_nanvix_toolchain()
+_SKIP_LIFECYCLE = "Nanvix toolchain not available (need /opt/nanvix or Docker image)"
 
 
 @unittest.skipUnless(_HAS_BASH, "bash not found in PATH")
@@ -49,9 +69,10 @@ class TestHelloWorldBash(unittest.TestCase):
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Lifecycle (requires toolchain + network)
     # ------------------------------------------------------------------
 
+    @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean and verify each step."""
         # setup
@@ -62,25 +83,24 @@ class TestHelloWorldBash(unittest.TestCase):
         r = self._run_z("build")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(
-            (_EXAMPLE_DIR / "build" / "hello.py").exists(),
-            "build/ should contain hello.py after build",
+            (_EXAMPLE_DIR / "hello.elf").exists(),
+            "hello.elf should exist after build",
         )
 
         # test
         r = self._run_z("test")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("Hello, World!", r.stdout)
 
         # clean
         r = self._run_z("clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(
-            (_EXAMPLE_DIR / "build").exists(),
-            "build/ should not exist after clean",
+            (_EXAMPLE_DIR / "hello.elf").exists(),
+            "hello.elf should not exist after clean",
         )
 
     # ------------------------------------------------------------------
-    # CLI flags
+    # CLI flags (no toolchain required)
     # ------------------------------------------------------------------
 
     def test_help_returns_zero(self) -> None:
@@ -90,7 +110,7 @@ class TestHelloWorldBash(unittest.TestCase):
 
     def test_json_mode(self) -> None:
         """``--json`` produces parseable JSON on stdout."""
-        r = self._run_z("--json", "setup")
+        r = self._run_z("--json", "clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stdout")
@@ -108,9 +128,10 @@ class TestHelloWorldBash(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         """Remove build artifacts left over from test runs."""
-        build_dir = _EXAMPLE_DIR / "build"
-        if build_dir.exists():
-            shutil.rmtree(build_dir)
+        for artifact in ("hello.o", "hello.elf"):
+            path = _EXAMPLE_DIR / artifact
+            if path.exists():
+                path.unlink()
 
 
 @unittest.skipUnless(_HAS_PWSH, "pwsh (PowerShell) not found in PATH")
@@ -133,9 +154,10 @@ class TestHelloWorldPS1(unittest.TestCase):
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Lifecycle (requires toolchain + network)
     # ------------------------------------------------------------------
 
+    @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean via z.ps1."""
         # setup
@@ -146,25 +168,24 @@ class TestHelloWorldPS1(unittest.TestCase):
         r = self._run_z_ps1("build")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(
-            (_EXAMPLE_DIR / "build" / "hello.py").exists(),
-            "build/ should contain hello.py after build",
+            (_EXAMPLE_DIR / "hello.elf").exists(),
+            "hello.elf should exist after build",
         )
 
         # test
         r = self._run_z_ps1("test")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("Hello, World!", r.stdout)
 
         # clean
         r = self._run_z_ps1("clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(
-            (_EXAMPLE_DIR / "build").exists(),
-            "build/ should not exist after clean",
+            (_EXAMPLE_DIR / "hello.elf").exists(),
+            "hello.elf should not exist after clean",
         )
 
     # ------------------------------------------------------------------
-    # CLI flags
+    # CLI flags (no toolchain required)
     # ------------------------------------------------------------------
 
     def test_help_returns_zero(self) -> None:
@@ -179,8 +200,8 @@ class TestHelloWorldPS1(unittest.TestCase):
         self.assertIn("usage:", r.stdout)
 
     def test_json_mode(self) -> None:
-        """``z.ps1 --json setup`` produces parseable JSON on stdout."""
-        r = self._run_z_ps1("--json", "setup")
+        """``z.ps1 --json clean`` produces parseable JSON on stdout."""
+        r = self._run_z_ps1("--json", "clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stdout")
@@ -198,9 +219,10 @@ class TestHelloWorldPS1(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         """Remove build artifacts left over from test runs."""
-        build_dir = _EXAMPLE_DIR / "build"
-        if build_dir.exists():
-            shutil.rmtree(build_dir)
+        for artifact in ("hello.o", "hello.elf"):
+            path = _EXAMPLE_DIR / artifact
+            if path.exists():
+                path.unlink()
 
 
 if __name__ == "__main__":

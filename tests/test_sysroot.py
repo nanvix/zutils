@@ -99,6 +99,7 @@ class TestSysrootDownloadFetches(unittest.TestCase):
         archive_path.write_bytes(archive)
 
         captured: list[str] = []
+        captured_kwargs: list[dict[str, object]] = []
 
         def fake_download(
             repo: str,
@@ -106,8 +107,11 @@ class TestSysrootDownloadFetches(unittest.TestCase):
             asset_name: str,
             dest: Path,
             gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
         ) -> Path:
             captured.append(asset_name)
+            captured_kwargs.append({"match_prefix": match_prefix})
             return archive_path
 
         with patch(
@@ -122,7 +126,8 @@ class TestSysrootDownloadFetches(unittest.TestCase):
                 dest=dest,
             )
 
-        self.assertEqual(captured[0], "nanvix-microvm-standalone-256mb.tar.bz2")
+        self.assertEqual(captured[0], "nanvix-microvm-standalone-release-256mb")
+        self.assertTrue(captured_kwargs[0]["match_prefix"])
 
     def test_path_is_absolute(self) -> None:
         dest = Path(self._tmpdir.name) / "sysroot"

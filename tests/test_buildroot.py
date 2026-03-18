@@ -268,7 +268,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
                 memory_size="256mb",
             )
 
-        self.assertEqual(captured[0], "zlib-microvm-singleprocess-256mb.tar.bz2")
+        self.assertEqual(captured[0], "zlib-microvm-single-process-256mb.tar.bz2")
 
 
 if __name__ == "__main__":

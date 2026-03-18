@@ -10,11 +10,18 @@ build/
 
 # Example build artifacts
 examples/**/build/
+examples/**/*.o
+examples/**/*.elf
 
 # Virtual environments
 .venv/
 venv/
 .nanvix/venv/
+
+# Nanvix build artifacts (downloaded sysroot, cache, config)
+**/.nanvix/sysroot/
+**/.nanvix/cache/
+**/.nanvix/env.json
 
 # pytest
 .pytest_cache/

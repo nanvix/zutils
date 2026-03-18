@@ -1,13 +1,13 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Hello-world example — minimal ZScript consumer.
+"""Hello-world example — cross-compiles a C program for Nanvix.
 
-Demonstrates the lifecycle hooks with a trivial Python project:
+Demonstrates the full lifecycle with a real Nanvix build:
 
-    ./z setup      # verify Python >= 3.12
-    ./z build      # copy src/hello.py → build/
-    ./z test       # run the built artifact
+    ./z setup      # download Nanvix sysroot
+    ./z build      # cross-compile hello.c → hello.elf
+    ./z test       # run tests (smoke + integration + functional)
     ./z clean      # remove build artifacts
 """
 
@@ -46,43 +46,76 @@ if not sys.prefix.startswith(str(_VENV)):
 # Consumer build script — everything below is what a real repo writes.
 # ---------------------------------------------------------------------------
 
-import shutil  # noqa: E402
-
-from nanvix_zutil import ZScript, log  # noqa: E402
+from nanvix_zutil import Sysroot, ZScript, log  # noqa: E402
 
 
 class HelloWorld(ZScript):
-    """Build script for the hello-world Python example."""
+    """Build script for the hello-world C example."""
+
+    NANVIX_TAG = "latest"
+
+    def _make_args(self, *targets: str) -> list[str]:
+        """Build the common make argument list."""
+        sysroot = self.config.get("NANVIX_SYSROOT", "")
+        toolchain = self.config.get("NANVIX_TOOLCHAIN", "/opt/nanvix")
+
+        args = [
+            "make",
+            "-f",
+            "Makefile.nanvix",
+            "CONFIG_NANVIX=y",
+            f"NANVIX_HOME={sysroot}",
+            f"NANVIX_TOOLCHAIN={toolchain}",
+        ]
+
+        args.extend([
+            f"PLATFORM={self.config.machine}",
+            f"PROCESS_MODE={self.config.deployment_mode}",
+            f"MEMORY_SIZE={self.config.memory_size}",
+        ])
+
+        args.extend(targets)
+        return args
 
     def setup(self) -> None:
-        """Verify Python version is sufficient."""
-        major, minor = sys.version_info[:2]
-        if (major, minor) < (3, 12):
-            log.fatal(
-                f"Python 3.12+ required (found {major}.{minor})",
-                code=3,
-                hint="Install Python 3.12+ and ensure it is on your PATH.",
-            )
-        log.success(f"Python {major}.{minor} — ready to build")
+        """Download the Nanvix sysroot."""
+        tag = self.config.get("NANVIX_TAG", self.NANVIX_TAG)
+        assert tag is not None
+
+        sysroot = Sysroot.download(
+            machine=self.config.machine,
+            deployment_mode=self.config.deployment_mode,
+            memory_size=self.config.memory_size,
+            tag=tag,
+            gh_token=self.config.get("GH_TOKEN"),
+        )
+        sysroot.verify(["lib/libposix.a", "lib/user.ld"])
+        self.config.set("NANVIX_SYSROOT", str(sysroot.path))
+        self.config.save()
+        log.success("Setup complete")
 
     def build(self) -> None:
-        """Copy source to build directory."""
-        build_dir = self.repo_root / "build"
-        build_dir.mkdir(exist_ok=True)
-        shutil.copy2(self.repo_root / "src" / "hello.py", build_dir / "hello.py")
-        log.success("build complete")
+        """Cross-compile hello.c into hello.elf for Nanvix."""
+        self.config.load()
+        self.run(*self._make_args("all"), cwd=self.repo_root)
+        log.success("Build complete")
 
     def test(self) -> None:
-        """Run the built artifact."""
-        self.run(sys.executable, str(self.repo_root / "build" / "hello.py"))
-        log.success("test passed")
+        """Run the test suite (smoke + integration + functional)."""
+        self.config.load()
+        self.run(*self._make_args("test"), cwd=self.repo_root)
+        log.success("Tests passed")
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        build_dir = self.repo_root / "build"
-        if build_dir.exists():
-            shutil.rmtree(build_dir)
-        log.success("clean complete")
+        self.run(
+            "make",
+            "-f",
+            "Makefile.nanvix",
+            "clean",
+            cwd=self.repo_root,
+        )
+        log.success("Clean complete")
 
 
 if __name__ == "__main__":

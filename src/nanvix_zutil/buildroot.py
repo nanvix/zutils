@@ -122,11 +122,10 @@ class Buildroot:
             memory_size: Memory size string.
             gh_token: Optional GitHub token.
         """
-        mode_short = deployment_mode.replace("-", "")
         asset_name = dep.artifact_pattern.format(
             name=dep.name,
             machine=machine,
-            mode=mode_short,
+            mode=deployment_mode,
             mem=memory_size,
         )
 
