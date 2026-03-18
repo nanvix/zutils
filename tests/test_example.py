@@ -3,9 +3,9 @@
 
 """Integration tests for the hello-world example.
 
-These tests exercise the full bootstrap-and-lifecycle chain by invoking
-the example's ``z.py`` as a subprocess — the same way an end-user would
-run ``./z <command>``.
+These tests exercise the full bootstrap chain by invoking the example
+through the actual ``z`` (Bash) and ``z.ps1`` (PowerShell) wrappers —
+the same way an end-user would run ``./z <command>`` or ``./z.ps1 <command>``.
 
 On the first run the bootstrap creates a virtualenv inside the example's
 ``.nanvix/venv/`` directory and installs ``nanvix_zutil`` from the local
@@ -17,19 +17,20 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-world"
-_Z_PY = _EXAMPLE_DIR / ".nanvix" / "z.py"
+_Z_BASH = _EXAMPLE_DIR / "z"
 _Z_PS1 = _EXAMPLE_DIR / "z.ps1"
 _HAS_PWSH = shutil.which("pwsh") is not None
+_HAS_BASH = shutil.which("bash") is not None
 
 
-class TestHelloWorldExample(unittest.TestCase):
-    """End-to-end tests for the hello-world example."""
+@unittest.skipUnless(_HAS_BASH, "bash not found in PATH")
+class TestHelloWorldBash(unittest.TestCase):
+    """End-to-end tests for the ``z`` (Bash) bootstrap wrapper."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -37,9 +38,9 @@ class TestHelloWorldExample(unittest.TestCase):
 
     @staticmethod
     def _run_z(*args: str) -> subprocess.CompletedProcess[str]:
-        """Run the example ``z.py`` with the given arguments."""
+        """Run the example via ``bash z`` with the given arguments."""
         return subprocess.run(
-            [sys.executable, str(_Z_PY), *args],
+            ["bash", str(_Z_BASH), *args],
             cwd=str(_EXAMPLE_DIR),
             capture_output=True,
             text=True,
