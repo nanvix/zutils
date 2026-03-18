@@ -70,7 +70,11 @@ def warning(msg: str) -> None:
         msg: The message text.
     """
     if _json_mode:
-        print(json.dumps({"level": "warning", "message": msg}), flush=True)
+        print(
+            json.dumps({"level": "warning", "message": msg}),
+            file=sys.stderr,
+            flush=True,
+        )
     else:
         print(f"\033[33mwarning:\033[0m {msg}", file=sys.stderr, flush=True)
 

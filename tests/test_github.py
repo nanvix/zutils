@@ -14,10 +14,20 @@ import nanvix_zutil.log as log_mod
 import nanvix_zutil.github as github_mod
 
 
-def _make_urlopen_response(body: bytes) -> MagicMock:
-    """Return a context-manager mock that yields a response with *body*."""
+def _make_urlopen_response(body: bytes, chunked: bool = False) -> MagicMock:
+    """Return a context-manager mock that yields a response with *body*.
+
+    Args:
+        body: The response bytes to return.
+        chunked: When ``True``, simulate a chunked read by returning *body*
+            on the first ``read()`` call then ``b""`` on subsequent calls
+            (matching the download loop in :func:`github.download_release_asset`).
+    """
     resp = MagicMock()
-    resp.read.return_value = body
+    if chunked:
+        resp.read.side_effect = [body, b""]
+    else:
+        resp.read.return_value = body
     ctx = MagicMock()
     ctx.__enter__ = MagicMock(return_value=resp)
     ctx.__exit__ = MagicMock(return_value=False)
@@ -86,7 +96,7 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
         metadata_resp = _make_urlopen_response(
             _make_release_payload(asset_name, download_url)
         )
-        file_resp = _make_urlopen_response(file_content)
+        file_resp = _make_urlopen_response(file_content, chunked=True)
 
         with patch("urllib.request.urlopen", side_effect=[metadata_resp, file_resp]):
             result = github_mod.download_release_asset(
@@ -107,11 +117,11 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
         metadata_resp = _make_urlopen_response(
             _make_release_payload(asset_name, download_url)
         )
-        file_resp = _make_urlopen_response(b"content")
+        file_resp = _make_urlopen_response(b"content", chunked=True)
 
         captured_requests: list[object] = []
 
-        def capture_urlopen(req: object) -> object:
+        def capture_urlopen(req: object, **kwargs: object) -> object:
             captured_requests.append(req)
             if len(captured_requests) == 1:
                 return metadata_resp
@@ -202,7 +212,7 @@ class TestDownloadReleaseAssetNetworkError(unittest.TestCase):
 
         call_count = 0
 
-        def side_effect(req: object) -> object:
+        def side_effect(req: object, **kwargs: object) -> object:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
