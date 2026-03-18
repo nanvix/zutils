@@ -86,11 +86,11 @@ class TestWarning(unittest.TestCase):
     def test_json_mode(self) -> None:
         log_mod.set_json_mode(True)
         buf = StringIO()
-        sys.stdout = buf
+        sys.stderr = buf
         try:
             log_mod.warning("watch out")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
             log_mod.set_json_mode(False)
         obj = json.loads(buf.getvalue().strip())
         self.assertEqual(obj["level"], "warning")
