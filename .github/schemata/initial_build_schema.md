@@ -14,8 +14,8 @@ _The following is a copilot generated build schema for this repository. It goes 
 
 `nanvix_zutil` is a **stdlib-only Python 3.12+ library** with two responsibilities:
 
-1. **Dependency management** — Download and verify the Nanvix runtime sysroot and library release artifacts from GitHub.
-2. **Programmatic API / CLI** — Provide a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `release`, `clean`), argument parsing, structured logging, config persistence, and deterministic exit codes.
+1. **Dependency management** — Download and verify the Nanvix runtime sysroot and build-time dependencies (buildroot) from GitHub release artifacts.
+2. **Programmatic API / CLI** — Provide a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`), argument parsing, structured logging, config persistence, and deterministic exit codes.
 
 `nanvix_zutil` is agnostic to what a consumer repository builds. It does not know or care whether the output is a static library, an ELF binary, or a distribution tarball. All build logic — toolchain resolution, compiler invocation, Docker wrapping, make targets — lives in the consumer `z.py` script, which subclasses `ZScript` and implements the lifecycle hooks.
 
@@ -65,10 +65,11 @@ nanvix/zutil/
 │       ├── __init__.py        # Public API re-exports
 │       ├── cli.py             # Argument parser, subcommand dispatch, --json, --help
 │       ├── config.py          # Environment persistence (.nanvix/env.json)
+│       ├── buildroot.py       # Buildroot + Dependency (build-time deps)
 │       ├── github.py          # GitHub release download, retry, GH_TOKEN
 │       ├── log.py             # Colored logging, --json mode, structured errors
 │       ├── script.py          # ZScript base class (lifecycle hooks + self.run())
-│       └── sysroot.py         # Sysroot + Dependency download, extraction, verification
+│       └── sysroot.py         # Sysroot download, extraction, verification (run-time)
 ├── templates/
 │   ├── z                      # Bootstrap wrapper template (Bash)
 │   └── z.ps1                  # Bootstrap wrapper template (PowerShell)
@@ -127,9 +128,10 @@ The top ~20 lines of `z.py` (stdlib only: `subprocess`, `sys`, `os`, `venv`) han
 ./z setup
 ./z build
 ./z test
+./z benchmark
 ./z release
 ./z clean
-./z --help
+./z help
 ```
 
 ---
@@ -155,6 +157,7 @@ class ZScript:
     def setup(self) -> None: ...
     def build(self) -> None: ...
     def test(self) -> None: ...
+    def benchmark(self) -> None: ...
     def release(self) -> None: ...
     def clean(self) -> None: ...
 
@@ -184,8 +187,8 @@ class Config:
     Environment variables always win.
     """
 
-    platform: str              # Default: "hyperlight" (from NANVIX_PLATFORM)
-    process_mode: str          # Default: "multi-process" (from NANVIX_PROCESS_MODE)
+    machine: str               # Default: "hyperlight" (from NANVIX_MACHINE)
+    deployment_mode: str       # Default: "multi-process" (from NANVIX_DEPLOYMENT_MODE)
     memory_size: str           # Default: "128mb" (from NANVIX_MEMORY_SIZE)
 
     def get(self, key: str, default: str | None = None) -> str | None: ...
@@ -194,18 +197,42 @@ class Config:
     def load(self) -> None: ...
 ```
 
+### `Buildroot` (`nanvix_zutil.buildroot`)
+
+```python
+class Buildroot:
+    """Manages the build-time dependency root (headers, static libraries)."""
+
+    path: Path
+
+    @staticmethod
+    def create(
+        dest: Path | None = None,
+    ) -> "Buildroot":
+        """Create or locate the buildroot directory."""
+        ...
+
+    def install_dep(self, dep: "Dependency") -> None:
+        """Download a dependency release and install .a + headers into the buildroot."""
+        ...
+
+    def verify(self, required_libs: list[str]) -> None:
+        """Assert that all required build-time files are present. Raises on failure."""
+        ...
+```
+
 ### `Sysroot` (`nanvix_zutil.sysroot`)
 
 ```python
 class Sysroot:
-    """Manages the Nanvix sysroot directory."""
+    """Manages the Nanvix runtime sysroot directory."""
 
     path: Path
 
     @staticmethod
     def download(
-        platform: str,
-        process_mode: str,
+        machine: str,
+        deployment_mode: str,
         memory_size: str,
         gh_token: str | None = None,
         dest: Path | None = None,
@@ -213,16 +240,12 @@ class Sysroot:
         """Download and extract the Nanvix runtime artifact from GitHub releases."""
         ...
 
-    def install_dep(self, dep: "Dependency") -> None:
-        """Download a dependency release and install .a + headers into the sysroot."""
-        ...
-
-    def verify(self, required_libs: list[str]) -> None:
-        """Assert that all required files are present. Raises on failure."""
+    def verify(self, required_files: list[str]) -> None:
+        """Assert that all required runtime files are present. Raises on failure."""
         ...
 ```
 
-### `Dependency` (`nanvix_zutil.sysroot`)
+### `Dependency` (`nanvix_zutil.buildroot`)
 
 ```python
 @dataclass
@@ -231,7 +254,7 @@ class Dependency:
 
     name: str                  # e.g., "sqlite"
     repo: str                  # e.g., "nanvix/sqlite"
-    artifact_pattern: str = "{name}-{platform}-{mode}-{mem}.tar.bz2"
+    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}.tar.bz2"
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
 ```
@@ -252,17 +275,19 @@ def set_json_mode(enabled: bool) -> None: ...
 Built internally by `ZScript.main()`. Consumer scripts do not construct it manually.
 
 ```
-usage: ./z [-h] [--json] [--version] {setup,build,test,release,clean} ...
+usage: ./z [-h] [--json] [--version] {setup,build,test,benchmark,release,clean,help} ...
 
 Nanvix build script.
 
 positional arguments:
-  {setup,build,test,release,clean}
+  {setup,build,test,benchmark,release,clean,help}
     setup               Prepare the build environment
     build               Build the project
     test                Run tests
+    benchmark           Run benchmarks
     release             Package a release
     clean               Remove build artifacts
+    help                Show help message
 
 options:
   -h, --help            Show this help message and exit
@@ -279,7 +304,7 @@ Consumer scripts can register additional CLI arguments per subcommand via the `Z
 All consumers follow the same pattern. The `setup()` hook uses `nanvix_zutil` to download dependencies. The remaining hooks call `self.run()` to invoke whatever build system the repository uses — typically `make -f Makefile.nanvix`.
 
 ```python
-from nanvix_zutil import ZScript, Sysroot, Dependency
+from nanvix_zutil import ZScript, Buildroot, Sysroot, Dependency
 
 class MyBuild(ZScript):
     """Build script for nanvix/<repo>."""
@@ -293,15 +318,17 @@ class MyBuild(ZScript):
 
     def setup(self) -> None:
         sysroot = Sysroot.download(
-            platform=self.config.platform,
-            process_mode=self.config.process_mode,
+            machine=self.config.machine,
+            deployment_mode=self.config.deployment_mode,
             memory_size=self.config.memory_size,
             gh_token=self.config.get("GH_TOKEN"),
         )
+        buildroot = Buildroot.create()
         for dep in self.DEPS:
-            sysroot.install_dep(dep)
-        sysroot.verify(required_libs=["libposix.a"])
-        self.config.set("NANVIX_HOME", str(sysroot.path))
+            buildroot.install_dep(dep)
+        buildroot.verify(required_libs=["libposix.a"])
+        self.config.set("NANVIX_SYSROOT", str(sysroot.path))
+        self.config.set("NANVIX_BUILDROOT", str(buildroot.path))
         self.config.save()
 
     def build(self) -> None:
@@ -309,7 +336,8 @@ class MyBuild(ZScript):
         self.run(
             "make", "-f", "Makefile.nanvix",
             "CONFIG_NANVIX=y",
-            f"NANVIX_HOME={self.config.get('NANVIX_HOME')}",
+            f"NANVIX_SYSROOT={self.config.get('NANVIX_SYSROOT')}",
+            f"NANVIX_BUILDROOT={self.config.get('NANVIX_BUILDROOT')}",
             "all",
             cwd=self.repo_root,
         )
@@ -319,7 +347,8 @@ class MyBuild(ZScript):
         self.run(
             "make", "-f", "Makefile.nanvix",
             "CONFIG_NANVIX=y",
-            f"NANVIX_HOME={self.config.get('NANVIX_HOME')}",
+            f"NANVIX_SYSROOT={self.config.get('NANVIX_SYSROOT')}",
+            f"NANVIX_BUILDROOT={self.config.get('NANVIX_BUILDROOT')}",
             "test",
             cwd=self.repo_root,
         )
@@ -329,7 +358,8 @@ class MyBuild(ZScript):
         self.run(
             "make", "-f", "Makefile.nanvix",
             "CONFIG_NANVIX=y",
-            f"NANVIX_HOME={self.config.get('NANVIX_HOME')}",
+            f"NANVIX_SYSROOT={self.config.get('NANVIX_SYSROOT')}",
+            f"NANVIX_BUILDROOT={self.config.get('NANVIX_BUILDROOT')}",
             "package",
             cwd=self.repo_root,
         )
@@ -351,10 +381,11 @@ The only thing that varies between consumers is the `DEPS` list and whatever ext
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NANVIX_PLATFORM` | `hyperlight` | Target platform |
-| `NANVIX_PROCESS_MODE` | `multi-process` | Process mode |
+| `NANVIX_MACHINE` | `hyperlight` | Target machine |
+| `NANVIX_DEPLOYMENT_MODE` | `multi-process` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
 | `NANVIX_MEMORY_SIZE` | `128mb` | Memory size for artifact naming |
-| `NANVIX_HOME` | *(auto-set by setup)* | Path to sysroot |
+| `NANVIX_SYSROOT` | *(auto-set by setup)* | Path to runtime sysroot |
+| `NANVIX_BUILDROOT` | *(auto-set by setup)* | Path to build-time root |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limit avoidance |
 
 ---
@@ -386,7 +417,7 @@ In `--json` mode, errors are emitted as JSON:
 - `./z setup && ./z build` succeeds in any migrated Nanvix consumer repo
 - `./z test` runs the repository's test suite
 - `./z release` produces the repository's release artifact
-- `./z --help` and `./z <subcommand> --help` print accurate help
+- `./z help` and `./z <subcommand> --help` print accurate help
 - All commands return 0 on success, non-zero on failure with structured error
 - `./z` finds Python on Linux, macOS, WSL, and Windows PowerShell
 
@@ -409,7 +440,7 @@ In `--json` mode, errors are emitted as JSON:
 
 All Nanvix consumer repos build across the same set of platform configurations. The `z.py` script reads these from `Config` (environment variables or `.nanvix/env.json`):
 
-| Configuration | `NANVIX_PLATFORM` | `NANVIX_PROCESS_MODE` | `NANVIX_MEMORY_SIZE` |
+| Configuration | `NANVIX_MACHINE` | `NANVIX_DEPLOYMENT_MODE` | `NANVIX_MEMORY_SIZE` |
 |---|---|---|---|
 | hyperlight-multi-process-128mb | `hyperlight` | `multi-process` | `128mb` |
 | hyperlight-single-process-128mb | `hyperlight` | `single-process` | `128mb` |
@@ -433,9 +464,10 @@ All Nanvix consumer repos build across the same set of platform configurations. 
 1. `log.py` — colored output, `--json` mode, `fatal()` with hints
 2. `config.py` — load/save/get/set against `.nanvix/env.json`, env var override
 3. `github.py` — download release artifacts with retry + exponential backoff + `GH_TOKEN`
-4. `sysroot.py` — `Sysroot` and `Dependency` classes
-5. `cli.py` — argparse subcommand dispatch, `--json`, `--help`, `--version`
-6. `script.py` — `ZScript` base class with `main()`, `run()`, lifecycle hooks
+4. `buildroot.py` — `Buildroot` and `Dependency` classes (build-time deps)
+5. `sysroot.py` — `Sysroot` class (run-time artifacts)
+6. `cli.py` — argparse subcommand dispatch, `--json`, `--help`, `--version`
+7. `script.py` — `ZScript` base class with `main()`, `run()`, lifecycle hooks
 
 ### Phase 3: Testing
 

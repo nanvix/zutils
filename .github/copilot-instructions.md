@@ -2,7 +2,7 @@
 
 ## What This Is
 
-`nanvix_zutil` is a **stdlib-only Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `release`, `clean`), structured logging, config persistence, GitHub release artifact downloading, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
+`nanvix_zutil` is a **stdlib-only Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`), structured logging, config persistence, GitHub release artifact downloading, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
 
 The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils/issues/1).
 
@@ -32,14 +32,15 @@ pip install -e .
 
 ```
 script.py  ←  CLI entry point (ZScript.main)
-  ├── cli.py       ←  argparse subcommand dispatch, --json, --help, --version
-  ├── config.py    ←  .nanvix/env.json persistence, env var overrides
-  ├── sysroot.py   ←  Sysroot + Dependency download/extraction/verification
-  │     └── github.py  ←  GitHub release download with retry + GH_TOKEN
-  └── log.py       ←  colored terminal output, --json mode, fatal() with hints
+  ├── cli.py         ←  argparse subcommand dispatch, --json, --help, --version
+  ├── config.py      ←  .nanvix/env.json persistence, env var overrides
+  ├── buildroot.py   ←  Buildroot + Dependency (build-time deps: headers, static libs)
+  ├── sysroot.py     ←  Sysroot download/extraction/verification (run-time artifacts)
+  ├── github.py      ←  GitHub release download with retry + GH_TOKEN
+  └── log.py         ←  colored terminal output, --json mode, fatal() with hints
 ```
 
-`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Sysroot`, and `Dependency` — all re-exported from `__init__.py`.
+`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, and `Dependency` — all re-exported from `__init__.py`.
 
 ### Bootstrap Chain
 
@@ -78,8 +79,9 @@ nanvix/<project>/
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NANVIX_PLATFORM` | `hyperlight` | Target platform |
-| `NANVIX_PROCESS_MODE` | `multi-process` | Process mode |
+| `NANVIX_MACHINE` | `hyperlight` | Target machine |
+| `NANVIX_DEPLOYMENT_MODE` | `multi-process` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
 | `NANVIX_MEMORY_SIZE` | `128mb` | Memory size for artifact naming |
-| `NANVIX_HOME` | *(set by setup)* | Path to sysroot |
+| `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
+| `NANVIX_BUILDROOT` | *(set by setup)* | Path to build-time root |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |
