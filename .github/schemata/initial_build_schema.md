@@ -458,6 +458,7 @@ All Nanvix consumer repos build across the same set of platform configurations. 
 2. Set up `pyproject.toml` (hatchling, `requires-python >=3.12`, no deps, black + basedpyright config)
 3. Create `src/nanvix_zutil/` package structure
 4. Set up GitHub Actions CI (type check, lint, format, test)
+5. Wire `.githooks/` activation (`git config --local core.hooksPath .githooks`) into the build/setup entry point
 
 ### Phase 2: Core library
 
