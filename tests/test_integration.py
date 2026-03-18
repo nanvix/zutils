@@ -134,11 +134,12 @@ class TestIntegrationLifecycle(unittest.TestCase):
 
         # After main(), log mode was set to True. Verify it produces JSON output.
         buf = StringIO()
+        original_stdout = sys.stdout
         sys.stdout = buf
         try:
             log_mod.info("json-check")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stdout = original_stdout
             log_mod.set_json_mode(False)
 
         raw: object = json.loads(buf.getvalue().strip())

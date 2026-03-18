@@ -120,11 +120,26 @@ def download_release_asset(
                         if match_prefix:
                             if name.startswith(asset_name):
                                 resolved_name = name
-                                asset_url = str(asset["browser_download_url"])
+                                raw_url = asset.get("browser_download_url")
+                                if not isinstance(raw_url, str) or not raw_url:
+                                    log.fatal(
+                                        f"Malformed asset entry for {repo}@{tag}: missing or invalid browser_download_url",
+                                        code=4,
+                                        hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
+                                    )
+                                asset_url = raw_url
                                 break
                         else:
                             if name == asset_name:
-                                asset_url = str(asset["browser_download_url"])
+                                raw_url = asset.get("browser_download_url")
+                                if not isinstance(raw_url, str) or not raw_url:
+                                    log.fatal(
+                                        f"Malformed asset entry for {repo}@{tag}: missing or invalid browser_download_url",
+                                        code=4,
+                                        hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
+                                    )
+                                resolved_name = name
+                                asset_url = raw_url
                                 break
                 except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     log.fatal(
