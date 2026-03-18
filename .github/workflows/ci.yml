@@ -36,6 +36,10 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    container:
+      image: nanvix/toolchain:latest-minimal
+    env:
+      NANVIX_TOOLCHAIN: /opt/nanvix
     steps:
       - uses: actions/checkout@v4
 

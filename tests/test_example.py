@@ -7,10 +7,12 @@ These tests exercise the bootstrap chain by invoking the example through
 the actual ``z`` (Bash) and ``z.ps1`` (PowerShell) wrappers — the same
 way an end-user would run ``./z <command>``.
 
-The full lifecycle test (setup → build → test → clean) requires either
-the native Nanvix toolchain at ``/opt/nanvix/`` or the Docker image
-``nanvix/toolchain:latest-minimal``, plus network access to download
-the sysroot from GitHub.  It is skipped when neither is available.
+The full lifecycle test (setup → build → test → clean) requires the
+Nanvix cross-compiler (``i686-nanvix-gcc``).  Detection order:
+
+1. ``NANVIX_TOOLCHAIN`` environment variable
+2. Default path ``/opt/nanvix/``
+3. Docker image ``nanvix/toolchain:latest-minimal``
 
 CLI flag tests (--help, --json) work without any external dependencies.
 """
@@ -18,6 +20,7 @@ CLI flag tests (--help, --json) work without any external dependencies.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import unittest
@@ -33,7 +36,10 @@ _HAS_BASH = shutil.which("bash") is not None
 
 
 def _has_nanvix_toolchain() -> bool:
-    """Return True if the Nanvix cross-compiler or Docker image is available."""
+    """Return True if the Nanvix cross-compiler is available."""
+    custom = os.environ.get("NANVIX_TOOLCHAIN", "")
+    if custom and Path(custom, "bin", "i686-nanvix-gcc").exists():
+        return True
     if Path("/opt/nanvix/bin/i686-nanvix-gcc").exists():
         return True
     if shutil.which("docker"):
@@ -46,7 +52,7 @@ def _has_nanvix_toolchain() -> bool:
 
 
 _HAS_TOOLCHAIN = _has_nanvix_toolchain()
-_SKIP_LIFECYCLE = "Nanvix toolchain not available (need /opt/nanvix or Docker image)"
+_SKIP_LIFECYCLE = "Nanvix toolchain not available (set NANVIX_TOOLCHAIN, install to /opt/nanvix, or pull Docker image)"
 
 
 @unittest.skipUnless(_HAS_BASH, "bash not found in PATH")
