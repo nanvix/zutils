@@ -77,27 +77,34 @@ def download_release_asset(
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
-                raw: object = json.loads(resp.read())
-                if not isinstance(raw, dict):
+                try:
+                    raw: object = json.loads(resp.read())
+                    if not isinstance(raw, dict):
+                        log.fatal(
+                            f"Unexpected response from GitHub API for {repo}@{tag}",
+                            code=4,
+                        )
+                    release = cast(dict[str, object], raw)
+                    raw_assets: object = release.get("assets", [])
+                    if not isinstance(raw_assets, list):
+                        log.fatal(
+                            f"Unexpected assets format from GitHub API for {repo}@{tag}",
+                            code=4,
+                        )
+                    assets = cast(list[object], raw_assets)
+                    for item in assets:
+                        if not isinstance(item, dict):
+                            continue
+                        asset = cast(dict[str, object], item)
+                        if asset.get("name") == asset_name:
+                            asset_url = str(asset["browser_download_url"])
+                            break
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     log.fatal(
-                        f"Unexpected response from GitHub API for {repo}@{tag}",
+                        f"Failed to decode GitHub API response for {repo}@{tag}: {exc}",
                         code=4,
+                        hint="GitHub returned a malformed or non-JSON response; this may indicate a transient outage or HTML error page.",
                     )
-                release = cast(dict[str, object], raw)
-                raw_assets: object = release.get("assets", [])
-                if not isinstance(raw_assets, list):
-                    log.fatal(
-                        f"Unexpected assets format from GitHub API for {repo}@{tag}",
-                        code=4,
-                    )
-                assets = cast(list[object], raw_assets)
-                for item in assets:
-                    if not isinstance(item, dict):
-                        continue
-                    asset = cast(dict[str, object], item)
-                    if asset.get("name") == asset_name:
-                        asset_url = str(asset["browser_download_url"])
-                        break
             break
         except urllib.error.URLError as exc:
             if attempt == _MAX_RETRIES:
@@ -121,7 +128,7 @@ def download_release_asset(
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             dl_req = urllib.request.Request(asset_url, headers=headers)
-            with urllib.request.urlopen(dl_req) as resp, out_path.open("wb") as out_fh:
+            with urllib.request.urlopen(dl_req, timeout=_HTTP_TIMEOUT) as resp, out_path.open("wb") as out_fh:
                 while True:
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
