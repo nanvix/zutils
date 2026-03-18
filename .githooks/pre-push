@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Git hook for pre-push validation.
+#
+# Runs formatting and type checks before allowing a push,
+# ensuring CI will not fail due to lint or type errors.
+#
+
+#==================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#==================================================================================================
+# Logging Helpers
+#==================================================================================================
+
+print_error() {
+    echo "error: $1" >&2
+}
+
+print_step() {
+    echo "pre-push: $1" >&2
+}
+
+#==================================================================================================
+# Functions
+#==================================================================================================
+
+#
+# Description
+#   Check code formatting with black.
+#
+# Return Value
+#   0 on success, 1 on failure.
+#
+check_formatting() {
+    print_step "Checking formatting (black)..."
+    if ! uv run tasks.py lint; then
+        print_error "Formatting check failed. Run 'uv run tasks.py format' to fix."
+        return 1
+    fi
+}
+
+#
+# Description
+#   Run strict type checking with basedpyright.
+#
+# Return Value
+#   0 on success, 1 on failure.
+#
+check_types() {
+    print_step "Type checking (basedpyright)..."
+    if ! uv run tasks.py typecheck; then
+        print_error "Type check failed. Fix the reported errors before pushing."
+        return 1
+    fi
+}
+
+#==================================================================================================
+# Main Script
+#==================================================================================================
+
+main() {
+    print_step "Running pre-push checks..."
+
+    check_formatting
+    check_types
+
+    print_step "All checks passed."
+}
+
+main "$@"
