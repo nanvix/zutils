@@ -51,8 +51,16 @@ def _has_nanvix_toolchain() -> bool:
     return False
 
 
+def _has_kvm() -> bool:
+    """Return True if /dev/kvm is accessible."""
+    return os.access("/dev/kvm", os.R_OK | os.W_OK)
+
+
 _HAS_TOOLCHAIN = _has_nanvix_toolchain()
+_HAS_KVM = _has_kvm()
 _SKIP_LIFECYCLE = "Nanvix toolchain not available (set NANVIX_TOOLCHAIN, install to /opt/nanvix, or pull Docker image)"
+_SKIP_NO_KVM = "KVM not available (/dev/kvm not accessible)"
+_LIFECYCLE_TIMEOUT = 300  # seconds — setup + build + VM boot + test + clean
 
 
 @unittest.skipUnless(_HAS_BASH, "bash not found in PATH")
@@ -71,14 +79,15 @@ class TestHelloWorldBash(unittest.TestCase):
             cwd=str(_EXAMPLE_DIR),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_LIFECYCLE_TIMEOUT,
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle (requires toolchain + network)
+    # Lifecycle (requires toolchain + KVM + network)
     # ------------------------------------------------------------------
 
     @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
+    @unittest.skipUnless(_HAS_KVM, _SKIP_NO_KVM)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean and verify each step."""
         # setup
@@ -156,14 +165,15 @@ class TestHelloWorldPS1(unittest.TestCase):
             cwd=str(_EXAMPLE_DIR),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_LIFECYCLE_TIMEOUT,
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle (requires toolchain + network)
+    # Lifecycle (requires toolchain + KVM + network)
     # ------------------------------------------------------------------
 
     @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
+    @unittest.skipUnless(_HAS_KVM, _SKIP_NO_KVM)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean via z.ps1."""
         # setup

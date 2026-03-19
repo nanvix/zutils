@@ -36,6 +36,7 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: nanvix/toolchain:latest-minimal
       options: --device /dev/kvm
