@@ -4,86 +4,87 @@
 name: Release
 
 on:
-  create:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to release (must match pyproject.toml, e.g. 0.1.0)"
-        required: true
-        type: string
+    create:
+    workflow_dispatch:
+        inputs:
+            version:
+                description: "Version to release (must match pyproject.toml, e.g. 0.1.0)"
+                required: true
+                type: string
 
 permissions:
-  contents: write # create tags and GitHub releases
-  id-token: write # OIDC trusted publishing to PyPI
+    contents: write # create tags and GitHub releases
+    id-token: write # OIDC trusted publishing to PyPI
 
 jobs:
-  release:
-    name: Build & Publish
-    runs-on: ubuntu-latest
-    environment: release
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release-'))
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    release:
+        name: Build & Publish
+        runs-on: ubuntu-latest
+        environment: release
+        if: >-
+            github.event_name == 'workflow_dispatch' ||
+            (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release-'))
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#release-}"
-          fi
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
-            echo "::error::Invalid semver: $VERSION"
-            exit 1
-          fi
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+            - name: Resolve version
+              id: version
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    VERSION="${{ inputs.version }}"
+                  else
+                    VERSION="${GITHUB_REF_NAME#release-}"
+                  fi
+                  if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
+                    echo "::error::Invalid semver: $VERSION"
+                    exit 1
+                  fi
+                  echo "value=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
+            - name: Install uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                  python-version: "3.12"
 
-      - name: Install dependencies
-        run: uv sync
+            - name: Install dependencies
+              run: uv sync
 
-      - name: Verify version matches pyproject.toml
-        run: |
-          actual=$(python -c "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
-          if [ "$actual" != "${{ steps.version.outputs.value }}" ]; then
-            echo "Version mismatch: pyproject.toml=$actual expected=${{ steps.version.outputs.value }}"
-            exit 1
-          fi
+            - name: Verify version matches pyproject.toml
+              run: |
+                  actual=$(python -c "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
+                  if [ "$actual" != "${{ steps.version.outputs.value }}" ]; then
+                    echo "Version mismatch: pyproject.toml=$actual expected=${{ steps.version.outputs.value }}"
+                    exit 1
+                  fi
 
-      - name: Check tag does not already exist
-        run: |
-          if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.value }}" | grep -q .; then
-            echo "Tag v${{ steps.version.outputs.value }} already exists on origin. Bump the version in pyproject.toml before releasing."
-            exit 1
-          fi
+            - name: Check tag does not already exist
+              run: |
+                  if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.value }}" | grep -q .; then
+                    echo "Tag v${{ steps.version.outputs.value }} already exists on origin. Bump the version in pyproject.toml before releasing."
+                    exit 1
+                  fi
 
-      - name: Build wheel and sdist
-        run: uv build
+            - name: Build wheel and sdist
+              run: uv build
 
-      - name: Create and push release tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.version.outputs.value }}"
-          git push origin "v${{ steps.version.outputs.value }}"
+            - name: Create and push release tag
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag "v${{ steps.version.outputs.value }}"
+                  git push origin "v${{ steps.version.outputs.value }}"
 
-      - name: Create GitHub release
-        run: |
-          gh release create "v${{ steps.version.outputs.value }}" \
-            dist/* \
-            --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
-            --generate-notes
-        env:
-          GH_TOKEN: ${{ github.token }}
+            - name: Create GitHub release
+              run: |
+                  gh release create "v${{ steps.version.outputs.value }}" \
+                    dist/* \
+                    --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
+                    --generate-notes
+              env:
+                  GH_TOKEN: ${{ github.token }}
 
-      - name: Publish to PyPI
-        run: uv publish
+            # TODO: PyPI repo not yet set up
+            # - name: Publish to PyPI
+            #   run: uv publish
