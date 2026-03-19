@@ -36,16 +36,22 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    container:
+      image: nanvix/toolchain:latest-minimal
+      options: --device /dev/kvm
+    env:
+      NANVIX_TOOLCHAIN: /opt/nanvix
+      USER: runner
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install project and dev dependencies
-        run: uv sync
+        run: uv sync --python 3.12
 
       - name: Run tests
         run: uv run pytest tests/ -v

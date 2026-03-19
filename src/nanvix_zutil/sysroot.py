@@ -26,7 +26,7 @@ _DEFAULT_SYSROOT_DIR = Path(".nanvix") / "sysroot"
 # ---------------------------------------------------------------------------
 
 _SYSROOT_REPO = "nanvix/nanvix"
-_SYSROOT_ASSET_PATTERN = "nanvix-{machine}-{mode}-{mem}.tar.bz2"
+_SYSROOT_ASSET_PREFIX = "nanvix-{machine}-{mode}-release-{mem}"
 
 
 # ---------------------------------------------------------------------------
@@ -83,13 +83,18 @@ class Sysroot:
         sysroot_dir = dest if dest is not None else _DEFAULT_SYSROOT_DIR
 
         if sysroot_dir.exists():
-            log.info(f"Sysroot already present at {sysroot_dir}")
-            return Sysroot(sysroot_dir.resolve())
+            if sysroot_dir.is_dir():
+                log.info(f"Sysroot already present at {sysroot_dir}")
+                return Sysroot(sysroot_dir.resolve())
+            log.fatal(
+                f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
+                code=3,
+                hint="Remove or rename this path and re-run `./z setup` to download the Nanvix sysroot.",
+            )
 
-        mode_short = deployment_mode.replace("-", "")
-        asset_name = _SYSROOT_ASSET_PATTERN.format(
+        asset_prefix = _SYSROOT_ASSET_PREFIX.format(
             machine=machine,
-            mode=mode_short,
+            mode=deployment_mode,
             mem=memory_size,
         )
 
@@ -97,12 +102,13 @@ class Sysroot:
         asset_path = github.download_release_asset(
             repo=_SYSROOT_REPO,
             tag=tag,
-            asset_name=asset_name,
+            asset_name=asset_prefix,
             dest=cache_dir,
             gh_token=gh_token,
+            match_prefix=True,
         )
 
-        log.info(f"Extracting sysroot from {asset_name}…")
+        log.info(f"Extracting sysroot from {asset_path.name}…")
         sysroot_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(asset_path, "r:bz2") as tf:
             tf.extractall(path=sysroot_dir, filter="data")

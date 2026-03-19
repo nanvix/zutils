@@ -29,7 +29,7 @@ set -euo pipefail
 MAX_COMMIT_MSG_TITLE_LENGTH=50
 
 # Valid module names for nanvix_zutil.
-VALID_MODULES="zutils ci doc git tests"
+VALID_MODULES="zutils ci doc git tests build examples"
 
 #==================================================================================================
 # Logging Helpers

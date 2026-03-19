@@ -4,6 +4,7 @@
 """Tests for nanvix_zutil.script (ZScript)."""
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -81,7 +82,7 @@ class TestZScriptRun(unittest.TestCase):
 
     def test_run_success(self) -> None:
         script = ZScript(Path(self._tmpdir.name))
-        result = script.run("python3", "-c", "print('ok')")
+        result = script.run(sys.executable, "-c", "print('ok')")
         self.assertEqual(result.returncode, 0)
 
     def test_run_failure_exits(self) -> None:
@@ -89,7 +90,7 @@ class TestZScriptRun(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.run("python3", "-c", "raise SystemExit(1)")
+                script.run(sys.executable, "-c", "raise SystemExit(1)")
             self.assertEqual(ctx.exception.code, 5)
         finally:
             log_mod.set_json_mode(False)
