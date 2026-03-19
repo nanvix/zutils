@@ -14,6 +14,7 @@ Commands:
   test       Run the test suite with pytest
   ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean      Remove Python bytecode caches and build artifacts
+  release    Build distribution artifacts (wheel + sdist) for release
 """
 
 import shutil
@@ -126,6 +127,29 @@ def ci() -> int:
     print("ci: All jobs passed.")
     return 0
 
+def release() -> int:
+    """Build distribution artifacts (wheel and sdist) for release.
+
+    Produces a wheel (.whl) and source distribution (.tar.gz) inside
+    dist/.  To publish, trigger the 'Release' GitHub Actions workflow
+    (workflow_dispatch) which builds, tags, creates a GitHub release,
+    and publishes to PyPI via ``uv publish``.
+    """
+    uv = shutil.which("uv")
+    if uv is None:
+        print("error: 'uv' not found on PATH. Install it from https://astral.sh/uv")
+        return 1
+    code = _run(uv, "build")
+    if code != 0:
+        return code
+    dist = Path("dist")
+    artifacts = sorted(dist.glob("*"))
+    if artifacts:
+        print("Built artifacts:")
+        for f in artifacts:
+            print(f"  {f}")
+    return 0
+
 
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
@@ -135,6 +159,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "test": (test, "Run the test suite with pytest"),
     "ci": (ci, "Run CI locally using gh act (requires Docker + nanvix toolchain image)"),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
+    "release": (release, "Build distribution artifacts (wheel and sdist)"),
 }
 
 
