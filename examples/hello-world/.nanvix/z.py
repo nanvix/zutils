@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -26,17 +27,36 @@ from pathlib import Path
 
 _NANVIX_DIR = Path(__file__).resolve().parent
 _VENV = _NANVIX_DIR / "venv"
-_VENV_PYTHON = _VENV / ("Scripts" if os.name == "nt" else "bin") / "python"
+_VENV_SCRIPTS = Path(
+    sysconfig.get_path("scripts", vars={"base": str(_VENV), "platbase": str(_VENV)})
+)
+_VENV_PYTHON = _VENV_SCRIPTS / ("python.exe" if os.name == "nt" else "python")
 _ZUTILS_SRC = _NANVIX_DIR.parents[2]  # examples/hello-world/../../ → zutils/
 
-if not sys.prefix.startswith(str(_VENV)):
-    if not _VENV.exists():
-        print("bootstrap: creating venv …", flush=True)
-        subprocess.check_call([sys.executable, "-m", "venv", str(_VENV)])
-        print("bootstrap: installing nanvix-zutil (editable) …", flush=True)
-        subprocess.check_call(
-            [str(_VENV_PYTHON), "-m", "pip", "install", "-q", "-e", str(_ZUTILS_SRC)]
-        )
+
+def _inside_venv() -> bool:
+    """Return True if already running inside the project venv."""
+    if sys.prefix == sys.base_prefix:
+        return False
+    try:
+        return Path(sys.executable).resolve().is_relative_to(_VENV.resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def _create_venv() -> None:
+    """Create the venv and install nanvix-zutil from local source."""
+    print("bootstrap: creating venv …", flush=True)
+    subprocess.check_call([sys.executable, "-m", "venv", str(_VENV)])
+    print("bootstrap: installing nanvix-zutil (editable) …", flush=True)
+    subprocess.check_call(
+        [str(_VENV_PYTHON), "-m", "pip", "install", "-q", "-e", str(_ZUTILS_SRC)]
+    )
+
+
+if not _inside_venv():
+    if not _VENV_PYTHON.exists():
+        _create_venv()
     rc = subprocess.call(
         [str(_VENV_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]]
     )
@@ -80,7 +100,8 @@ class HelloWorld(ZScript):
     def setup(self) -> None:
         """Download the Nanvix sysroot."""
         tag = self.config.get("NANVIX_TAG", self.NANVIX_TAG)
-        assert tag is not None
+        if not tag:
+            log.fatal("NANVIX_TAG is not set.", code=3)
 
         sysroot = Sysroot.download(
             machine=self.config.machine,
