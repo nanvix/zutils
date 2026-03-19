@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import sysconfig
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -27,21 +26,13 @@ from pathlib import Path
 
 _NANVIX_DIR = Path(__file__).resolve().parent
 _VENV = _NANVIX_DIR / "venv"
-_VENV_SCRIPTS = Path(
-    sysconfig.get_path("scripts", vars={"base": str(_VENV), "platbase": str(_VENV)})
-)
-_VENV_PYTHON = _VENV_SCRIPTS / ("python.exe" if os.name == "nt" else "python")
+_VENV_PYTHON = _VENV / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
 _ZUTILS_SRC = _NANVIX_DIR.parents[2]  # examples/hello-world/../../ → zutils/
 
 
 def _inside_venv() -> bool:
     """Return True if already running inside the project venv."""
-    if sys.prefix == sys.base_prefix:
-        return False
-    try:
-        return Path(sys.executable).resolve().is_relative_to(_VENV.resolve())
-    except (OSError, ValueError):
-        return False
+    return sys.prefix != sys.base_prefix
 
 
 def _create_venv() -> None:
