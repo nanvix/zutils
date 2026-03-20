@@ -25,6 +25,7 @@ from pathlib import Path
 from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import Config
+from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_INVALID_ARGS
 
 
 class ZScript:
@@ -145,7 +146,7 @@ class ZScript:
         except subprocess.CalledProcessError as exc:
             log.fatal(
                 f"Command failed with exit code {exc.returncode}: {' '.join(args)}",
-                code=5,
+                code=EXIT_BUILD_FAILURE,
             )
         return result
 
@@ -197,4 +198,4 @@ class ZScript:
             handler()
             log.success(f"{subcommand.capitalize()} complete")
         else:
-            log.fatal(f"Unknown subcommand: {subcommand}", code=2)
+            log.fatal(f"Unknown subcommand: {subcommand}", code=EXIT_INVALID_ARGS)

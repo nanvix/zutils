@@ -21,6 +21,15 @@ from nanvix_zutil.config import (
     CFG_TOOLCHAIN,
     Config,
 )
+from nanvix_zutil.exitcodes import (
+    EXIT_BUILD_FAILURE,
+    EXIT_GENERAL_ERROR,
+    EXIT_INVALID_ARGS,
+    EXIT_MISSING_DEP,
+    EXIT_NETWORK_ERROR,
+    EXIT_SUCCESS,
+    EXIT_TEST_FAILURE,
+)
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
 
@@ -32,6 +41,13 @@ __all__ = [
     "CFG_TOOLCHAIN",
     "Config",
     "Dependency",
+    "EXIT_BUILD_FAILURE",
+    "EXIT_GENERAL_ERROR",
+    "EXIT_INVALID_ARGS",
+    "EXIT_MISSING_DEP",
+    "EXIT_NETWORK_ERROR",
+    "EXIT_SUCCESS",
+    "EXIT_TEST_FAILURE",
     "Sysroot",
     "ZScript",
 ]

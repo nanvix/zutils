@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import log
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_NETWORK_ERROR
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -113,14 +114,14 @@ def download_release_asset(
                     if not isinstance(raw, dict):
                         log.fatal(
                             f"Unexpected response from GitHub API for {repo}@{tag}",
-                            code=4,
+                            code=EXIT_NETWORK_ERROR,
                         )
                     release = cast(dict[str, object], raw)
                     raw_assets: object = release.get("assets", [])
                     if not isinstance(raw_assets, list):
                         log.fatal(
                             f"Unexpected assets format from GitHub API for {repo}@{tag}",
-                            code=4,
+                            code=EXIT_NETWORK_ERROR,
                         )
                     assets = cast(list[object], raw_assets)
                     for item in assets:
@@ -137,7 +138,7 @@ def download_release_asset(
                                 if not isinstance(raw_url, str) or not raw_url:
                                     log.fatal(
                                         f"Malformed asset entry for {repo}@{tag}: missing or invalid browser_download_url",
-                                        code=4,
+                                        code=EXIT_NETWORK_ERROR,
                                         hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
                                     )
                                 asset_url = raw_url
@@ -148,7 +149,7 @@ def download_release_asset(
                                 if not isinstance(raw_url, str) or not raw_url:
                                     log.fatal(
                                         f"Malformed asset entry for {repo}@{tag}: missing or invalid browser_download_url",
-                                        code=4,
+                                        code=EXIT_NETWORK_ERROR,
                                         hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
                                     )
                                 resolved_name = name
@@ -157,7 +158,7 @@ def download_release_asset(
                 except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     log.fatal(
                         f"Failed to decode GitHub API response for {repo}@{tag}: {exc}",
-                        code=4,
+                        code=EXIT_NETWORK_ERROR,
                         hint="GitHub returned a malformed or non-JSON response; this may indicate a transient outage or HTML error page.",
                     )
             break
@@ -165,7 +166,7 @@ def download_release_asset(
             if attempt == _MAX_RETRIES:
                 log.fatal(
                     f"Failed to fetch release metadata for {repo}@{tag}: {exc}",
-                    code=4,
+                    code=EXIT_NETWORK_ERROR,
                     hint="Check your network connection or set GH_TOKEN.",
                 )
             wait = _BACKOFF_BASE**attempt
@@ -175,7 +176,7 @@ def download_release_asset(
     if asset_url is None:
         log.fatal(
             f"Asset '{asset_name}' not found in release {repo}@{tag}",
-            code=3,
+            code=EXIT_MISSING_DEP,
             hint="Check the release tag and asset name.",
         )
 
@@ -199,7 +200,7 @@ def download_release_asset(
             if attempt == _MAX_RETRIES:
                 log.fatal(
                     f"Failed to download {resolved_name}: {exc}",
-                    code=4,
+                    code=EXIT_NETWORK_ERROR,
                     hint="Check your network connection or set GH_TOKEN.",
                 )
             wait = _BACKOFF_BASE**attempt
