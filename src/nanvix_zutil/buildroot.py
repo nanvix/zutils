@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nanvix_zutil import github, log
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 # ---------------------------------------------------------------------------
 # Default locations
@@ -179,7 +180,7 @@ class Buildroot:
             if not lib_path.exists():
                 log.fatal(
                     f"Required library '{lib}' not found in buildroot at {self.path}",
-                    code=3,
+                    code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download build-time dependencies.",
                 )
         log.success("Buildroot verification passed")

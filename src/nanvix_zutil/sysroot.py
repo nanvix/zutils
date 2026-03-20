@@ -14,6 +14,7 @@ import tarfile
 from pathlib import Path
 
 from nanvix_zutil import github, log
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 # ---------------------------------------------------------------------------
 # Default location
@@ -88,7 +89,7 @@ class Sysroot:
                 return Sysroot(sysroot_dir.resolve())
             log.fatal(
                 f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
-                code=3,
+                code=EXIT_MISSING_DEP,
                 hint="Remove or rename this path and re-run `./z setup` to download the Nanvix sysroot.",
             )
 
@@ -135,7 +136,7 @@ class Sysroot:
             if not full_path.exists():
                 log.fatal(
                     f"Required sysroot file '{rel_path}' not found at {self.path}",
-                    code=3,
+                    code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download the Nanvix sysroot.",
                 )
         log.success("Sysroot verification passed")

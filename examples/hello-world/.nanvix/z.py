@@ -11,7 +11,7 @@ Demonstrates the full lifecycle with a real Nanvix build:
     ./z clean      # remove build artifacts
 """
 
-from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TAG, CFG_TOOLCHAIN, Sysroot, ZScript, log
+from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TAG, CFG_TOOLCHAIN, EXIT_MISSING_DEP, Sysroot, ZScript, log
 
 
 class HelloWorld(ZScript):
@@ -43,7 +43,7 @@ class HelloWorld(ZScript):
         """Download the Nanvix sysroot."""
         tag = self.config.get(CFG_TAG, self.NANVIX_TAG)
         if not tag:
-            log.fatal(f"{CFG_TAG} is not set.", code=3)
+            log.fatal(f"{CFG_TAG} is not set.", code=EXIT_MISSING_DEP)
 
         sysroot = Sysroot.download(
             machine=self.config.machine,
