@@ -190,7 +190,7 @@ class ZScript:
         if "--" in argv:
             sep = argv.index("--")
             framework_argv = argv[:sep]
-            targets = argv[sep + 1:]
+            targets = argv[sep + 1 :]
         else:
             framework_argv = argv
             targets = []
