@@ -13,14 +13,6 @@ Demonstrates the full lifecycle with a real Nanvix build:
 
 from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TAG, CFG_TOOLCHAIN, Sysroot, ZScript, log
 
-# Makefile variable names (build-system-specific, not exported by zutils).
-_MAKE_VAR_CONFIG = "CONFIG_NANVIX"
-_MAKE_VAR_HOME = "NANVIX_HOME"
-_MAKE_VAR_TOOLCHAIN = "NANVIX_TOOLCHAIN"
-_MAKE_VAR_PLATFORM = "PLATFORM"
-_MAKE_VAR_PROCESS_MODE = "PROCESS_MODE"
-_MAKE_VAR_MEMORY_SIZE = "MEMORY_SIZE"
-
 
 class HelloWorld(ZScript):
     """Build script for the hello-world C example."""
@@ -36,16 +28,13 @@ class HelloWorld(ZScript):
             "make",
             "-f",
             "Makefile.nanvix",
-            f"{_MAKE_VAR_CONFIG}=y",
-            f"{_MAKE_VAR_HOME}={sysroot}",
-            f"{_MAKE_VAR_TOOLCHAIN}={toolchain}",
+            "CONFIG_NANVIX=y",
+            f"NANVIX_HOME={sysroot}",
+            f"NANVIX_TOOLCHAIN={toolchain}",
+            f"PLATFORM={self.config.machine}",
+            f"PROCESS_MODE={self.config.deployment_mode}",
+            f"MEMORY_SIZE={self.config.memory_size}",
         ]
-
-        args.extend([
-            f"{_MAKE_VAR_PLATFORM}={self.config.machine}",
-            f"{_MAKE_VAR_PROCESS_MODE}={self.config.deployment_mode}",
-            f"{_MAKE_VAR_MEMORY_SIZE}={self.config.memory_size}",
-        ])
 
         args.extend(targets)
         return args
