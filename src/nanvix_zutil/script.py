@@ -44,7 +44,15 @@ class ZScript:
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
     """
 
-    SYSROOT_REQUIRED_FILES: tuple[str, ...] = ("lib/libposix.a", "lib/user.ld")
+    SYSROOT_REQUIRED_FILES: tuple[str, ...] = (
+        "lib/libposix.a",
+        "lib/user.ld",
+        "bin/nanvixd.elf",
+        "bin/kernel.elf",
+        "bin/linuxd.elf",
+        "bin/uservm.elf",
+        "bin/mkramfs.elf",
+    )
 
     def __init__(self, repo_root: Path) -> None:
         """Initialise ZScript for *repo_root*.
