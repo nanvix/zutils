@@ -35,11 +35,16 @@ class ZScript:
     hooks they need.
 
     Attributes:
+        SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot for
+            verification to pass.  Override in subclasses when a different
+            set of files is required.
         config: Persistent build configuration loaded from
             ``.nanvix/env.json`` and environment variables.
         repo_root: Absolute path to the consumer repository root.
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
     """
+
+    SYSROOT_REQUIRED_FILES: tuple[str, ...] = ("lib/libposix.a", "lib/user.ld")
 
     def __init__(self, repo_root: Path) -> None:
         """Initialise ZScript for *repo_root*.
@@ -182,5 +187,6 @@ class ZScript:
         handler = dispatch.get(subcommand)
         if callable(handler):
             handler()
+            log.success(f"{subcommand.capitalize()} complete")
         else:
             log.fatal(f"Unknown subcommand: {subcommand}", code=2)

@@ -46,6 +46,15 @@ find_python() {
     return 1
 }
 
+# Run the discovered Python interpreter (handles 'py -3' on Windows).
+run_python() {
+    if [[ "${PYTHON}" == "py" ]]; then
+        "${PYTHON}" -3 "$@"
+    else
+        "${PYTHON}" "$@"
+    fi
+}
+
 PYTHON=$(find_python) || {
     echo "error: Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ not found in PATH." >&2
     echo "hint:  Install Python 3.12+ and ensure it is on your PATH." >&2
@@ -55,6 +64,11 @@ PYTHON=$(find_python) || {
 # Resolve the directory containing this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 Z_SCRIPT="${SCRIPT_DIR}/.nanvix/z.py"
+VENV_DIR="${SCRIPT_DIR}/.nanvix/venv"
+VENV_PYTHON="${VENV_DIR}/bin/python"
+
+# This example lives inside the zutils source tree.
+ZUTILS_SRC="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 if [[ ! -f "${Z_SCRIPT}" ]]; then
     echo "error: ${Z_SCRIPT} not found." >&2
@@ -62,8 +76,12 @@ if [[ ! -f "${Z_SCRIPT}" ]]; then
     exit 3
 fi
 
-if [[ "${PYTHON}" == "py" ]]; then
-    exec "${PYTHON}" -3 "${Z_SCRIPT}" "$@"
-else
-    exec "${PYTHON}" "${Z_SCRIPT}" "$@"
+# Bootstrap: create venv and install nanvix-zutil from local source.
+if [[ ! -f "${VENV_PYTHON}" ]]; then
+    echo "bootstrap: creating venv …" >&2
+    run_python -m venv "${VENV_DIR}"
+    echo "bootstrap: installing nanvix-zutil (editable) …" >&2
+    "${VENV_PYTHON}" -m pip install -q -e "${ZUTILS_SRC}"
 fi
+
+exec "${VENV_PYTHON}" "${Z_SCRIPT}" "$@"

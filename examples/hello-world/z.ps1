@@ -47,6 +47,16 @@ function Find-Python {
     return $null
 }
 
+# Run the discovered Python interpreter (handles 'py -3' on Windows).
+function Invoke-Python {
+    param([Parameter(ValueFromRemainingArguments)] [string[]]$Args_)
+    if ($python -eq "py") {
+        & $python -3 @Args_
+    } else {
+        & $python @Args_
+    }
+}
+
 $python = Find-Python
 if ($null -eq $python) {
     Write-Host "error: Python ${MIN_MAJOR}.${MIN_MINOR}+ not found in PATH." -ForegroundColor Red
@@ -56,6 +66,16 @@ if ($null -eq $python) {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $zScript = Join-Path $scriptDir ".nanvix" "z.py"
+$venvDir = Join-Path $scriptDir ".nanvix" "venv"
+$isWin = ($PSVersionTable.PSEdition -eq "Desktop") -or $IsWindows
+if ($isWin) {
+    $venvPython = Join-Path $venvDir "Scripts" "python.exe"
+} else {
+    $venvPython = Join-Path $venvDir "bin" "python"
+}
+
+# This example lives inside the zutils source tree.
+$zutilsSrc = Split-Path -Parent (Split-Path -Parent $scriptDir)
 
 if (-not (Test-Path $zScript)) {
     Write-Host "error: $zScript not found." -ForegroundColor Red
@@ -63,9 +83,13 @@ if (-not (Test-Path $zScript)) {
     exit 3
 }
 
-if ($python -eq "py") {
-    & $python -3 $zScript @args
-} else {
-    & $python $zScript @args
+# Bootstrap: create venv and install nanvix-zutil from local source.
+if (-not (Test-Path $venvPython)) {
+    Write-Host "bootstrap: creating venv …" -ForegroundColor Cyan
+    Invoke-Python -m venv $venvDir
+    Write-Host "bootstrap: installing nanvix-zutil (editable) …" -ForegroundColor Cyan
+    & $venvPython -m pip install -q -e $zutilsSrc
 }
+
+& $venvPython $zScript @args
 exit $LASTEXITCODE
