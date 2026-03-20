@@ -13,7 +13,14 @@ MIN_PYTHON_MINOR=12
 
 # Locate a suitable Python interpreter.
 find_python() {
-    local candidates=("python3" "python" "py")
+    # Prefer version-suffixed interpreters (e.g., python3.12, python3.13) first,
+    # then fall back to generic names.
+    local candidates=()
+    local minor
+    for ((minor=20; minor>=MIN_PYTHON_MINOR; minor--)); do
+        candidates+=("python3.${minor}")
+    done
+    candidates+=("python3" "python" "py")
     for candidate in "${candidates[@]}"; do
         if command -v "${candidate}" &>/dev/null; then
             local version
@@ -27,8 +34,8 @@ find_python() {
                     2>/dev/null) || continue
             fi
             local major minor
-            major=$(echo "${version}" | cut -d. -f1)
-            minor=$(echo "${version}" | cut -d. -f2)
+            major=$(echo "${version}" | tr -d '\r' | cut -d. -f1)
+            minor=$(echo "${version}" | tr -d '\r' | cut -d. -f2)
             if [[ "${major}" -gt "${MIN_PYTHON_MAJOR}" ]] || \
                [[ "${major}" -eq "${MIN_PYTHON_MAJOR}" && "${minor}" -ge "${MIN_PYTHON_MINOR}" ]]; then
                 echo "${candidate}"
@@ -39,15 +46,29 @@ find_python() {
     return 1
 }
 
+# Run the discovered Python interpreter (handles 'py -3' on Windows).
+run_python() {
+    if [[ "${PYTHON}" == "py" ]]; then
+        "${PYTHON}" -3 "$@"
+    else
+        "${PYTHON}" "$@"
+    fi
+}
+
 PYTHON=$(find_python) || {
     echo "error: Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ not found in PATH." >&2
     echo "hint:  Install Python 3.12+ and ensure it is on your PATH." >&2
     exit 3
 }
 
-# Resolve the directory containing this script, following symlinks.
+# Resolve the directory containing this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 Z_SCRIPT="${SCRIPT_DIR}/.nanvix/z.py"
+VENV_DIR="${SCRIPT_DIR}/.nanvix/venv"
+VENV_PYTHON="${VENV_DIR}/bin/python"
+
+# This example lives inside the zutils source tree.
+ZUTILS_SRC="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 if [[ ! -f "${Z_SCRIPT}" ]]; then
     echo "error: ${Z_SCRIPT} not found." >&2
@@ -55,8 +76,12 @@ if [[ ! -f "${Z_SCRIPT}" ]]; then
     exit 3
 fi
 
-if [[ "${PYTHON}" == "py" ]]; then
-    exec "${PYTHON}" -3 "${Z_SCRIPT}" "$@"
-else
-    exec "${PYTHON}" "${Z_SCRIPT}" "$@"
+# Bootstrap: create venv and install nanvix-zutil from local source.
+if [[ ! -f "${VENV_PYTHON}" ]]; then
+    echo "bootstrap: creating venv …" >&2
+    run_python -m venv "${VENV_DIR}"
+    echo "bootstrap: installing nanvix-zutil (editable) …" >&2
+    "${VENV_PYTHON}" -m pip install -q -e "${ZUTILS_SRC}"
 fi
+
+exec "${VENV_PYTHON}" "${Z_SCRIPT}" "$@"

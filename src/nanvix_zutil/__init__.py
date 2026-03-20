@@ -14,12 +14,22 @@ Public re-exports:
 """
 
 from nanvix_zutil.buildroot import Buildroot, Dependency
-from nanvix_zutil.config import Config
+from nanvix_zutil.config import (
+    CFG_GH_TOKEN,
+    CFG_SYSROOT,
+    CFG_TAG,
+    CFG_TOOLCHAIN,
+    Config,
+)
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
 
 __all__ = [
     "Buildroot",
+    "CFG_GH_TOKEN",
+    "CFG_SYSROOT",
+    "CFG_TAG",
+    "CFG_TOOLCHAIN",
     "Config",
     "Dependency",
     "Sysroot",

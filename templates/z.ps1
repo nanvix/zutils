@@ -15,8 +15,19 @@ $ErrorActionPreference = "Stop"
 $MIN_MAJOR = 3
 $MIN_MINOR = 12
 
+# nanvix-zutil release to install in the project venv.
+$ZUTIL_TAG = "v0.1.0-rc2"
+$ZUTIL_RELEASE_BASE = "https://github.com/nanvix/zutils/releases/download"
+$ZUTIL_HASH = "sha256:728a6ac6c9265ce58727569156c21877f94dbf6b449849a28585ccc6cde1b91f"
+
 function Find-Python {
-    $candidates = @("py", "python3", "python")
+    # Prefer version-suffixed interpreters (e.g., python3.12, python3.13) first,
+    # then fall back to generic names.
+    $candidates = @()
+    for ($minor = 20; $minor -ge $MIN_MINOR; $minor--) {
+        $candidates += "python3.$minor"
+    }
+    $candidates += @("py", "python3", "python")
     foreach ($candidate in $candidates) {
         $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
         if ($null -eq $cmd) { continue }
@@ -41,6 +52,16 @@ function Find-Python {
     return $null
 }
 
+# Run the discovered Python interpreter (handles 'py -3' on Windows).
+function Invoke-Python {
+    param([Parameter(ValueFromRemainingArguments)] [string[]]$Args_)
+    if ($python -eq "py") {
+        & $python -3 @Args_
+    } else {
+        & $python @Args_
+    }
+}
+
 $python = Find-Python
 if ($null -eq $python) {
     Write-Host "error: Python ${MIN_MAJOR}.${MIN_MINOR}+ not found in PATH." -ForegroundColor Red
@@ -49,7 +70,14 @@ if ($null -eq $python) {
 }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$zScript = Join-Path $scriptDir ".nanvix\z.py"
+$zScript = Join-Path $scriptDir ".nanvix" "z.py"
+$venvDir = Join-Path $scriptDir ".nanvix" "venv"
+$isWin = ($PSVersionTable.PSEdition -eq "Desktop") -or $IsWindows
+if ($isWin) {
+    $venvPython = Join-Path $venvDir "Scripts" "python.exe"
+} else {
+    $venvPython = Join-Path $venvDir "bin" "python"
+}
 
 if (-not (Test-Path $zScript)) {
     Write-Host "error: $zScript not found." -ForegroundColor Red
@@ -57,9 +85,29 @@ if (-not (Test-Path $zScript)) {
     exit 3
 }
 
-if ($python -eq "py") {
-    & $python -3 $zScript @args
-} else {
-    & $python $zScript @args
+# Bootstrap: create venv and install nanvix-zutil if needed.
+if (-not (Test-Path $venvPython)) {
+    Write-Host "bootstrap: creating venv …" -ForegroundColor Cyan
+    Invoke-Python -m venv $venvDir
+
+    $zutilPath = $env:NANVIX_ZUTIL_PATH
+    if ($zutilPath) {
+        Write-Host "bootstrap: installing nanvix-zutil (editable) …" -ForegroundColor Cyan
+        & $venvPython -m pip install -q -e $zutilPath
+    } else {
+        $version = $ZUTIL_TAG.TrimStart("v").Replace("-", "")
+        $whlName = "nanvix_zutil-${version}-py3-none-any.whl"
+        $whlUrl = "${ZUTIL_RELEASE_BASE}/${ZUTIL_TAG}/${whlName}"
+        Write-Host "bootstrap: installing nanvix-zutil ($ZUTIL_TAG) …" -ForegroundColor Cyan
+        $tmpReq = [System.IO.Path]::GetTempFileName()
+        Set-Content -Path $tmpReq -Value "nanvix_zutil @ $whlUrl --hash=$ZUTIL_HASH"
+        try {
+            & $venvPython -m pip install -q --require-hashes -r $tmpReq
+        } finally {
+            Remove-Item -Path $tmpReq -ErrorAction SilentlyContinue
+        }
+    }
 }
+
+& $venvPython $zScript @args
 exit $LASTEXITCODE

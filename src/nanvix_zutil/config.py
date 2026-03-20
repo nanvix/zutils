@@ -28,6 +28,22 @@ _DEFAULTS: dict[str, str] = {
     "NANVIX_MEMORY_SIZE": "128mb",
 }
 
+# ---------------------------------------------------------------------------
+# Standard config key names
+# ---------------------------------------------------------------------------
+
+CFG_SYSROOT: str = "NANVIX_SYSROOT"
+"""Path to the downloaded Nanvix sysroot directory."""
+
+CFG_TOOLCHAIN: str = "NANVIX_TOOLCHAIN"
+"""Path to the Nanvix cross-compilation toolchain."""
+
+CFG_TAG: str = "NANVIX_TAG"
+"""Nanvix sysroot release tag to download."""
+
+CFG_GH_TOKEN: str = "GH_TOKEN"
+"""GitHub token for authenticated API requests (rate limits)."""
+
 
 # ---------------------------------------------------------------------------
 # Public class
