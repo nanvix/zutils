@@ -16,7 +16,13 @@ $MIN_MAJOR = 3
 $MIN_MINOR = 12
 
 function Find-Python {
-    $candidates = @("py", "python3", "python")
+    # Prefer version-suffixed interpreters (e.g., python3.12, python3.13) first,
+    # then fall back to generic names.
+    $candidates = @()
+    for ($minor = 20; $minor -ge $MIN_MINOR; $minor--) {
+        $candidates += "python3.$minor"
+    }
+    $candidates += @("py", "python3", "python")
     foreach ($candidate in $candidates) {
         $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
         if ($null -eq $cmd) { continue }
@@ -43,16 +49,16 @@ function Find-Python {
 
 $python = Find-Python
 if ($null -eq $python) {
-    Write-Error "error: Python ${MIN_MAJOR}.${MIN_MINOR}+ not found in PATH."
+    Write-Host "error: Python ${MIN_MAJOR}.${MIN_MINOR}+ not found in PATH." -ForegroundColor Red
     Write-Host "hint:  Install Python 3.12+ and ensure it is on your PATH." -ForegroundColor Yellow
     exit 3
 }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$zScript = Join-Path $scriptDir ".nanvix\z.py"
+$zScript = Join-Path $scriptDir ".nanvix" "z.py"
 
 if (-not (Test-Path $zScript)) {
-    Write-Error "error: $zScript not found."
+    Write-Host "error: $zScript not found." -ForegroundColor Red
     Write-Host "hint:  Create .nanvix/z.py with a ZScript subclass." -ForegroundColor Yellow
     exit 3
 }
