@@ -45,6 +45,9 @@ class ZScript:
             ``.nanvix/env.json`` and environment variables.
         repo_root: Absolute path to the consumer repository root.
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
+        targets: Arguments passed after ``--`` on the command line.
+            Lifecycle hooks can use these to customise behavior
+            (e.g. ``./z test -- smoke integration``).
     """
 
     SYSROOT_REQUIRED_FILES: tuple[str, ...] = (
@@ -82,6 +85,7 @@ class ZScript:
         self.repo_root = repo_root.resolve()
         self.nanvix_dir = self.repo_root / ".nanvix"
         self.config = Config(self.nanvix_dir)
+        self.targets: list[str] = []
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass
@@ -180,7 +184,18 @@ class ZScript:
         location of the calling script (``sys.argv[0]``).
         """
         parser = build_parser()
-        args = parser.parse_args()
+
+        # Split sys.argv on '--' to separate framework args from targets.
+        argv = sys.argv[1:]
+        if "--" in argv:
+            sep = argv.index("--")
+            framework_argv = argv[:sep]
+            targets = argv[sep + 1:]
+        else:
+            framework_argv = argv
+            targets = []
+
+        args = parser.parse_args(framework_argv)
 
         if args.json:
             log.set_json_mode(True)
@@ -194,6 +209,7 @@ class ZScript:
             repo_root = script_path.parent
 
         instance = cls(repo_root)
+        instance.targets = targets
 
         subcommand: str | None = args.subcommand
 

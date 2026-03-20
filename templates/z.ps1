@@ -16,9 +16,9 @@ $MIN_MAJOR = 3
 $MIN_MINOR = 12
 
 # nanvix-zutil release to install in the project venv.
-$ZUTIL_TAG = "v0.2.1"
+$ZUTIL_TAG = "v0.2.2"
 $ZUTIL_RELEASE_BASE = "https://github.com/nanvix/zutils/releases/download"
-$ZUTIL_HASH = "sha256:d948484f8e8a170dc37e1aff6a025f9c9684f19fd2f4f2f5a52afb9ff431c4ab"
+$ZUTIL_HASH = "sha256:0161a19853cc91d4f42f7bac3328c58e6abe2e530a6b05ea1799f91074ac0579"
 
 function Find-Python {
     # Prefer version-suffixed interpreters (e.g., python3.12, python3.13) first,

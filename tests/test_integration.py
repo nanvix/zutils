@@ -186,6 +186,21 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self.assertEqual(instance.config.deployment_mode, "multi-process")
         self.assertEqual(instance.config.memory_size, "128mb")
 
+    def test_targets_empty_by_default(self) -> None:
+        """Without --, targets should be an empty list."""
+        instance = self._run_main("build")
+        self.assertEqual(instance.targets, [])
+
+    def test_targets_passed_after_double_dash(self) -> None:
+        """Arguments after -- are available as instance.targets."""
+        instance = self._run_main("test", extra_argv=["--", "smoke", "integration"])
+        self.assertEqual(instance.targets, ["smoke", "integration"])
+
+    def test_targets_single_value(self) -> None:
+        """A single target after -- is a one-element list."""
+        instance = self._run_main("build", extra_argv=["--", "all"])
+        self.assertEqual(instance.targets, ["all"])
+
 
 class TestIntegrationConfigPersistence(unittest.TestCase):
     """Config.save() / load() round-trip via ZScript."""
