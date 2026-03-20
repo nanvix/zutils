@@ -36,9 +36,11 @@ class ZScript:
     hooks they need.
 
     Attributes:
-        SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot for
-            verification to pass.  Override in subclasses when a different
-            set of files is required.
+        SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot
+            regardless of deployment mode.  Override in subclasses to add
+            library-specific files.
+        SYSROOT_MULTI_PROCESS_FILES: Additional files required only for
+            multi-process deployments (``linuxd.elf``, ``uservm.elf``).
         config: Persistent build configuration loaded from
             ``.nanvix/env.json`` and environment variables.
         repo_root: Absolute path to the consumer repository root.
@@ -50,10 +52,25 @@ class ZScript:
         "lib/user.ld",
         "bin/nanvixd.elf",
         "bin/kernel.elf",
-        "bin/linuxd.elf",
-        "bin/uservm.elf",
         "bin/mkramfs.elf",
     )
+
+    SYSROOT_MULTI_PROCESS_FILES: tuple[str, ...] = (
+        "bin/linuxd.elf",
+        "bin/uservm.elf",
+    )
+
+    def sysroot_required_files(self) -> list[str]:
+        """Return the sysroot files required for the current deployment mode.
+
+        Multi-process mode additionally requires ``linuxd.elf`` and
+        ``uservm.elf``.  Subclasses can extend by overriding the class
+        attributes or this method.
+        """
+        files = list(self.SYSROOT_REQUIRED_FILES)
+        if self.config.deployment_mode == "multi-process":
+            files.extend(self.SYSROOT_MULTI_PROCESS_FILES)
+        return files
 
     def __init__(self, repo_root: Path) -> None:
         """Initialise ZScript for *repo_root*.

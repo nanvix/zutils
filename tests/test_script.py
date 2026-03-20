@@ -96,5 +96,59 @@ class TestZScriptRun(unittest.TestCase):
             log_mod.set_json_mode(False)
 
 
+class TestZScriptSysrootRequiredFiles(unittest.TestCase):
+    """sysroot_required_files() varies by deployment mode."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def test_multi_process_includes_linuxd_and_uservm(self) -> None:
+        os.environ["NANVIX_DEPLOYMENT_MODE"] = "multi-process"
+        script = ZScript(Path(self._tmpdir.name))
+        files = script.sysroot_required_files()
+        self.assertIn("bin/linuxd.elf", files)
+        self.assertIn("bin/uservm.elf", files)
+
+    def test_single_process_excludes_linuxd_and_uservm(self) -> None:
+        os.environ["NANVIX_DEPLOYMENT_MODE"] = "single-process"
+        script = ZScript(Path(self._tmpdir.name))
+        files = script.sysroot_required_files()
+        self.assertNotIn("bin/linuxd.elf", files)
+        self.assertNotIn("bin/uservm.elf", files)
+
+    def test_standalone_excludes_linuxd_and_uservm(self) -> None:
+        os.environ["NANVIX_DEPLOYMENT_MODE"] = "standalone"
+        script = ZScript(Path(self._tmpdir.name))
+        files = script.sysroot_required_files()
+        self.assertNotIn("bin/linuxd.elf", files)
+        self.assertNotIn("bin/uservm.elf", files)
+
+    def test_base_files_always_present(self) -> None:
+        """Core files are required regardless of deployment mode."""
+        for mode in ("multi-process", "single-process", "standalone"):
+            os.environ["NANVIX_DEPLOYMENT_MODE"] = mode
+            script = ZScript(Path(self._tmpdir.name))
+            files = script.sysroot_required_files()
+            self.assertIn("lib/libposix.a", files, f"missing in {mode}")
+            self.assertIn("lib/user.ld", files, f"missing in {mode}")
+            self.assertIn("bin/nanvixd.elf", files, f"missing in {mode}")
+            self.assertIn("bin/kernel.elf", files, f"missing in {mode}")
+            self.assertIn("bin/mkramfs.elf", files, f"missing in {mode}")
+
+    def test_default_deployment_mode_is_multi_process(self) -> None:
+        """Default (no env override) should be multi-process."""
+        script = ZScript(Path(self._tmpdir.name))
+        files = script.sysroot_required_files()
+        self.assertIn("bin/linuxd.elf", files)
+        self.assertIn("bin/uservm.elf", files)
+
+
 if __name__ == "__main__":
     unittest.main()

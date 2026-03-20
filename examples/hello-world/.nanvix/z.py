@@ -52,7 +52,7 @@ class HelloWorld(ZScript):
             tag=tag,
             gh_token=self.config.get(CFG_GH_TOKEN),
         )
-        sysroot.verify(list(self.SYSROOT_REQUIRED_FILES))
+        sysroot.verify(self.sysroot_required_files())
         self.config.set(CFG_SYSROOT, str(sysroot.path))
         self.config.save()
 
