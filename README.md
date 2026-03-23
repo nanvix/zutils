@@ -46,7 +46,7 @@ Then invoke via the bootstrap wrapper at the repo root:
 ./z test
 ```
 
-## Example
+## Examples
 
 - [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
   using `ZScript`.
