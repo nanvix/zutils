@@ -18,6 +18,17 @@ from unittest.mock import patch
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
 
+# Minimal valid requirements content.
+_MINIMAL_REQS = "nanvix@latest\n"
+
+
+def _write_requirements(repo_root: Path) -> None:
+    """Create ``.nanvix/nanvix-requirements.txt`` inside *repo_root*."""
+    nanvix_dir = repo_root / ".nanvix"
+    nanvix_dir.mkdir(parents=True, exist_ok=True)
+    (nanvix_dir / "nanvix-requirements.txt").write_text(_MINIMAL_REQS)
+
+
 # ---------------------------------------------------------------------------
 # Mock consumer
 # ---------------------------------------------------------------------------
@@ -61,6 +72,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
+        _write_requirements(self._repo_root)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -208,6 +220,7 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
+        _write_requirements(self._repo_root)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -232,6 +245,7 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
+        _write_requirements(self._repo_root)
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:

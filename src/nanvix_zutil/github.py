@@ -97,7 +97,10 @@ def download_release_asset(
             log.info(f"Asset already present: {out_path}")
             return out_path
 
-    url = f"{_GITHUB_API_BASE}/repos/{repo}/releases/tags/{tag}"
+    if tag == "latest":
+        url = f"{_GITHUB_API_BASE}/repos/{repo}/releases/latest"
+    else:
+        url = f"{_GITHUB_API_BASE}/repos/{repo}/releases/tags/{tag}"
     headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
     if gh_token:
         headers["Authorization"] = f"Bearer {gh_token}"
@@ -209,3 +212,61 @@ def download_release_asset(
 
     # Unreachable — log.fatal exits. Satisfy type checker.
     return out_path  # pragma: no cover
+
+
+def find_release_tag(
+    repo: str,
+    suffix: str,
+    gh_token: str | None = None,
+) -> str | None:
+    """Find a release tag ending with *suffix* in *repo*.
+
+    Queries ``GET /repos/{repo}/releases`` and returns the first tag name
+    whose value ends with *suffix*.  Returns ``None`` when no release
+    matches.
+
+    Args:
+        repo: Repository in ``owner/name`` format (e.g. ``"nanvix/zlib"``).
+        suffix: The suffix to match against release tag names
+            (e.g. ``"nanvix-fa06b88"``).
+        gh_token: Optional GitHub personal access token.
+
+    Returns:
+        The matching tag name, or ``None`` if no release tag ends with
+        *suffix*.
+    """
+    url = f"{_GITHUB_API_BASE}/repos/{repo}/releases"
+    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
+                raw: object = json.loads(resp.read())
+                if not isinstance(raw, list):
+                    log.fatal(
+                        f"Unexpected response from GitHub API for {repo} releases",
+                        code=EXIT_NETWORK_ERROR,
+                    )
+                releases = cast(list[object], raw)
+                for release in releases:
+                    if not isinstance(release, dict):
+                        continue
+                    tag = cast(dict[str, object], release).get("tag_name")
+                    if isinstance(tag, str) and tag.endswith(suffix):
+                        return tag
+                return None
+        except urllib.error.URLError as exc:
+            if attempt == _MAX_RETRIES:
+                log.fatal(
+                    f"Failed to list releases for {repo}: {exc}",
+                    code=EXIT_NETWORK_ERROR,
+                    hint="Check your network connection or set GH_TOKEN.",
+                )
+            wait = _BACKOFF_BASE**attempt
+            log.warning(f"Attempt {attempt} failed; retrying in {wait:.0f}s…")
+            time.sleep(wait)
+
+    return None  # pragma: no cover

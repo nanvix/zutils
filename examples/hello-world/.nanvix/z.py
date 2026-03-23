@@ -11,13 +11,11 @@ Demonstrates the full lifecycle with a real Nanvix build:
     ./z clean      # remove build artifacts
 """
 
-from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TAG, CFG_TOOLCHAIN, EXIT_MISSING_DEP, Sysroot, ZScript, log
+from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TOOLCHAIN, Sysroot, ZScript
 
 
 class HelloWorld(ZScript):
     """Build script for the hello-world C example."""
-
-    NANVIX_TAG = "latest"
 
     def _make_args(self, *targets: str) -> list[str]:
         """Build the common make argument list."""
@@ -41,15 +39,11 @@ class HelloWorld(ZScript):
 
     def setup(self) -> None:
         """Download the Nanvix sysroot."""
-        tag = self.config.get(CFG_TAG, self.NANVIX_TAG)
-        if not tag:
-            log.fatal(f"{CFG_TAG} is not set.", code=EXIT_MISSING_DEP)
-
         sysroot = Sysroot.download(
             machine=self.config.machine,
             deployment_mode=self.config.deployment_mode,
             memory_size=self.config.memory_size,
-            tag=tag,
+            tag=self.requirements.sysroot_tag,
             gh_token=self.config.get(CFG_GH_TOKEN),
         )
         sysroot.verify(self.sysroot_required_files())

@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -136,8 +137,6 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
                 gh_token="mytoken",
             )
 
-        import urllib.request
-
         first_req = captured_requests[0]
         self.assertIsInstance(first_req, urllib.request.Request)
         assert isinstance(first_req, urllib.request.Request)
@@ -248,6 +247,86 @@ class TestDownloadReleaseAssetNetworkError(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 4)
 
 
+class TestDownloadReleaseAssetLatestTag(unittest.TestCase):
+    """download_release_asset uses /releases/latest when tag is 'latest'."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_latest_tag_uses_releases_latest_endpoint(self) -> None:
+        dest = Path(self._tmpdir.name)
+        asset_name = "zlib-hyperlight-multi-process-128mb.tar.bz2"
+        download_url = "https://example.com/" + asset_name
+        file_content = b"archive-bytes"
+
+        metadata_resp = _make_urlopen_response(
+            _make_release_payload(asset_name, download_url)
+        )
+        file_resp = _make_urlopen_response(file_content, chunked=True)
+
+        captured_requests: list[object] = []
+
+        def capture_urlopen(req: object, **kwargs: object) -> object:
+            captured_requests.append(req)
+            if len(captured_requests) == 1:
+                return metadata_resp
+            return file_resp
+
+        with patch("urllib.request.urlopen", side_effect=capture_urlopen):
+            github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                tag="latest",
+                asset_name=asset_name,
+                dest=dest,
+            )
+
+        first_req = captured_requests[0]
+        assert isinstance(first_req, urllib.request.Request)
+        self.assertEqual(
+            first_req.full_url,
+            "https://api.github.com/repos/nanvix/zlib/releases/latest",
+        )
+
+    def test_non_latest_tag_uses_releases_tags_endpoint(self) -> None:
+        dest = Path(self._tmpdir.name)
+        asset_name = "zlib-hyperlight-multi-process-128mb.tar.bz2"
+        download_url = "https://example.com/" + asset_name
+        file_content = b"archive-bytes"
+
+        metadata_resp = _make_urlopen_response(
+            _make_release_payload(asset_name, download_url)
+        )
+        file_resp = _make_urlopen_response(file_content, chunked=True)
+
+        captured_requests: list[object] = []
+
+        def capture_urlopen(req: object, **kwargs: object) -> object:
+            captured_requests.append(req)
+            if len(captured_requests) == 1:
+                return metadata_resp
+            return file_resp
+
+        with patch("urllib.request.urlopen", side_effect=capture_urlopen):
+            github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                tag="abc1234-nanvix-def5678",
+                asset_name=asset_name,
+                dest=dest,
+            )
+
+        first_req = captured_requests[0]
+        assert isinstance(first_req, urllib.request.Request)
+        self.assertEqual(
+            first_req.full_url,
+            "https://api.github.com/repos/nanvix/zlib/releases/tags/abc1234-nanvix-def5678",
+        )
+
+
 class TestDownloadReleaseAssetPrefixMatch(unittest.TestCase):
     """download_release_asset with match_prefix=True."""
 
@@ -319,6 +398,89 @@ class TestDownloadReleaseAssetPrefixMatch(unittest.TestCase):
                     match_prefix=True,
                 )
         self.assertEqual(ctx.exception.code, 3)
+
+
+# ---------------------------------------------------------------------------
+# find_release_tag
+# ---------------------------------------------------------------------------
+
+
+def _make_releases_list_payload(tags: list[str]) -> bytes:
+    """Return a minimal GitHub ``GET /repos/{repo}/releases`` response."""
+    return json.dumps([{"tag_name": t} for t in tags]).encode()
+
+
+class TestFindReleaseTag(unittest.TestCase):
+    """Tests for :func:`github.find_release_tag`."""
+
+    def setUp(self) -> None:
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        log_mod.set_json_mode(False)
+
+    def test_returns_matching_tag(self) -> None:
+        tags = [
+            "b7a6a3c-nanvix-fa06b88",
+            "25e1341-nanvix-fa06b88",
+            "bd416c7-nanvix-98c15d9",
+        ]
+        resp = _make_urlopen_response(_make_releases_list_payload(tags))
+
+        with patch("urllib.request.urlopen", return_value=resp):
+            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
+
+        self.assertEqual(result, "b7a6a3c-nanvix-fa06b88")
+
+    def test_returns_none_when_no_match(self) -> None:
+        tags = ["b7a6a3c-nanvix-fa06b88", "25e1341-nanvix-fa06b88"]
+        resp = _make_urlopen_response(_make_releases_list_payload(tags))
+
+        with patch("urllib.request.urlopen", return_value=resp):
+            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-000000")
+
+        self.assertIsNone(result)
+
+    def test_returns_none_for_empty_releases(self) -> None:
+        resp = _make_urlopen_response(json.dumps([]).encode())
+
+        with patch("urllib.request.urlopen", return_value=resp):
+            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
+
+        self.assertIsNone(result)
+
+    def test_gh_token_passed_in_header(self) -> None:
+        tags = ["abc-nanvix-def"]
+        resp = _make_urlopen_response(_make_releases_list_payload(tags))
+
+        captured: list[urllib.request.Request] = []
+
+        def capture(req: object, **kwargs: object) -> object:
+            assert isinstance(req, urllib.request.Request)
+            captured.append(req)
+            return resp
+
+        with patch("urllib.request.urlopen", side_effect=capture):
+            github_mod.find_release_tag("nanvix/zlib", "nanvix-def", gh_token="tok123")
+
+        self.assertEqual(len(captured), 1)
+        self.assertIn("Authorization", captured[0].headers)
+        self.assertEqual(captured[0].headers["Authorization"], "Bearer tok123")
+
+    def test_network_error_exits_4(self) -> None:
+        log_mod.set_json_mode(True)
+
+        with (
+            patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("connection refused"),
+            ),
+            patch("time.sleep"),
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
+
+        self.assertEqual(ctx.exception.code, 4)
 
 
 if __name__ == "__main__":

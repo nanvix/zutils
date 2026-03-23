@@ -1,0 +1,5 @@
+# Nanvix sysroot
+nanvix@fa06b88
+
+# Build dependencies
+zlib@b7a6a3c

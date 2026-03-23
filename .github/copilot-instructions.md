@@ -26,6 +26,10 @@ python -m pytest tests/test_log.py::TestInfo::test_basic  # single test
 pip install -e .
 ```
 
+## Validation
+
+After making code changes, always validate by invoking the `/validate` skill. This runs the full test suite and pre-push checks (formatting + type checking) in a single step.
+
 ## Architecture
 
 ### Module Dependency Graph

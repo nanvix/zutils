@@ -1,0 +1,2 @@
+# Nanvix sysroot
+nanvix@latest
