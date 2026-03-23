@@ -10,10 +10,13 @@ Public re-exports:
 - :class:`~nanvix_zutil.buildroot.Buildroot` — build-time dependency root
 - :class:`~nanvix_zutil.buildroot.Dependency` — library dependency descriptor
 - :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot management
+- :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
+- :func:`~nanvix_zutil.manifest.load_manifest` — parse nanvix.toml
+- :func:`~nanvix_zutil.github.find_release_tag` — find release tag by suffix
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
-from nanvix_zutil.buildroot import Buildroot, Dependency
+from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
 from nanvix_zutil.config import (
     CFG_GH_TOKEN,
     CFG_SYSROOT,
@@ -30,6 +33,8 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
 )
+from nanvix_zutil.github import find_release_tag, resolve_release
+from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
 
@@ -48,6 +53,12 @@ __all__ = [
     "EXIT_NETWORK_ERROR",
     "EXIT_SUCCESS",
     "EXIT_TEST_FAILURE",
+    "Manifest",
+    "Ref",
+    "RefKind",
     "Sysroot",
     "ZScript",
+    "find_release_tag",
+    "load_manifest",
+    "resolve_release",
 ]

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tarfile
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from nanvix_zutil import github, log
@@ -22,6 +23,36 @@ from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 # ---------------------------------------------------------------------------
 
 _DEFAULT_BUILDROOT_DIR = Path(".nanvix") / "buildroot"
+
+
+# ---------------------------------------------------------------------------
+# Version reference
+# ---------------------------------------------------------------------------
+
+
+class RefKind(Enum):
+    """Discriminator for version reference types."""
+
+    TAG = "tag"
+    COMMITISH = "commitish"
+    ID = "id"
+    VERSION = "version"
+
+
+@dataclass
+class Ref:
+    """A tagged union for version references.
+
+    Attributes:
+        kind: The specifier type — :attr:`RefKind.TAG` (exact tag match),
+            :attr:`RefKind.COMMITISH` (match ``target_commitish``),
+            :attr:`RefKind.ID` (direct release fetch), or
+            :attr:`RefKind.VERSION` (suffixed with nanvix version).
+        value: The version string, tag name, commitish, or release ID.
+    """
+
+    kind: RefKind
+    value: str | int
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +68,7 @@ class Dependency:
         name: Short library name (e.g. ``"zlib"``).
         repo: GitHub repository in ``owner/name`` format
             (e.g. ``"nanvix/zlib"``).
-        tag: Release tag to fetch (e.g. ``"v1.2.3"``).
+        ref: Version reference — one of tag, commitish, ID, or version.
         artifact_pattern: ``str.format``-style template for the asset file
             name.  Interpolated keys: ``{name}``, ``{machine}``,
             ``{mode}``, ``{mem}``.
@@ -49,7 +80,7 @@ class Dependency:
 
     name: str
     repo: str
-    tag: str
+    ref: Ref
     artifact_pattern: str = "{name}-{machine}-{mode}-{mem}.tar.bz2"
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
@@ -109,6 +140,7 @@ class Buildroot:
         deployment_mode: str = "multi-process",
         memory_size: str = "128mb",
         gh_token: str | None = None,
+        sysroot_commitish: str | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.
 
@@ -116,12 +148,18 @@ class Buildroot:
         extracted.  Selected ``.a`` and ``.h`` files are copied into
         ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
+        For ``VERSION`` refs, if the primary tag is not found and
+        *sysroot_commitish* is provided, a fallback tag is tried by
+        replacing the sysroot version suffix with the commitish hash.
+
         Args:
             dep: The :class:`Dependency` descriptor.
             machine: Target machine identifier.
             deployment_mode: Deployment mode string.
             memory_size: Memory size string.
             gh_token: Optional GitHub token.
+            sysroot_commitish: Short commitish hash of the resolved
+                sysroot release, used for VERSION ref fallback.
         """
         asset_name = dep.artifact_pattern.format(
             name=dep.name,
@@ -131,13 +169,45 @@ class Buildroot:
         )
 
         cache_dir = self.path.parent / "cache"
-        asset_path = github.download_release_asset(
-            repo=dep.repo,
-            tag=dep.tag,
-            asset_name=asset_name,
-            dest=cache_dir,
-            gh_token=gh_token,
-        )
+
+        if dep.ref.kind == RefKind.VERSION and sysroot_commitish:
+            result = github.download_release_asset(
+                repo=dep.repo,
+                version_specifier=dep.ref.value,
+                asset_name=asset_name,
+                dest=cache_dir,
+                gh_token=gh_token,
+                allow_missing=True,
+            )
+            if result is not None:
+                asset_path = result
+            else:
+                primary = str(dep.ref.value)
+                parts = primary.rsplit("-nanvix-", 1)
+                if len(parts) != 2:
+                    log.fatal(
+                        f"Asset not found for {dep.name}@{dep.ref.value}",
+                        code=EXIT_MISSING_DEP,
+                    )
+                fallback_tag = f"{parts[0]}-nanvix-{sysroot_commitish}"
+                log.warning(
+                    f"Tag '{primary}' not found," f" trying '{fallback_tag}'\u2026"
+                )
+                asset_path = github.download_release_asset(
+                    repo=dep.repo,
+                    version_specifier=fallback_tag,
+                    asset_name=asset_name,
+                    dest=cache_dir,
+                    gh_token=gh_token,
+                )
+        else:
+            asset_path = github.download_release_asset(
+                repo=dep.repo,
+                version_specifier=dep.ref.value,
+                asset_name=asset_name,
+                dest=cache_dir,
+                gh_token=gh_token,
+            )
 
         log.info(f"Extracting {asset_name}...")
         with tarfile.open(asset_path, "r:bz2") as tf:

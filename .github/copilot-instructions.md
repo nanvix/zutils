@@ -10,6 +10,10 @@ The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils
 
 After making code changes, always validate by invoking the `/validate` skill. This runs the full test suite and pre-push checks (formatting + type checking) in a single step.
 
+## Validation
+
+After making code changes, always validate by invoking the `/validate` skill. This runs the full test suite and pre-push checks (formatting + type checking) in a single step.
+
 ## Architecture
 
 ### Module Dependency Graph

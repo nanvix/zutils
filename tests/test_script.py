@@ -11,6 +11,7 @@ from pathlib import Path
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.script import ZScript
+from tests.testutils import write_manifest
 
 
 class TestZScriptInit(unittest.TestCase):
@@ -18,6 +19,7 @@ class TestZScriptInit(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -39,12 +41,30 @@ class TestZScriptInit(unittest.TestCase):
         script = ZScript(repo_root)
         self.assertEqual(script.config.machine, "hyperlight")
 
+    def test_manifest_loaded(self) -> None:
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        self.assertEqual(script.manifest.sysroot_ref.value, "0.1.0")
+
+    def test_missing_manifest_exits_3(self) -> None:
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        repo_root = Path(tmpdir.name)
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                ZScript(repo_root)
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
 
 class TestZScriptLifecycleHooks(unittest.TestCase):
     """Default lifecycle hooks are no-ops."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
@@ -76,6 +96,7 @@ class TestZScriptRun(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
@@ -101,6 +122,7 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 

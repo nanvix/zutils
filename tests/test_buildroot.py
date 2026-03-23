@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.buildroot import Buildroot, Dependency
+from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
 
 
 def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
@@ -36,29 +36,37 @@ class TestDependency(unittest.TestCase):
     """Dependency dataclass behaves correctly."""
 
     def test_required_fields(self) -> None:
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
         self.assertEqual(dep.name, "zlib")
         self.assertEqual(dep.repo, "nanvix/zlib")
-        self.assertEqual(dep.tag, "v1.0.0")
+        self.assertEqual(dep.ref.value, "v1.0.0")
 
     def test_default_artifact_pattern(self) -> None:
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
         expected = "{name}-{machine}-{mode}-{mem}.tar.bz2"
         self.assertEqual(dep.artifact_pattern, expected)
 
     def test_default_install_libs_none(self) -> None:
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
         self.assertIsNone(dep.install_libs)
 
     def test_default_install_headers_none(self) -> None:
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
         self.assertIsNone(dep.install_headers)
 
     def test_custom_artifact_pattern(self) -> None:
         dep = Dependency(
             name="foo",
             repo="nanvix/foo",
-            tag="v2.0.0",
+            ref=Ref(kind=RefKind.TAG, value="v2.0.0"),
             artifact_pattern="{name}.tar.bz2",
         )
         self.assertEqual(dep.artifact_pattern, "{name}.tar.bz2")
@@ -151,7 +159,9 @@ class TestBuildrootInstallDep(unittest.TestCase):
                 "zlib.h": b"header-content",
             }
         )
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
 
         with patch(
             "nanvix_zutil.github.download_release_asset",
@@ -174,7 +184,9 @@ class TestBuildrootInstallDep(unittest.TestCase):
                 "zlib.h": b"header-content",
             }
         )
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
         archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
@@ -197,7 +209,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         dep = Dependency(
             name="zlib",
             repo="nanvix/zlib",
-            tag="v1.0.0",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
             install_libs=["libz.a"],
         )
         archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
@@ -223,7 +235,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         dep = Dependency(
             name="zlib",
             repo="nanvix/zlib",
-            tag="v1.0.0",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
             install_headers=["zlib.h"],
         )
         archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
@@ -244,13 +256,15 @@ class TestBuildrootInstallDep(unittest.TestCase):
         archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
-        dep = Dependency(name="zlib", repo="nanvix/zlib", tag="v1.0.0")
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
 
         captured: list[str] = []
 
         def fake_download(
             repo: str,
-            tag: str,
+            version_specifier: str | int,
             asset_name: str,
             dest: Path,
             gh_token: str | None = None,
