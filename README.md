@@ -2,10 +2,10 @@
 
 Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem.
 
-`nanvix_zutil` is a stdlib-only Python 3.12+ library that provides a unified
-`ZScript` base class with lifecycle hooks (`setup`, `build`, `test`,
-`benchmark`, `release`, `clean`), structured logging, config persistence,
-GitHub release artifact downloading, and deterministic exit codes.
+`nanvix_zutil` is a Python 3.12+ library that provides a unified `ZScript`
+base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`,
+`release`, `clean`), structured logging, config persistence, GitHub release
+artifact downloading, and deterministic exit codes.
 
 ## Installation
 

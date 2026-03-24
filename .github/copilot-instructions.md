@@ -2,29 +2,13 @@
 
 ## What This Is
 
-`nanvix_zutil` is a **stdlib-only Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`), structured logging, config persistence, GitHub release artifact downloading, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
+`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`), structured logging, config persistence, GitHub release artifact downloading, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
 
 The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils/issues/1).
 
-## Build, Test, and Lint
+## Validation
 
-```bash
-# Type checking (strict mode)
-basedpyright
-
-# Formatting
-black --check .        # check
-black .                # fix
-
-# Tests (stdlib unittest)
-python -m pytest       # full suite
-python -m pytest tests/test_log.py              # single file
-python -m pytest tests/test_log.py::TestInfo    # single class
-python -m pytest tests/test_log.py::TestInfo::test_basic  # single test
-
-# Build / install locally
-pip install -e .
-```
+After making code changes, always validate by invoking the `/validate` skill. This runs the full test suite and pre-push checks (formatting + type checking) in a single step.
 
 ## Architecture
 
@@ -65,8 +49,8 @@ nanvix/<project>/
 
 ## Key Conventions
 
-- **Zero external dependencies.** The library uses only the Python standard library. This is a hard constraint — `nanvix_zutil` builds the ecosystem, so it cannot depend on it.
 - **Python 3.12+ only.** Matches the Nanvix CPython port (3.12.3). Use modern syntax: `X | Y` unions, `list[str]` generics, etc.
+- **External dependencies are allowed.** Add runtime dependencies to `[project] dependencies` in `pyproject.toml`.
 - **Type-checked with `basedpyright` in strict mode.** All code must pass strict type checking. Every public function must have a complete type signature.
 - **Formatted with `black`.** No configuration overrides.
 - **All public functions must have docstrings.**
