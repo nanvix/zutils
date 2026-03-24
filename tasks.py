@@ -15,6 +15,8 @@ Commands:
   ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean      Remove Python bytecode caches and build artifacts
   release    Build distribution artifacts (wheel + sdist) for release
+  docs       Build Sphinx HTML documentation
+  docs-serve Build and serve docs locally on http://localhost:8000
 """
 
 import shutil
@@ -127,6 +129,7 @@ def ci() -> int:
     print("ci: All jobs passed.")
     return 0
 
+
 def release() -> int:
     """Build distribution artifacts (wheel and sdist) for release.
 
@@ -151,15 +154,48 @@ def release() -> int:
     return 0
 
 
+def docs() -> int:
+    """Build Sphinx HTML documentation."""
+    return _run(
+        sys.executable,
+        "-m",
+        "sphinx",
+        "-b",
+        "html",
+        "docs",
+        "docs/_build/html",
+    )
+
+
+def docs_serve() -> int:
+    """Build and serve docs locally with a simple HTTP server."""
+    rc = docs()
+    if rc != 0:
+        return rc
+    return _run(
+        sys.executable,
+        "-m",
+        "http.server",
+        "-d",
+        "docs/_build/html",
+        "8000",
+    )
+
+
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (lint, "Check code formatting with black"),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
-    "ci": (ci, "Run CI locally using gh act (requires Docker + nanvix toolchain image)"),
+    "ci": (
+        ci,
+        "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
+    ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
+    "docs": (docs, "Build Sphinx HTML documentation"),
+    "docs-serve": (docs_serve, "Build and serve docs locally on http://localhost:8000"),
 }
 
 

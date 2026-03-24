@@ -1,5 +1,7 @@
 # nanvix-zutil
 
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://nanvix.github.io/zutils/)
+
 Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem.
 
 `nanvix_zutil` is a stdlib-only Python 3.12+ library that provides a unified
@@ -70,6 +72,8 @@ uv run tasks.py setup         # configure git hooks
 | `uv run tasks.py format`    | Fix formatting (black)             |
 | `uv run tasks.py typecheck` | Strict type checking (basedpyright)|
 | `uv run tasks.py test`      | Run test suite (pytest)            |
+| `uv run tasks.py docs`      | Build Sphinx HTML docs             |
+| `uv run tasks.py docs-serve`| Serve docs locally on port 8000    |
 | `uv run tasks.py clean`     | Remove caches and build artifacts  |
 
 ## License
