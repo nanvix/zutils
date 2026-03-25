@@ -18,7 +18,6 @@ from nanvix_zutil import (
     Buildroot,
     Sysroot,
     ZScript,
-    log,
 )
 
 

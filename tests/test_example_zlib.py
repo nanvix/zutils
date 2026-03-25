@@ -15,7 +15,9 @@ download release assets from GitHub.  Detection order:
 2. Default path ``/opt/nanvix/``
 3. Docker image ``nanvix/toolchain:latest-minimal``
 
-CLI flag tests (--help, --json) work without any external dependencies.
+CLI flag tests (--help, --json) invoke the real bootstrap wrappers
+and may create a virtual environment with an editable install, which
+can require network access to fetch build requirements.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ _HAS_KVM = _has_kvm()
 _SKIP_LIFECYCLE = "Nanvix toolchain not available (set NANVIX_TOOLCHAIN, install to /opt/nanvix, or pull Docker image)"
 _SKIP_NO_KVM = "KVM not available (/dev/kvm not accessible)"
 _LIFECYCLE_TIMEOUT = (
-    600  # seconds — setup downloads assets + build + VM boot + test + clean
+    120  # seconds per step — setup downloads assets + build + VM boot + test + clean
 )
 
 

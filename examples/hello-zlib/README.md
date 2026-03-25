@@ -1,7 +1,7 @@
 # hello-zlib — Nanvix Dependency Download Example
 
 A minimal C program that uses [zlib](https://github.com/nanvix/zlib) to
-compress and decompress a string, demonstrating how `nanvix-requirements.txt`
+compress and decompress a string, demonstrating how `nanvix.toml`
 manages build-time dependencies.
 
 ## Structure
@@ -9,8 +9,8 @@ manages build-time dependencies.
 ```
 hello-zlib/
 ├── .nanvix/
+│   ├── nanvix.toml             # Declarative dependencies
 │   └── z.py                    # HelloZlib(ZScript) — lifecycle hooks
-├── nanvix-requirements.txt     # Declarative dependencies
 ├── Makefile.nanvix             # Cross-compilation rules
 ├── src/
 │   └── hello-zlib.c            # Compress / decompress round-trip
@@ -38,11 +38,11 @@ hello-zlib/
 
 ## How It Works
 
-1. `./z setup` parses `nanvix-requirements.txt`, which declares:
-   - `nanvix@latest` — the Nanvix sysroot (downloaded via `Sysroot.download()`)
-   - `zlib@b7a6a3c-nanvix-fa06b88` — the zlib library (downloaded via `Buildroot.install_dep()`)
+1. `./z setup` parses `.nanvix/nanvix.toml`, which declares:
+   - `nanvix-version = "0.12.257"` — the Nanvix sysroot (downloaded via `Sysroot.download()`)
+   - `zlib = { commitish = "25e1341" }` — the zlib library (downloaded via `Buildroot.install_dep()`)
 
-2. `./z build` cross-compiles `src/hello-zlib.c` with `-I.nanvix/buildroot/include`
+2. `./z build` cross-compiles `src/hello-zlib.c` with `-I .nanvix/buildroot/include`
    and links against `.nanvix/buildroot/lib/libz.a`.
 
 3. `./z test` runs the binary on the Nanvix microkernel via `nanvixd.elf`.
