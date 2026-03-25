@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.script import ZScript
-from tests.testutils import write_manifest
+from tests.testutils import MANIFEST_WITH_DEPS, write_manifest
 
 
 class TestZScriptInit(unittest.TestCase):
@@ -92,20 +92,56 @@ class TestZScriptAutoSetup(unittest.TestCase):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
 
-            # Assert Sysroot.download was called once with the expected arguments.
-            args, kwargs = mock_download.call_args
-            self.assertEqual(len(kwargs), 0)
-            self.assertEqual(len(args), 6)
-            machine, mode, mem, tag, dest, config = args
-            self.assertEqual(machine, script.config.machine)
-            self.assertEqual(mode, script.config.deployment_mode)
-            self.assertEqual(mem, script.config.memory_size)
-            self.assertEqual(tag, script.manifest.sysroot_ref.value)
-            self.assertIsInstance(dest, Path)
-            self.assertTrue(str(dest).startswith(str(script.nanvix_dir)))
-            self.assertIs(config, script.config)
+            # Assert Sysroot.download was called once with the expected kwargs.
+            mock_download.assert_called_once()
+            _, kwargs = mock_download.call_args
+            self.assertEqual(kwargs["machine"], script.config.machine)
+            self.assertEqual(kwargs["deployment_mode"], script.config.deployment_mode)
+            self.assertEqual(kwargs["memory_size"], script.config.memory_size)
+            self.assertEqual(kwargs["tag"], script.manifest.sysroot_ref.value)
+            self.assertIsInstance(kwargs["dest"], Path)
+            self.assertTrue(str(kwargs["dest"]).startswith(str(script.nanvix_dir)))
+            self.assertIs(kwargs["config"], script.config)
         fake_sysroot.verify.assert_called_once()
         self.assertIs(script.sysroot, fake_sysroot)
+
+    def test_setup_with_deps_creates_buildroot(self) -> None:
+        """setup() with manifest dependencies creates Buildroot and installs all deps."""
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = "abc1234"
+
+        fake_buildroot = MagicMock()
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch(
+                "nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot
+            ) as mock_create,
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        # Buildroot.create called once with the nanvix_dir/buildroot path.
+        mock_create.assert_called_once()
+        (create_path,), _ = mock_create.call_args
+        self.assertEqual(create_path, script.nanvix_dir / "buildroot")
+
+        # install_dep called once per dependency in the manifest.
+        dep_count = len(script.manifest.dependencies)
+        self.assertEqual(fake_buildroot.install_dep.call_count, dep_count)
+
+        # Verify sysroot_commitish is forwarded to every install_dep call.
+        for call in fake_buildroot.install_dep.call_args_list:
+            _, install_kwargs = call
+            self.assertEqual(
+                install_kwargs["sysroot_commitish"], fake_sysroot.commitish
+            )
+
+        # buildroot attribute is set on the instance.
+        self.assertIs(script.buildroot, fake_buildroot)
 
     def test_setup_no_deps_skips_buildroot(self) -> None:
         """setup() with no manifest dependencies leaves buildroot as None."""

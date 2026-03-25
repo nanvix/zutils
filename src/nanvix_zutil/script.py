@@ -327,6 +327,22 @@ class ZScript:
         if pre_args.json:
             log.set_json_mode(True)
 
+        # Detect --help/-h and the 'help' subcommand (or no subcommand at
+        # all) BEFORE loading the manifest.  A missing nanvix.toml must not
+        # prevent the user from reading help text.
+        positional_args = [a for a in framework_argv if not a.startswith("-")]
+        first_positional = positional_args[0] if positional_args else None
+        help_requested = (
+            "-h" in framework_argv
+            or "--help" in framework_argv
+            or first_positional in (None, "help")
+        )
+        if help_requested:
+            # Build a full static parser (all subcommands) for help display.
+            build_parser().parse_args(framework_argv)  # --help/-h → sys.exit(0)
+            build_parser().print_help()  # 'help' subcommand or no args
+            return
+
         # Infer repo root: the parent of the .nanvix/ directory.
         script_path = Path(sys.argv[0]).resolve()
         # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
@@ -345,10 +361,6 @@ class ZScript:
 
         subcommand: str | None = args.subcommand
 
-        if subcommand is None or subcommand == "help":
-            parser.print_help()
-            return
-
         dispatch: dict[str, object] = {
             "setup": instance.setup,
             "distclean": instance.distclean,
@@ -359,8 +371,8 @@ class ZScript:
             "clean": instance.clean,
         }
 
-        handler = dispatch.get(subcommand)
-        if callable(handler):
+        handler = dispatch.get(subcommand) if subcommand is not None else None
+        if callable(handler) and subcommand is not None:
             handler()
             log.success(f"{subcommand.capitalize()} complete")
         else:

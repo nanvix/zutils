@@ -170,6 +170,27 @@ class TestIntegrationLifecycle(unittest.TestCase):
         with patch("sys.argv", [fake_script]):
             _MockConsumer.main()
 
+    def test_help_without_manifest_does_not_exit_with_missing_dep(self) -> None:
+        """'help' works even when nanvix.toml is absent (no EXIT_MISSING_DEP)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as empty_dir:
+            fake_script = str(Path(empty_dir) / ".nanvix" / "z.py")
+            with patch("sys.argv", [fake_script, "help"]):
+                # Must not raise SystemExit(3) or any other error.
+                _MockConsumer.main()
+
+    def test_no_subcommand_without_manifest_does_not_exit_with_missing_dep(
+        self,
+    ) -> None:
+        """No-subcommand invocation works even when nanvix.toml is absent."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as empty_dir:
+            fake_script = str(Path(empty_dir) / ".nanvix" / "z.py")
+            with patch("sys.argv", [fake_script]):
+                _MockConsumer.main()
+
     def test_repo_root_inferred_from_nanvix_dir(self) -> None:
         """Repo root is the parent of the .nanvix/ directory."""
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
