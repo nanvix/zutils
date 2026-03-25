@@ -46,7 +46,15 @@ class HelloZlib(ZScript):
     def setup(self) -> None:
         """Download the Nanvix sysroot and zlib dependency, then verify."""
         super().setup()
-        assert self.buildroot is not None, "manifest must declare zlib as a dependency"
+        if self.buildroot is None:
+            self.log.fatal(
+                "nanvix.toml must declare zlib as a build-time dependency.",
+                hint=(
+                    "Add zlib as a build-time dependency in nanvix.toml, then "
+                    "re-run `./z setup`. See the hello-zlib example manifest "
+                    "for reference."
+                ),
+            )
         self.buildroot.verify(["libz.a"])
 
     def build(self) -> None:

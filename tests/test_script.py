@@ -86,10 +86,24 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
         fake_sysroot.commitish = "abc1234"
 
-        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+        with patch(
+            "nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot
+        ) as mock_download:
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
 
+            # Assert Sysroot.download was called once with the expected arguments.
+            args, kwargs = mock_download.call_args
+            self.assertEqual(len(kwargs), 0)
+            self.assertEqual(len(args), 6)
+            machine, mode, mem, tag, dest, config = args
+            self.assertEqual(machine, script.config.machine)
+            self.assertEqual(mode, script.config.deployment_mode)
+            self.assertEqual(mem, script.config.memory_size)
+            self.assertEqual(tag, script.manifest.sysroot_ref.value)
+            self.assertIsInstance(dest, Path)
+            self.assertTrue(str(dest).startswith(str(script.nanvix_dir)))
+            self.assertIs(config, script.config)
         fake_sysroot.verify.assert_called_once()
         self.assertIs(script.sysroot, fake_sysroot)
 
@@ -200,7 +214,7 @@ class TestZScriptDistclean(unittest.TestCase):
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
-    """_available_subcommands() reflects hook overrides."""
+    """available_subcommands() reflects hook overrides."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()

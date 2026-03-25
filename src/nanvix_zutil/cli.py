@@ -95,7 +95,28 @@ def build_parser(
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
-    cmds = available if available is not None else SUBCOMMANDS
+    if available is None:
+        cmds: tuple[str, ...] = SUBCOMMANDS
+    else:
+        # Validate that all requested subcommands are known.
+        unknown = sorted({name for name in available if name not in SUBCOMMANDS})
+        if unknown:
+            valid = ", ".join(SUBCOMMANDS)
+            bad = ", ".join(unknown)
+            msg = (
+                "Unknown subcommand(s) in 'available': "
+                f"{bad}. Valid subcommands are: {valid}."
+            )
+            raise ValueError(msg)
+
+        # De-duplicate while preserving the original order provided in ``available``.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for name in available:
+            if name not in seen:
+                seen.add(name)
+                deduped.append(name)
+        cmds = tuple(deduped)
     for name in cmds:
         subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
 
