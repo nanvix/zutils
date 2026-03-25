@@ -58,6 +58,7 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
             mock_dl.assert_not_called()
 
         self.assertEqual(sysroot.path, dest.resolve())
+        self.assertEqual(sysroot.commitish, "")
 
 
 class TestSysrootDownloadFetches(unittest.TestCase):
@@ -66,8 +67,14 @@ class TestSysrootDownloadFetches(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(False)
+        self._resolve_patcher = patch(
+            "nanvix_zutil.github.resolve_release",
+            return_value={"target_commitish": "abc1234def5678"},
+        )
+        self._resolve_patcher.start()
 
     def tearDown(self) -> None:
+        self._resolve_patcher.stop()
         self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
@@ -103,12 +110,14 @@ class TestSysrootDownloadFetches(unittest.TestCase):
 
         def fake_download(
             repo: str,
-            tag: str,
+            version_specifier: str | int,
             asset_name: str,
             dest: Path,
             gh_token: str | None = None,
             *,
             match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
         ) -> Path:
             captured.append(asset_name)
             captured_kwargs.append({"match_prefix": match_prefix})

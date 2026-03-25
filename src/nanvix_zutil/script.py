@@ -26,6 +26,7 @@ from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import Config
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_INVALID_ARGS
+from nanvix_zutil.manifest import Manifest, load_manifest
 
 
 class ZScript:
@@ -86,6 +87,7 @@ class ZScript:
         self.nanvix_dir = self.repo_root / ".nanvix"
         self.config = Config(self.nanvix_dir)
         self.targets: list[str] = []
+        self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass

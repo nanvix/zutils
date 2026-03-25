@@ -14,6 +14,7 @@ import tarfile
 from pathlib import Path
 
 from nanvix_zutil import github, log
+from nanvix_zutil.config import Config
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 # ---------------------------------------------------------------------------
@@ -42,13 +43,16 @@ class Sysroot:
         path: Absolute path to the sysroot directory.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, commitish: str = "") -> None:
         """Initialise the Sysroot with an existing directory.
 
         Args:
             path: Path to the sysroot directory.
+            commitish: Short commitish hash of the resolved sysroot
+                release (set by :meth:`download`).
         """
         self.path = path
+        self.commitish = commitish
 
     # ------------------------------------------------------------------
     # Factory / download
@@ -59,9 +63,10 @@ class Sysroot:
         machine: str,
         deployment_mode: str,
         memory_size: str,
-        tag: str,
+        tag: str | int,
         gh_token: str | None = None,
         dest: Path | None = None,
+        config: Config | None = None,
     ) -> "Sysroot":
         """Download and extract the Nanvix runtime artifact from GitHub releases.
 
@@ -77,21 +82,41 @@ class Sysroot:
             dest: Directory where the sysroot will be extracted.  Defaults
                 to ``.nanvix/sysroot`` relative to the current working
                 directory.
+            config: Optional :class:`Config` instance used to persist and
+                restore the ``sysroot_commitish`` value.  When the sysroot
+                is already cached and *config* is provided, the commitish
+                is read from ``config["sysroot_commitish"]``.  After a
+                successful download the commitish is written back to
+                *config* and saved to disk.
 
         Returns:
             A :class:`Sysroot` pointing at the extracted directory.
+            The :attr:`commitish` attribute is set to the short
+            ``target_commitish`` hash of the resolved release, or
+            empty string when the sysroot was already cached and no
+            config is available.
         """
         sysroot_dir = dest if dest is not None else _DEFAULT_SYSROOT_DIR
 
         if sysroot_dir.exists():
             if sysroot_dir.is_dir():
                 log.info(f"Sysroot already present at {sysroot_dir}")
-                return Sysroot(sysroot_dir.resolve())
+                cached = (
+                    config.get("sysroot_commitish", "") or ""
+                    if config is not None
+                    else ""
+                )
+                return Sysroot(sysroot_dir.resolve(), commitish=cached)
             log.fatal(
                 f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
                 code=EXIT_MISSING_DEP,
-                hint="Remove or rename this path and re-run `./z setup` to download the Nanvix sysroot.",
+                hint="Remove or rename this path and re-run"
+                " `./z setup` to download the Nanvix sysroot.",
             )
+
+        release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
+        commitish_raw = release.get("target_commitish", "")
+        commitish = commitish_raw[:7] if isinstance(commitish_raw, str) else ""
 
         asset_prefix = _SYSROOT_ASSET_PREFIX.format(
             machine=machine,
@@ -102,11 +127,13 @@ class Sysroot:
         cache_dir = sysroot_dir.parent / "cache"
         asset_path = github.download_release_asset(
             repo=_SYSROOT_REPO,
-            tag=tag,
+            version_specifier=tag,
             asset_name=asset_prefix,
             dest=cache_dir,
             gh_token=gh_token,
             match_prefix=True,
+            semver=True,
+            _release=release,
         )
 
         log.info(f"Extracting sysroot from {asset_path.name}…")
@@ -115,7 +142,10 @@ class Sysroot:
             tf.extractall(path=sysroot_dir, filter="data")
 
         log.success(f"Sysroot extracted to {sysroot_dir}")
-        return Sysroot(sysroot_dir.resolve())
+        if config is not None:
+            config.set("sysroot_commitish", commitish)
+            config.save()
+        return Sysroot(sysroot_dir.resolve(), commitish=commitish)
 
     # ------------------------------------------------------------------
     # Verification
