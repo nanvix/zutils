@@ -26,6 +26,7 @@ from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -125,7 +126,10 @@ class ZScript:
         Constructs a standard configuration that mounts:
 
         * :attr:`repo_root` → ``/mnt/workspace`` (writable, workdir)
-        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only)
+        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only),
+          if the sysroot has been configured
+        * ``.nanvix/buildroot`` → ``/mnt/buildroot`` (read-only),
+          if the buildroot directory exists on disk
 
         Override in a subclass to add extra mounts or environment variables.
 
@@ -149,6 +153,16 @@ class ZScript:
                 Mount(
                     host_path=Path(sysroot_str),
                     container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                )
+            )
+
+        buildroot_dir = self.nanvix_dir / "buildroot"
+        if buildroot_dir.is_dir():
+            mounts.append(
+                Mount(
+                    host_path=buildroot_dir,
+                    container_path=BUILDROOT_CONTAINER_PATH,
                     readonly=True,
                 )
             )

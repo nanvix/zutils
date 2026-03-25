@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
@@ -216,6 +217,31 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIsNotNone(workspace_mount)
         assert workspace_mount is not None
         self.assertEqual(workspace_mount.host_path, script.repo_root)
+
+    def test_docker_config_no_buildroot_mount_when_absent(self) -> None:
+        """No buildroot mount is added when the buildroot dir does not exist."""
+        script = self._make_script()
+        cfg = script.docker_config("test-image")
+        buildroot_mount = next(
+            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
+            None,
+        )
+        self.assertIsNone(buildroot_mount)
+
+    def test_docker_config_auto_mounts_buildroot_when_present(self) -> None:
+        """Buildroot is auto-mounted when nanvix_dir/buildroot exists."""
+        script = self._make_script()
+        buildroot_dir = script.nanvix_dir / "buildroot"
+        buildroot_dir.mkdir(parents=True, exist_ok=True)
+        cfg = script.docker_config("test-image")
+        buildroot_mount = next(
+            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
+            None,
+        )
+        self.assertIsNotNone(buildroot_mount)
+        assert buildroot_mount is not None
+        self.assertEqual(buildroot_mount.host_path, buildroot_dir)
+        self.assertTrue(buildroot_mount.readonly)
 
     def test_translate_path_no_docker(self) -> None:
         """Without Docker, translate_path returns the input unchanged."""

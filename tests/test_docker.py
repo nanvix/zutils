@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
@@ -344,6 +345,9 @@ class TestWellKnownPaths(unittest.TestCase):
 
     def test_sysroot_path(self) -> None:
         self.assertEqual(SYSROOT_CONTAINER_PATH, Path("/mnt/sysroot"))
+
+    def test_buildroot_path(self) -> None:
+        self.assertEqual(BUILDROOT_CONTAINER_PATH, Path("/mnt/buildroot"))
 
     def test_toolchain_path(self) -> None:
         self.assertEqual(TOOLCHAIN_CONTAINER_PATH, Path("/opt/nanvix"))

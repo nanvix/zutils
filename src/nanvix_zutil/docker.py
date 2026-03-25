@@ -34,6 +34,9 @@ WORKSPACE_CONTAINER_PATH: Path = Path("/mnt/workspace")
 #: Container path for the Nanvix sysroot.
 SYSROOT_CONTAINER_PATH: Path = Path("/mnt/sysroot")
 
+#: Container path for the build-time dependency root (buildroot).
+BUILDROOT_CONTAINER_PATH: Path = Path("/mnt/buildroot")
+
 #: Container path for the Nanvix cross-compilation toolchain.
 TOOLCHAIN_CONTAINER_PATH: Path = Path("/opt/nanvix")
 

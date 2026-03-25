@@ -5,7 +5,8 @@
 
 Demonstrates dependency downloading with nanvix.toml.  Docker mode is
 supported via the ``--with-docker`` / ``--with-minimal-docker`` /
-``--docker-image`` flags::
+``--docker-image`` flags.  The buildroot is automatically mounted at
+``/mnt/buildroot`` when Docker is active::
 
     ./z setup                     # download sysroot + zlib (host)
     ./z build --with-docker       # cross-compile inside Docker container
@@ -16,21 +17,16 @@ supported via the ``--with-docker`` / ``--with-minimal-docker`` /
 from pathlib import Path
 
 from nanvix_zutil import (
+    BUILDROOT_CONTAINER_PATH,
     CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
     Buildroot,
-    DockerConfig,
-    Mount,
     Sysroot,
     ZScript,
     log,
 )
-from nanvix_zutil.docker import SYSROOT_CONTAINER_PATH, WORKSPACE_CONTAINER_PATH
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
-
-#: Container path for the buildroot when running inside Docker.
-_BUILDROOT_CONTAINER_PATH = Path("/mnt/buildroot")
 
 
 class HelloZlib(ZScript):
@@ -56,24 +52,8 @@ class HelloZlib(ZScript):
     def _buildroot_path(self) -> Path:
         """Return the effective buildroot path (translated for Docker if active)."""
         if self.docker:
-            return _BUILDROOT_CONTAINER_PATH
+            return BUILDROOT_CONTAINER_PATH
         return self.nanvix_dir / "buildroot"
-
-    # ------------------------------------------------------------------
-    # Docker config — adds buildroot mount
-    # ------------------------------------------------------------------
-
-    def docker_config(self, image: str) -> DockerConfig:
-        """Extend the default Docker config with a buildroot mount."""
-        cfg = super().docker_config(image)
-        cfg.mounts.append(
-            Mount(
-                host_path=self.nanvix_dir / "buildroot",
-                container_path=_BUILDROOT_CONTAINER_PATH,
-                readonly=True,
-            )
-        )
-        return cfg
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -171,5 +151,3 @@ class HelloZlib(ZScript):
 
 if __name__ == "__main__":
     HelloZlib.main()
-
-

@@ -17,6 +17,7 @@ Public re-exports:
 - :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
 - :func:`~nanvix_zutil.docker.docker_available` — check Docker CLI presence
 - :func:`~nanvix_zutil.docker.image_exists` — check local image availability
+- ``BUILDROOT_CONTAINER_PATH``, ``SYSROOT_CONTAINER_PATH``, ``WORKSPACE_CONTAINER_PATH``, ``TOOLCHAIN_CONTAINER_PATH`` — well-known container paths
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
@@ -29,6 +30,7 @@ from nanvix_zutil.config import (
     Config,
 )
 from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
@@ -54,6 +56,7 @@ from nanvix_zutil.sysroot import Sysroot
 
 __all__ = [
     "Buildroot",
+    "BUILDROOT_CONTAINER_PATH",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",
     "CFG_TAG",
