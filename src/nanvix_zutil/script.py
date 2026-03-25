@@ -24,9 +24,11 @@ from pathlib import Path
 
 from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import Config
+from nanvix_zutil.config import CFG_GH_TOKEN, Config
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_INVALID_ARGS
+from nanvix_zutil.lockfile import read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.resolver import is_stale, resolve
 
 
 class ZScript:
@@ -130,6 +132,39 @@ class ZScript:
         Override to clean generated files.
         """
 
+    def lock(self, *, shallow: bool = False) -> None:
+        """Resolve the dependency graph and write ``nanvix.lock``.
+
+        Args:
+            shallow: When ``True``, resolve only direct dependencies
+                (skip transitive discovery).
+        """
+        lockfile = resolve(
+            self.manifest,
+            gh_token=self.config.get(CFG_GH_TOKEN),
+            shallow=shallow,
+            manifest_path=self.nanvix_dir / "nanvix.toml",
+        )
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        write_lockfile(lockfile, lock_path)
+        log.success(f"Wrote {lock_path}")
+
+    def lock_check(self) -> None:
+        """Verify that ``nanvix.lock`` is up-to-date.
+
+        Exits with ``EXIT_MISSING_DEP`` if the lockfile does not exist, or
+        ``EXIT_INVALID_ARGS`` if it is stale relative to ``nanvix.toml``.
+        """
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        manifest_path = self.nanvix_dir / "nanvix.toml"
+        lockfile = read_lockfile(lock_path)
+        if is_stale(lockfile, manifest_path):
+            log.fatal(
+                "Lockfile is stale — nanvix.toml has changed since it was generated.",
+                code=EXIT_INVALID_ARGS,
+                hint="Run `./z lock` to regenerate the lockfile.",
+            )
+
     # ------------------------------------------------------------------
     # Subprocess helper
     # ------------------------------------------------------------------
@@ -217,6 +252,15 @@ class ZScript:
 
         if subcommand is None or subcommand == "help":
             parser.print_help()
+            return
+
+        # Special handling for lock subcommand (--check, --shallow flags).
+        if subcommand == "lock":
+            if args.check:
+                instance.lock_check()
+                log.success("Lockfile is up-to-date")
+            else:
+                instance.lock(shallow=args.shallow)
             return
 
         dispatch: dict[str, object] = {

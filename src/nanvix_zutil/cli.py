@@ -43,6 +43,7 @@ SUBCOMMANDS: tuple[str, ...] = (
     "benchmark",
     "release",
     "clean",
+    "lock",
     "help",
 )
 
@@ -54,6 +55,7 @@ _SUBCOMMAND_HELP: dict[str, str] = {
     "benchmark": "Run benchmarks",
     "release": "Package a release",
     "clean": "Remove build artifacts",
+    "lock": "Resolve dependencies and write nanvix.lock",
     "help": "Show help message",
 }
 
@@ -88,6 +90,20 @@ def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="subcommand")
 
     for name in SUBCOMMANDS:
-        subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
+        sub = subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
+        if name == "lock":
+            lock_group = sub.add_mutually_exclusive_group()
+            lock_group.add_argument(
+                "--check",
+                action="store_true",
+                default=False,
+                help="Verify that nanvix.lock is up-to-date (exit 3 if missing, 2 if stale)",
+            )
+            lock_group.add_argument(
+                "--shallow",
+                action="store_true",
+                default=False,
+                help="Resolve only direct dependencies (skip transitive discovery)",
+            )
 
     return parser
