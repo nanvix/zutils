@@ -44,6 +44,31 @@ class TestBuildParser(unittest.TestCase):
             parser.parse_args(["--version"])
         self.assertEqual(ctx.exception.code, 0)
 
+    def test_distclean_registered(self) -> None:
+        """distclean must be in the default parser."""
+        parser = build_parser()
+        args = parser.parse_args(["distclean"])
+        self.assertEqual(args.subcommand, "distclean")
+
+    def test_available_param_restricts_subcommands(self) -> None:
+        """build_parser(available=...) registers only the given subcommands."""
+        available = ("setup", "distclean", "build", "help")
+        parser = build_parser(available=available)
+        # Registered commands parse correctly.
+        for cmd in ("setup", "distclean", "build", "help"):
+            args = parser.parse_args([cmd])
+            self.assertEqual(args.subcommand, cmd)
+        # Unregistered command raises SystemExit.
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["test"])
+
+    def test_available_none_registers_all(self) -> None:
+        """available=None (default) registers every subcommand."""
+        parser = build_parser(available=None)
+        for cmd in SUBCOMMANDS:
+            args = parser.parse_args([cmd])
+            self.assertEqual(args.subcommand, cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,7 @@ Demonstrates the full lifecycle with a real Nanvix build:
     ./z clean      # remove build artifacts
 """
 
-from nanvix_zutil import CFG_GH_TOKEN, CFG_SYSROOT, CFG_TOOLCHAIN, Sysroot, ZScript
+from nanvix_zutil import CFG_SYSROOT, CFG_TOOLCHAIN, ZScript
 
 
 class HelloWorld(ZScript):
@@ -36,19 +36,6 @@ class HelloWorld(ZScript):
 
         args.extend(targets)
         return args
-
-    def setup(self) -> None:
-        """Download the Nanvix sysroot."""
-        sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag=self.manifest.sysroot_ref.value,
-            gh_token=self.config.get(CFG_GH_TOKEN),
-        )
-        sysroot.verify(self.sysroot_required_files())
-        self.config.set(CFG_SYSROOT, str(sysroot.path))
-        self.config.save()
 
     def build(self) -> None:
         """Cross-compile hello.c into hello.elf for Nanvix."""

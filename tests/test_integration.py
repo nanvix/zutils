@@ -55,6 +55,10 @@ class _MockConsumer(ZScript):
         """Record clean hook invocation."""
         self.called.append("clean")
 
+    def distclean(self) -> None:
+        """Record distclean hook invocation."""
+        self.called.append("distclean")
+
 
 class TestIntegrationLifecycle(unittest.TestCase):
     """Full lifecycle dispatch through ZScript.main()."""
@@ -121,6 +125,10 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def test_clean_hook_called(self) -> None:
         instance = self._run_main("clean")
         self.assertIn("clean", instance.called)
+
+    def test_distclean_hook_called(self) -> None:
+        instance = self._run_main("distclean")
+        self.assertIn("distclean", instance.called)
 
     def test_json_flag_enables_json_mode(self) -> None:
         """--json flag produces JSON output on stdout."""

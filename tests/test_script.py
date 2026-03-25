@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.script import ZScript
@@ -46,6 +47,14 @@ class TestZScriptInit(unittest.TestCase):
         script = ZScript(repo_root)
         self.assertEqual(script.manifest.sysroot_ref.value, "0.1.0")
 
+    def test_sysroot_initially_none(self) -> None:
+        script = ZScript(Path(self._tmpdir.name))
+        self.assertIsNone(script.sysroot)
+
+    def test_buildroot_initially_none(self) -> None:
+        script = ZScript(Path(self._tmpdir.name))
+        self.assertIsNone(script.buildroot)
+
     def test_missing_manifest_exits_3(self) -> None:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
@@ -59,8 +68,59 @@ class TestZScriptInit(unittest.TestCase):
             log_mod.set_json_mode(False)
 
 
+class TestZScriptAutoSetup(unittest.TestCase):
+    """Base setup() auto-downloads sysroot and dependencies."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_setup_downloads_sysroot(self) -> None:
+        """setup() calls Sysroot.download with config values."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = "abc1234"
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        fake_sysroot.verify.assert_called_once()
+        self.assertIs(script.sysroot, fake_sysroot)
+
+    def test_setup_no_deps_skips_buildroot(self) -> None:
+        """setup() with no manifest dependencies leaves buildroot as None."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = ""
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        self.assertIsNone(script.buildroot)
+
+    def test_setup_saves_config(self) -> None:
+        """setup() persists the sysroot path to env.json."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = ""
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        config_file = Path(self._tmpdir.name) / ".nanvix" / "env.json"
+        self.assertTrue(config_file.exists())
+
+
 class TestZScriptLifecycleHooks(unittest.TestCase):
-    """Default lifecycle hooks are no-ops."""
+    """Default consumer lifecycle hooks are no-ops."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -71,9 +131,6 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
 
     def _make_script(self) -> ZScript:
         return ZScript(Path(self._tmpdir.name))
-
-    def test_setup_noop(self) -> None:
-        self._make_script().setup()
 
     def test_build_noop(self) -> None:
         self._make_script().build()
@@ -89,6 +146,123 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
 
     def test_clean_noop(self) -> None:
         self._make_script().clean()
+
+
+class TestZScriptDistclean(unittest.TestCase):
+    """distclean() removes transient .nanvix/ artifacts."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        return ZScript(Path(self._tmpdir.name))
+
+    def _nanvix(self) -> Path:
+        return Path(self._tmpdir.name) / ".nanvix"
+
+    def test_distclean_removes_sysroot(self) -> None:
+        sysroot_dir = self._nanvix() / "sysroot"
+        sysroot_dir.mkdir()
+        self._make_script().distclean()
+        self.assertFalse(sysroot_dir.exists())
+
+    def test_distclean_removes_buildroot(self) -> None:
+        buildroot_dir = self._nanvix() / "buildroot"
+        buildroot_dir.mkdir()
+        self._make_script().distclean()
+        self.assertFalse(buildroot_dir.exists())
+
+    def test_distclean_removes_cache(self) -> None:
+        cache_dir = self._nanvix() / "cache"
+        cache_dir.mkdir()
+        self._make_script().distclean()
+        self.assertFalse(cache_dir.exists())
+
+    def test_distclean_preserves_manifest(self) -> None:
+        manifest = self._nanvix() / "nanvix.toml"
+        self.assertTrue(manifest.exists())
+        self._make_script().distclean()
+        self.assertTrue(manifest.exists())
+
+    def test_distclean_preserves_config(self) -> None:
+        config_file = self._nanvix() / "env.json"
+        config_file.write_text("{}")
+        self._make_script().distclean()
+        self.assertTrue(config_file.exists())
+
+    def test_distclean_noop_when_nothing_exists(self) -> None:
+        """distclean() does not raise when artifact dirs are absent."""
+        self._make_script().distclean()
+
+
+class TestZScriptAvailableSubcommands(unittest.TestCase):
+    """_available_subcommands() reflects hook overrides."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_base_class_exposes_only_auto_hooks(self) -> None:
+        script = ZScript(Path(self._tmpdir.name))
+        available = script.available_subcommands()
+        for hook in ZScript.AUTO_HOOKS:
+            self.assertIn(hook, available, f"{hook!r} should always be available")
+        for hook in ZScript.CONSUMER_HOOKS:
+            self.assertNotIn(
+                hook, available, f"{hook!r} should not appear when not overridden"
+            )
+
+    def test_subclass_exposes_overridden_hooks(self) -> None:
+        class _Sub(ZScript):
+            def build(self) -> None:
+                pass
+
+            def test(self) -> None:
+                pass
+
+        script = _Sub(Path(self._tmpdir.name))
+        available = script.available_subcommands()
+        self.assertIn("build", available)
+        self.assertIn("test", available)
+
+    def test_subclass_hides_non_overridden_hooks(self) -> None:
+        class _Sub(ZScript):
+            def build(self) -> None:
+                pass
+
+        script = _Sub(Path(self._tmpdir.name))
+        available = script.available_subcommands()
+        self.assertNotIn("clean", available)
+        self.assertNotIn("benchmark", available)
+
+    def test_all_hooks_overridden(self) -> None:
+        class _FullSub(ZScript):
+            def build(self) -> None:
+                pass
+
+            def test(self) -> None:
+                pass
+
+            def benchmark(self) -> None:
+                pass
+
+            def release(self) -> None:
+                pass
+
+            def clean(self) -> None:
+                pass
+
+        script = _FullSub(Path(self._tmpdir.name))
+        available = script.available_subcommands()
+        for hook in ZScript.CONSUMER_HOOKS:
+            self.assertIn(hook, available)
 
 
 class TestZScriptRun(unittest.TestCase):

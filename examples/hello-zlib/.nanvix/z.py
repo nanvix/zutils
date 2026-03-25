@@ -12,11 +12,8 @@ Demonstrates dependency downloading with nanvix.toml:
 """
 
 from nanvix_zutil import (
-    CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
-    Buildroot,
-    Sysroot,
     ZScript,
 )
 
@@ -47,31 +44,10 @@ class HelloZlib(ZScript):
         return args
 
     def setup(self) -> None:
-        """Download the Nanvix sysroot and zlib dependency."""
-        # Download sysroot.
-        sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag=self.manifest.sysroot_ref.value,
-            gh_token=self.config.get(CFG_GH_TOKEN),
-        )
-        sysroot.verify(self.sysroot_required_files())
-        self.config.set(CFG_SYSROOT, str(sysroot.path))
-
-        # Download build dependencies.
-        buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
-        for dep in self.manifest.dependencies:
-            buildroot.install_dep(
-                dep=dep,
-                machine=self.config.machine,
-                deployment_mode=self.config.deployment_mode,
-                memory_size=self.config.memory_size,
-                gh_token=self.config.get(CFG_GH_TOKEN),
-            )
-        buildroot.verify(["libz.a"])
-
-        self.config.save()
+        """Download the Nanvix sysroot and zlib dependency, then verify."""
+        super().setup()
+        assert self.buildroot is not None, "manifest must declare zlib as a dependency"
+        self.buildroot.verify(["libz.a"])
 
     def build(self) -> None:
         """Cross-compile hello-zlib.c into hello-zlib.elf for Nanvix."""

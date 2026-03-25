@@ -38,6 +38,7 @@ def _get_version() -> str:
 #: All lifecycle subcommand names.
 SUBCOMMANDS: tuple[str, ...] = (
     "setup",
+    "distclean",
     "build",
     "test",
     "benchmark",
@@ -49,6 +50,7 @@ SUBCOMMANDS: tuple[str, ...] = (
 #: Human-readable descriptions for each subcommand.
 _SUBCOMMAND_HELP: dict[str, str] = {
     "setup": "Prepare the build environment",
+    "distclean": "Remove all transient .nanvix/ artifacts",
     "build": "Build the project",
     "test": "Run tests",
     "benchmark": "Run benchmarks",
@@ -58,11 +60,17 @@ _SUBCOMMAND_HELP: dict[str, str] = {
 }
 
 
-def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
+def build_parser(
+    prog: str = "./z",
+    available: tuple[str, ...] | None = None,
+) -> argparse.ArgumentParser:
     """Build and return the top-level argument parser.
 
     Args:
         prog: Program name shown in ``--help`` output.
+        available: Subset of :data:`SUBCOMMANDS` to register.  When
+            ``None`` all subcommands are registered (backwards-compatible
+            default used by tests and the minimal pre-parser).
 
     Returns:
         Fully configured :class:`argparse.ArgumentParser`.
@@ -87,7 +95,8 @@ def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
-    for name in SUBCOMMANDS:
+    cmds = available if available is not None else SUBCOMMANDS
+    for name in cmds:
         subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
 
     return parser
