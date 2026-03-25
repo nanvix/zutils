@@ -1,9 +1,9 @@
 [package]
 name = "hello-zlib"
 version = "0.1.0"
-nanvix-version = "0.12.257"
+nanvix-version = "0.12.267"
 
 [dependencies]
-zlib = { commitish = "25e1341" }
+zlib = { tag = "05d0b65-nanvix-3854291" }
 
 [system-dependencies]
