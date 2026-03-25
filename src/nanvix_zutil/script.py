@@ -24,8 +24,21 @@ from pathlib import Path
 
 from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import Config
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_INVALID_ARGS
+from nanvix_zutil.config import CFG_SYSROOT, Config
+from nanvix_zutil.docker import (
+    DEFAULT_DOCKER_IMAGE,
+    SYSROOT_CONTAINER_PATH,
+    WORKSPACE_CONTAINER_PATH,
+    DockerConfig,
+    Mount,
+    docker_available,
+    image_exists,
+)
+from nanvix_zutil.exitcodes import (
+    EXIT_BUILD_FAILURE,
+    EXIT_INVALID_ARGS,
+    EXIT_MISSING_DEP,
+)
 from nanvix_zutil.manifest import Manifest, load_manifest
 
 
@@ -88,6 +101,83 @@ class ZScript:
         self.config = Config(self.nanvix_dir)
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
+        self.docker: DockerConfig | None = None
+
+    # ------------------------------------------------------------------
+    # Docker hooks — override in subclass to customise
+    # ------------------------------------------------------------------
+
+    def docker_image(self) -> str:
+        """Return the default Docker image name for this build script.
+
+        Override in a subclass to change the default.  The value is only
+        used when ``--with-docker`` is passed; ``--docker-image`` and
+        ``--with-minimal-docker`` bypass this method.
+
+        Returns:
+            Docker image reference string.
+        """
+        return DEFAULT_DOCKER_IMAGE
+
+    def docker_config(self, image: str) -> DockerConfig:
+        """Build the :class:`~nanvix_zutil.DockerConfig` for *image*.
+
+        Constructs a standard configuration that mounts:
+
+        * :attr:`repo_root` → ``/mnt/workspace`` (writable, workdir)
+        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only)
+
+        Override in a subclass to add extra mounts or environment variables.
+
+        Args:
+            image: Docker image name to use.
+
+        Returns:
+            A fully populated :class:`~nanvix_zutil.DockerConfig`.
+        """
+        mounts: list[Mount] = [
+            Mount(
+                host_path=self.repo_root,
+                container_path=WORKSPACE_CONTAINER_PATH,
+                readonly=False,
+            ),
+        ]
+
+        sysroot_str = self.config.get(CFG_SYSROOT)
+        if sysroot_str:
+            mounts.append(
+                Mount(
+                    host_path=Path(sysroot_str),
+                    container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                )
+            )
+
+        return DockerConfig(
+            image=image,
+            mounts=mounts,
+            workdir=WORKSPACE_CONTAINER_PATH,
+        )
+
+    # ------------------------------------------------------------------
+    # Path translation helper
+    # ------------------------------------------------------------------
+
+    def translate_path(self, host_path: Path) -> Path:
+        """Translate *host_path* to its container equivalent if Docker is active.
+
+        When Docker mode is not active, returns *host_path* unchanged.
+
+        Args:
+            host_path: An absolute host-side path.
+
+        Returns:
+            Container-side :class:`~pathlib.Path` when Docker is active,
+            otherwise *host_path*.
+        """
+        if self.docker is not None:
+            return self.docker.translate_path(host_path)
+        return host_path
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass
@@ -139,15 +229,29 @@ class ZScript:
         *args: str,
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
+        docker: bool = True,
+        kvm: bool = False,
     ) -> "subprocess.CompletedProcess[str]":
         """Run a subprocess, logging the command before execution.
+
+        When Docker mode is active (i.e. a ``--with-docker``,
+        ``--with-minimal-docker``, or ``--docker-image`` flag was passed),
+        the command is transparently wrapped in ``docker run``.
 
         Args:
             *args: Command and arguments to execute.
             cwd: Working directory for the subprocess.  Defaults to
-                :attr:`repo_root`.
+                :attr:`repo_root`.  Ignored when Docker wrapping is active
+                (the container workdir is controlled by
+                :class:`~nanvix_zutil.DockerConfig`).
             env: Environment variables for the subprocess.  ``None`` inherits
                 the current process environment.
+            docker: When ``False``, always runs on the host even if Docker
+                mode is active.  Use this for commands that must run locally
+                (e.g. ``clean``).
+            kvm: When ``True`` and Docker is active, uses
+                :meth:`~nanvix_zutil.DockerConfig.build_kvm_run_cmd` to add
+                ``/dev/kvm`` access for functional tests.
 
         Returns:
             The completed process result.
@@ -156,11 +260,20 @@ class ZScript:
             SystemExit: With exit code ``5`` if the process exits with a
                 non-zero status.
         """
-        working_dir = cwd if cwd is not None else self.repo_root
-        log.info(f"$ {' '.join(args)}")
+        if self.docker is not None and docker:
+            if kvm:
+                cmd = self.docker.build_kvm_run_cmd(*args)
+            else:
+                cmd = self.docker.build_run_cmd(*args)
+            working_dir = self.repo_root
+        else:
+            cmd = list(args)
+            working_dir = cwd if cwd is not None else self.repo_root
+
+        log.info(f"$ {' '.join(cmd)}")
         try:
             result = subprocess.run(
-                list(args),
+                cmd,
                 cwd=working_dir,
                 env=env,
                 text=True,
@@ -212,6 +325,32 @@ class ZScript:
 
         instance = cls(repo_root)
         instance.targets = targets
+
+        # ------------------------------------------------------------------
+        # Resolve Docker image from CLI flags.
+        # ------------------------------------------------------------------
+        docker_image: str | None = None
+        if getattr(args, "docker_image", None):
+            docker_image = args.docker_image
+        elif getattr(args, "with_minimal_docker", False):
+            docker_image = DEFAULT_DOCKER_IMAGE
+        elif getattr(args, "with_docker", False):
+            docker_image = instance.docker_image()
+
+        if docker_image is not None:
+            if not docker_available():
+                log.fatal(
+                    "Docker is not available — install Docker or omit the"
+                    " --with-docker / --docker-image flag.",
+                    code=EXIT_MISSING_DEP,
+                )
+            if not image_exists(docker_image):
+                log.fatal(
+                    f"Docker image '{docker_image}' not found locally."
+                    f"  Pull it with: docker pull {docker_image}",
+                    code=EXIT_MISSING_DEP,
+                )
+            instance.docker = instance.docker_config(docker_image)
 
         subcommand: str | None = args.subcommand
 

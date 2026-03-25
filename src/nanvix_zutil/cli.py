@@ -85,6 +85,30 @@ def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
         version=f"%(prog)s (nanvix-zutil {_get_version()})",
     )
 
+    docker_group = parser.add_mutually_exclusive_group()
+    docker_group.add_argument(
+        "--with-docker",
+        action="store_true",
+        default=False,
+        dest="with_docker",
+        help="Run build/test commands inside the default Docker image"
+        f" (nanvix/toolchain:latest-minimal)",
+    )
+    docker_group.add_argument(
+        "--with-minimal-docker",
+        action="store_true",
+        default=False,
+        dest="with_minimal_docker",
+        help="Run build/test commands inside nanvix/toolchain:latest-minimal",
+    )
+    docker_group.add_argument(
+        "--docker-image",
+        metavar="IMAGE",
+        default=None,
+        dest="docker_image",
+        help="Run build/test commands inside the specified Docker image",
+    )
+
     subparsers = parser.add_subparsers(dest="subcommand")
 
     for name in SUBCOMMANDS:

@@ -46,7 +46,69 @@ Then invoke via the bootstrap wrapper at the repo root:
 ./z test
 ```
 
-## Examples
+## Docker Integration
+
+Consumer build scripts can run `build`, `test`, and other commands inside a
+Docker container by passing one of the three mutually exclusive Docker flags:
+
+| Flag | Image used |
+|---|---|
+| `--with-docker` | `nanvix/toolchain:latest-minimal` (via `docker_image()`) |
+| `--with-minimal-docker` | `nanvix/toolchain:latest-minimal` |
+| `--docker-image <name>` | Custom image |
+
+`setup()` always runs on the host (downloads sysroot/deps).  Every subsequent
+`self.run()` call is transparently wrapped in `docker run`.
+
+```bash
+./z setup                          # download sysroot on host
+./z build --with-docker            # cross-compile inside Docker
+./z test  --with-minimal-docker    # run tests inside Docker
+./z clean                          # clean (host)
+```
+
+### How it works
+
+`ZScript.run()` accepts two extra keyword arguments:
+
+* `docker=False` — opt out of Docker for a single command (e.g. `clean`)
+* `kvm=True` — add `/dev/kvm` for functional/VM tests
+
+The default `DockerConfig` mounts:
+
+* `repo_root` → `/mnt/workspace` (writable, default workdir)
+* sysroot path → `/mnt/sysroot` (read-only; writable in KVM mode)
+
+Use `self.translate_path(host_path)` to obtain the container-equivalent of any
+host path when Docker is active.
+
+### Customising Docker config
+
+Override `docker_image()` to change the default image, or override
+`docker_config(image)` to add extra mounts or environment variables:
+
+```python
+from nanvix_zutil import DockerConfig, Mount, ZScript
+from nanvix_zutil.docker import WORKSPACE_CONTAINER_PATH
+from pathlib import Path
+
+class MyBuild(ZScript):
+    def docker_image(self) -> str:
+        return "my-registry/nanvix-toolchain:v2"
+
+    def docker_config(self, image: str) -> DockerConfig:
+        cfg = super().docker_config(image)
+        cfg.mounts.append(
+            Mount(
+                host_path=self.nanvix_dir / "buildroot",
+                container_path=Path("/mnt/buildroot"),
+                readonly=True,
+            )
+        )
+        return cfg
+```
+
+
 
 - [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
   using `ZScript`.

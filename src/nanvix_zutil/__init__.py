@@ -13,6 +13,10 @@ Public re-exports:
 - :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
 - :func:`~nanvix_zutil.manifest.load_manifest` — parse nanvix.toml
 - :func:`~nanvix_zutil.github.find_release_tag` — find release tag by suffix
+- :class:`~nanvix_zutil.docker.DockerConfig` — Docker run configuration
+- :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
+- :func:`~nanvix_zutil.docker.docker_available` — check Docker CLI presence
+- :func:`~nanvix_zutil.docker.image_exists` — check local image availability
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
@@ -23,6 +27,16 @@ from nanvix_zutil.config import (
     CFG_TAG,
     CFG_TOOLCHAIN,
     Config,
+)
+from nanvix_zutil.docker import (
+    DEFAULT_DOCKER_IMAGE,
+    SYSROOT_CONTAINER_PATH,
+    TOOLCHAIN_CONTAINER_PATH,
+    WORKSPACE_CONTAINER_PATH,
+    DockerConfig,
+    Mount,
+    docker_available,
+    image_exists,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
@@ -45,7 +59,9 @@ __all__ = [
     "CFG_TAG",
     "CFG_TOOLCHAIN",
     "Config",
+    "DEFAULT_DOCKER_IMAGE",
     "Dependency",
+    "DockerConfig",
     "EXIT_BUILD_FAILURE",
     "EXIT_GENERAL_ERROR",
     "EXIT_INVALID_ARGS",
@@ -54,11 +70,17 @@ __all__ = [
     "EXIT_SUCCESS",
     "EXIT_TEST_FAILURE",
     "Manifest",
+    "Mount",
     "Ref",
     "RefKind",
+    "SYSROOT_CONTAINER_PATH",
+    "TOOLCHAIN_CONTAINER_PATH",
+    "WORKSPACE_CONTAINER_PATH",
     "Sysroot",
     "ZScript",
+    "docker_available",
     "find_release_tag",
+    "image_exists",
     "load_manifest",
     "resolve_release",
 ]
