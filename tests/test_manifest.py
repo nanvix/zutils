@@ -251,7 +251,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 2)
 
-    def test_latest_nanvix_version_exits_2(self) -> None:
+    def test_latest_nanvix_version_accepted(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
             "[package]\n"
@@ -260,10 +260,44 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
             'nanvix-version = "latest"\n'
         )
 
-        with self.assertRaises(SystemExit) as ctx:
-            load_manifest(path)
+        m = load_manifest(path)
 
-        self.assertEqual(ctx.exception.code, 2)
+        self.assertEqual(m.sysroot_ref.kind, RefKind.TAG)
+        self.assertEqual(m.sysroot_ref.value, "latest")
+
+    def test_latest_sysroot_skips_dep_suffix(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+
+        m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.value, "latest")
+        # Dep should NOT be suffixed — deferred to resolver
+        self.assertEqual(m.dependencies[0].ref.value, "1.3.1")
+
+    def test_latest_sysroot_env_override_suffixes_normally(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+
+        with patch.dict("os.environ", {"NANVIX_VERSION": "0.12.258"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.value, "0.12.258")
+        self.assertEqual(m.dependencies[0].ref.value, "1.3.1-nanvix-0.12.258")
 
     def test_nanvix_version_table_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"

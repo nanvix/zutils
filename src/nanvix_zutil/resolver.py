@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import github, log
-from nanvix_zutil.buildroot import Dependency
+from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -242,6 +242,19 @@ def _resolve_inner(
     )
     resolved["nanvix"] = sysroot_pkg
     releases["nanvix"] = sysroot_release
+
+    # Deferred auto-suffix: when sysroot is "latest", load_manifest()
+    # skips suffixing because the real version isn't known yet.  Now
+    # that the sysroot is resolved, extract the version from its tag
+    # and apply the suffix to VERSION deps.
+    if manifest.sysroot_ref.value == "latest":
+        resolved_version = tag.removeprefix("v")
+        for dep in [*manifest.dependencies, *manifest.system_dependencies]:
+            if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+                dep.ref = Ref(
+                    kind=dep.ref.kind,
+                    value=f"{dep.ref.value}-nanvix-{resolved_version}",
+                )
 
     # 2. Seed queue with direct deps
     queue: deque[_QueueItem] = deque()
