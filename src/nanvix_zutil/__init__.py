@@ -21,6 +21,11 @@ Public re-exports:
 - :func:`~nanvix_zutil.lockfile.read_lockfile` — parse lockfile from TOML
 - :func:`~nanvix_zutil.resolver.resolve` — resolve manifest to lockfile
 - :func:`~nanvix_zutil.resolver.is_stale` — check lockfile staleness
+- :class:`~nanvix_zutil.docker.DockerConfig` — Docker run configuration
+- :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
+- :func:`~nanvix_zutil.docker.docker_available` — check Docker CLI presence
+- :func:`~nanvix_zutil.docker.image_exists` — check local image availability
+- ``BUILDROOT_CONTAINER_PATH``, ``SYSROOT_CONTAINER_PATH``, ``WORKSPACE_CONTAINER_PATH``, ``TOOLCHAIN_CONTAINER_PATH`` — well-known container paths
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
@@ -31,6 +36,17 @@ from nanvix_zutil.config import (
     CFG_TAG,
     CFG_TOOLCHAIN,
     Config,
+)
+from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
+    DEFAULT_DOCKER_IMAGE,
+    SYSROOT_CONTAINER_PATH,
+    TOOLCHAIN_CONTAINER_PATH,
+    WORKSPACE_CONTAINER_PATH,
+    DockerConfig,
+    Mount,
+    docker_available,
+    image_exists,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
@@ -57,12 +73,15 @@ from nanvix_zutil.sysroot import Sysroot
 
 __all__ = [
     "Buildroot",
+    "BUILDROOT_CONTAINER_PATH",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",
     "CFG_TAG",
     "CFG_TOOLCHAIN",
     "Config",
+    "DEFAULT_DOCKER_IMAGE",
     "Dependency",
+    "DockerConfig",
     "EXIT_BUILD_FAILURE",
     "EXIT_GENERAL_ERROR",
     "EXIT_INVALID_ARGS",
@@ -73,13 +92,19 @@ __all__ = [
     "Lockfile",
     "LockfileMetadata",
     "Manifest",
+    "Mount",
     "Ref",
     "RefKind",
     "ResolvedAsset",
     "ResolvedPackage",
+    "SYSROOT_CONTAINER_PATH",
+    "TOOLCHAIN_CONTAINER_PATH",
+    "WORKSPACE_CONTAINER_PATH",
     "Sysroot",
     "ZScript",
+    "docker_available",
     "find_release_tag",
+    "image_exists",
     "is_stale",
     "load_manifest",
     "read_lockfile",
