@@ -248,7 +248,7 @@ jobs:
             --latest \
             release-assets/*.tar.bz2
 
-      # CUSTOMIZE: trigger downstream repos after successful release (only real customization needed)
+      # CUSTOMIZE: trigger downstream repos after successful release
       # - name: Trigger dependent workflows
       #   if: success()
       #   env:

@@ -15,10 +15,8 @@ $ErrorActionPreference = "Stop"
 $MIN_MAJOR = 3
 $MIN_MINOR = 12
 
-# nanvix-zutil release to install in the project venv.
-$ZUTIL_TAG = "v0.2.2"
+# nanvix-zutil release base URL.
 $ZUTIL_RELEASE_BASE = "https://github.com/nanvix/zutils/releases/download"
-$ZUTIL_HASH = "sha256:0161a19853cc91d4f42f7bac3328c58e6abe2e530a6b05ea1799f91074ac0579"
 
 function Find-Python {
     # Prefer version-suffixed interpreters (e.g., python3.12, python3.13) first,
@@ -102,6 +100,42 @@ if (-not (Test-Path $venvPython)) {
         Write-Host "bootstrap: installing nanvix-zutil (editable) …" -ForegroundColor Cyan
         & $venvPython -m pip install -q -e $zutilPath
     } else {
+        # Resolve the latest nanvix-zutil release tag and wheel hash from
+        # the GitHub Releases API.  The SHA-256 hash is embedded in the
+        # release notes, so no extra network call is needed.
+        Write-Host "bootstrap: resolving latest nanvix-zutil release …" -ForegroundColor Cyan
+        $releaseScript = @'
+import json, os, re, sys, urllib.request
+try:
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GH_TOKEN", "")
+    if token:
+        headers["Authorization"] = "token " + token
+    req = urllib.request.Request(
+        "https://api.github.com/repos/nanvix/zutils/releases/latest",
+        headers=headers,
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    tag = data["tag_name"]
+    body = data.get("body", "")
+    m = re.search(r"sha256:([a-fA-F0-9]{64})", body)
+    if not m:
+        sys.exit(1)
+    print(tag + " sha256:" + m.group(1).lower())
+except Exception as e:
+    print("error: " + str(e), file=sys.stderr)
+    sys.exit(1)
+'@
+        $zutilReleaseInfo = & $python -c $releaseScript 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $zutilReleaseInfo) {
+            Write-Warning "error: failed to resolve latest nanvix-zutil release."
+            Write-Host "hint:  Set GH_TOKEN or NANVIX_ZUTIL_PATH to install manually." -ForegroundColor Yellow
+            exit 4
+        }
+        $parts = $zutilReleaseInfo.Trim().Split(" ")
+        $ZUTIL_TAG = $parts[0]
+        $ZUTIL_HASH = $parts[1]
         $version = $ZUTIL_TAG.TrimStart("v").Replace("-", "")
         $whlName = "nanvix_zutil-${version}-py3-none-any.whl"
         $whlUrl = "${ZUTIL_RELEASE_BASE}/${ZUTIL_TAG}/${whlName}"
