@@ -15,7 +15,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from pathlib import Path
 from typing import cast
 
@@ -246,15 +246,27 @@ def _resolve_inner(
     # Deferred auto-suffix: when sysroot is "latest", load_manifest()
     # skips suffixing because the real version isn't known yet.  Now
     # that the sysroot is resolved, extract the version from its tag
-    # and apply the suffix to VERSION deps.
+    # and apply the suffix to VERSION deps.  We build a shallow copy
+    # so the caller's Manifest is never mutated.
     if manifest.sysroot_ref.value == "latest":
         resolved_version = tag.removeprefix("v")
-        for dep in [*manifest.dependencies, *manifest.system_dependencies]:
+
+        def _suffix(dep: Dependency) -> Dependency:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
-                dep.ref = Ref(
-                    kind=dep.ref.kind,
-                    value=f"{dep.ref.value}-nanvix-{resolved_version}",
+                return _dc_replace(
+                    dep,
+                    ref=Ref(
+                        kind=dep.ref.kind,
+                        value=f"{dep.ref.value}-nanvix-{resolved_version}",
+                    ),
                 )
+            return dep
+
+        manifest = _dc_replace(
+            manifest,
+            dependencies=[_suffix(d) for d in manifest.dependencies],
+            system_dependencies=[_suffix(d) for d in manifest.system_dependencies],
+        )
 
     # 2. Seed queue with direct deps
     queue: deque[_QueueItem] = deque()

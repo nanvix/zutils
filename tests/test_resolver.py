@@ -39,12 +39,13 @@ def _make_release(
 def _make_manifest(
     deps: list[Dependency] | None = None,
     sys_deps: list[Dependency] | None = None,
+    sysroot_ref: Ref | None = None,
 ) -> Manifest:
     """Build a Manifest with the given dependencies."""
     return Manifest(
         name="test",
         version="0.1.0",
-        sysroot_ref=Ref(kind=RefKind.TAG, value="0.1.0"),
+        sysroot_ref=sysroot_ref or Ref(kind=RefKind.TAG, value="0.1.0"),
         dependencies=deps or [],
         system_dependencies=sys_deps or [],
     )
@@ -577,9 +578,8 @@ class TestResolveLatestSysroot(unittest.TestCase):
                     ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
                 )
             ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
         )
-        # Set sysroot to "latest" (simulates load_manifest output)
-        manifest.sysroot_ref = Ref(kind=RefKind.TAG, value="latest")
 
         lockfile = resolve(
             manifest,

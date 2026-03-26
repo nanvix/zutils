@@ -125,6 +125,7 @@ def _parse_nanvix_version(raw: object, path: Path) -> Ref:
             " 'nanvix-version = \"latest\"'.",
         )
     if raw == "latest":
+        # "latest" is a supported first-class sysroot specifier; no warning needed.
         return Ref(kind=RefKind.TAG, value="latest")
     if not SEMVER_RE.match(raw):
         log.fatal(
