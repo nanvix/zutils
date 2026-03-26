@@ -55,6 +55,13 @@ class TestZScriptInit(unittest.TestCase):
         script = ZScript(Path(self._tmpdir.name))
         self.assertIsNone(script.buildroot)
 
+    def test_log_attribute_is_log_module(self) -> None:
+        """self.log refers to the nanvix_zutil.log module."""
+        import nanvix_zutil.log as log_module
+
+        script = ZScript(Path(self._tmpdir.name))
+        self.assertIs(script.log, log_module)
+
     def test_missing_manifest_exits_3(self) -> None:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
@@ -247,6 +254,22 @@ class TestZScriptDistclean(unittest.TestCase):
     def test_distclean_noop_when_nothing_exists(self) -> None:
         """distclean() does not raise when artifact dirs are absent."""
         self._make_script().distclean()
+
+    def test_distclean_removes_file_artifact(self) -> None:
+        """distclean() removes a regular file if an artifact path is a file."""
+        sysroot_file = self._nanvix() / "sysroot"
+        sysroot_file.write_text("not a directory")
+        self._make_script().distclean()
+        self.assertFalse(sysroot_file.exists())
+
+    def test_distclean_removes_symlink_artifact(self) -> None:
+        """distclean() removes a symlink if an artifact path is a symlink."""
+        target = self._nanvix() / "real_sysroot"
+        target.mkdir()
+        link = self._nanvix() / "sysroot"
+        link.symlink_to(target)
+        self._make_script().distclean()
+        self.assertFalse(link.exists())
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):

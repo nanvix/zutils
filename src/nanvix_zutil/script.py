@@ -19,7 +19,6 @@ hooks they need, and call ``ZScript.main()`` as the entry point::
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
 import shutil
 import subprocess
 import sys
@@ -30,21 +29,10 @@ from nanvix_zutil.buildroot import Buildroot
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_INVALID_ARGS
+from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
-
-
-def _get_version() -> str:
-    """Return the installed ``nanvix-zutil`` version string.
-
-    Returns:
-        Version string (e.g. ``"0.1.0"``), or ``"unknown"`` if the package
-        metadata is unavailable.
-    """
-    try:
-        return importlib.metadata.version("nanvix-zutil")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
 
 
 class ZScript:
@@ -54,10 +42,10 @@ class ZScript:
     structured logging.  Consumers subclass this and implement the lifecycle
     hooks they need.
 
-    The :meth:`setup` and :meth:`distclean` hooks are *auto-implemented* in
-    the base class and are always available in the CLI.  The remaining hooks
-    (``build``, ``test``, ``benchmark``, ``release``, ``clean``) only appear
-    in the help menu when the subclass overrides them.
+    The :meth:`setup`, :meth:`distclean`, and :meth:`lock` hooks are
+    *auto-implemented* in the base class and are always available in the CLI.
+    The remaining hooks (``build``, ``test``, ``benchmark``, ``release``,
+    ``clean``) only appear in the help menu when the subclass overrides them.
 
     Attributes:
         SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot
@@ -67,6 +55,8 @@ class ZScript:
             multi-process deployments (``linuxd.elf``, ``uservm.elf``).
         config: Persistent build configuration loaded from
             ``.nanvix/env.json`` and environment variables.
+        log: The :mod:`nanvix_zutil.log` module, accessible as ``self.log``
+            for structured logging in lifecycle hooks.
         repo_root: Absolute path to the consumer repository root.
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
         targets: Arguments passed after ``--`` on the command line.
@@ -93,7 +83,7 @@ class ZScript:
 
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
-    AUTO_HOOKS: tuple[str, ...] = ("setup", "distclean", "help")
+    AUTO_HOOKS: tuple[str, ...] = ("setup", "distclean", "lock", "help")
 
     #: Consumer-defined hooks that appear in the CLI only when the
     #: subclass overrides the corresponding method.
@@ -127,6 +117,7 @@ class ZScript:
         self.repo_root = repo_root.resolve()
         self.nanvix_dir = self.repo_root / ".nanvix"
         self.config = Config(self.nanvix_dir)
+        self.log = log
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
         self.sysroot: Sysroot | None = None
@@ -206,9 +197,47 @@ class ZScript:
         """
         for artifact in ("sysroot", "buildroot", "cache"):
             path = self.nanvix_dir / artifact
-            if path.exists():
+            if not path.exists():
+                continue
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+                log.info(f"Removed {path}")
+            elif path.is_dir():
                 shutil.rmtree(path)
                 log.info(f"Removed {path}")
+
+    def lock(self, *, shallow: bool = False) -> None:
+        """Resolve the dependency graph and write ``nanvix.lock``.
+
+        Args:
+            shallow: When ``True``, resolve only direct dependencies
+                (skip transitive discovery).
+        """
+        lockfile = resolve(
+            self.manifest,
+            gh_token=self.config.get(CFG_GH_TOKEN),
+            shallow=shallow,
+            manifest_path=self.nanvix_dir / "nanvix.toml",
+        )
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        write_lockfile(lockfile, lock_path)
+        log.success(f"Wrote {lock_path}")
+
+    def lock_check(self) -> None:
+        """Verify that ``nanvix.lock`` is up-to-date.
+
+        Exits with ``EXIT_MISSING_DEP`` if the lockfile does not exist, or
+        ``EXIT_INVALID_ARGS`` if it is stale relative to ``nanvix.toml``.
+        """
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        manifest_path = self.nanvix_dir / "nanvix.toml"
+        lockfile = read_lockfile(lock_path)
+        if is_stale(lockfile, manifest_path):
+            log.fatal(
+                "Lockfile is stale — nanvix.toml has changed since it was generated.",
+                code=EXIT_INVALID_ARGS,
+                hint="Run `./z lock` to regenerate the lockfile.",
+            )
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass
@@ -320,7 +349,7 @@ class ZScript:
         pre_parser.add_argument(
             "--version",
             action="version",
-            version=f"./z (nanvix-zutil {_get_version()})",
+            version=f"./z (nanvix-zutil {get_zutil_version()})",
         )
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
 
@@ -360,6 +389,15 @@ class ZScript:
         args = parser.parse_args(framework_argv)
 
         subcommand: str | None = args.subcommand
+
+        # Special handling for lock subcommand (--check, --shallow flags).
+        if subcommand == "lock":
+            if args.check:
+                instance.lock_check()
+                log.success("Lockfile is up-to-date")
+            else:
+                instance.lock(shallow=args.shallow)
+            return
 
         dispatch: dict[str, object] = {
             "setup": instance.setup,

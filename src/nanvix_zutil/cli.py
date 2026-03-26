@@ -11,25 +11,8 @@ Consumer scripts do not construct the parser directly; they call
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
 
-# ---------------------------------------------------------------------------
-# Version helper
-# ---------------------------------------------------------------------------
-
-
-def _get_version() -> str:
-    """Return the installed ``nanvix-zutil`` version string.
-
-    Returns:
-        Version string (e.g. ``"0.1.0"``), or ``"unknown"`` if the package
-        metadata is unavailable.
-    """
-    try:
-        return importlib.metadata.version("nanvix-zutil")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
-
+from nanvix_zutil.lockfile import get_zutil_version
 
 # ---------------------------------------------------------------------------
 # Parser factory
@@ -44,6 +27,7 @@ SUBCOMMANDS: tuple[str, ...] = (
     "benchmark",
     "release",
     "clean",
+    "lock",
     "help",
 )
 
@@ -56,6 +40,7 @@ _SUBCOMMAND_HELP: dict[str, str] = {
     "benchmark": "Run benchmarks",
     "release": "Package a release",
     "clean": "Remove build artifacts",
+    "lock": "Resolve dependencies and write nanvix.lock",
     "help": "Show help message",
 }
 
@@ -90,7 +75,7 @@ def build_parser(
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s (nanvix-zutil {_get_version()})",
+        version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -117,7 +102,22 @@ def build_parser(
                 seen.add(name)
                 deduped.append(name)
         cmds = tuple(deduped)
+
     for name in cmds:
-        subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
+        sub = subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
+        if name == "lock":
+            lock_group = sub.add_mutually_exclusive_group()
+            lock_group.add_argument(
+                "--check",
+                action="store_true",
+                default=False,
+                help="Verify that nanvix.lock is up-to-date (exit 3 if missing, 2 if stale)",
+            )
+            lock_group.add_argument(
+                "--shallow",
+                action="store_true",
+                default=False,
+                help="Resolve only direct dependencies (skip transitive discovery)",
+            )
 
     return parser

@@ -5,7 +5,8 @@ Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix)
 `nanvix_zutil` is a Python 3.12+ library that provides a unified `ZScript`
 base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`,
 `release`, `clean`), structured logging, config persistence, GitHub release
-artifact downloading, and deterministic exit codes.
+artifact downloading, lockfile-based dependency resolution, and deterministic
+exit codes.
 
 ## Installation
 
@@ -41,9 +42,23 @@ if __name__ == "__main__":
 Then invoke via the bootstrap wrapper at the repo root:
 
 ```bash
+./z lock
 ./z setup
 ./z build
 ./z test
+```
+
+### Lockfile
+
+`./z lock` resolves the full dependency graph (including transitive
+dependencies) and writes a pinned `nanvix.lock` file to `.nanvix/`.
+Use `--check` in CI to verify the lockfile is up-to-date, or `--shallow`
+to resolve only direct dependencies (for publishing as a release asset).
+
+```bash
+./z lock              # resolve all deps and write nanvix.lock
+./z lock --check      # verify lockfile is fresh (exit 3 if missing, 2 if stale)
+./z lock --shallow    # resolve direct deps only (for CI release assets)
 ```
 
 ## Examples
@@ -52,6 +67,8 @@ Then invoke via the bootstrap wrapper at the repo root:
   using `ZScript`.
 - [`examples/hello-zlib/`](examples/hello-zlib/) — downloads zlib via
   `nanvix.toml` and cross-compiles a program that uses it.
+- [`examples/hello-transitive/`](examples/hello-transitive/) — demonstrates
+  transitive dependency resolution via the lockfile system.
 
 ## Developer Setup
 
