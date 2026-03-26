@@ -39,8 +39,8 @@ hello-zlib/
 ## How It Works
 
 1. `./z setup` parses `.nanvix/nanvix.toml`, which declares:
-   - `nanvix-version = "0.12.257"` — the Nanvix sysroot (downloaded via `Sysroot.download()`)
-   - `zlib = { commitish = "25e1341" }` — the zlib library (downloaded via `Buildroot.install_dep()`)
+   - `nanvix-version = "0.12.267"` — the Nanvix sysroot (downloaded via `Sysroot.download()`)
+   - `zlib = { tag = "05d0b65-nanvix-3854291" }` — the zlib library (downloaded via `Buildroot.install_dep()`)
 
 2. `./z build` cross-compiles `src/hello-zlib.c` with `-I .nanvix/buildroot/include`
    and links against `.nanvix/buildroot/lib/libz.a`.

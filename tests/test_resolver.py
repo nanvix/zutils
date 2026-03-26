@@ -1,0 +1,589 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+"""Tests for nanvix_zutil.resolver."""
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import nanvix_zutil.log as log_mod
+from nanvix_zutil.buildroot import Dependency, Ref, RefKind
+from nanvix_zutil.lockfile import (
+    Lockfile,
+    LockfileMetadata,
+    ResolvedPackage,
+)
+from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.resolver import is_stale, resolve
+
+
+def _make_release(
+    tag: str = "v0.1.0",
+    commitish: str = "aaa111",
+    release_id: int = 100,
+    assets: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Build a fake GitHub release dict."""
+    if assets is None:
+        assets = []
+    return {
+        "tag_name": tag,
+        "target_commitish": commitish,
+        "id": release_id,
+        "assets": assets,
+    }
+
+
+def _make_manifest(
+    deps: list[Dependency] | None = None,
+    sys_deps: list[Dependency] | None = None,
+) -> Manifest:
+    """Build a Manifest with the given dependencies."""
+    return Manifest(
+        name="test",
+        version="0.1.0",
+        sysroot_ref=Ref(kind=RefKind.TAG, value="0.1.0"),
+        dependencies=deps or [],
+        system_dependencies=sys_deps or [],
+    )
+
+
+def _tar_asset(name: str) -> dict[str, object]:
+    """Build a fake .tar.bz2 asset entry."""
+    return {
+        "name": name,
+        "browser_download_url": f"https://example.com/{name}",
+    }
+
+
+def _lockfile_asset() -> dict[str, object]:
+    """Build a fake nanvix.lock asset entry."""
+    return {
+        "name": "nanvix.lock",
+        "browser_download_url": "https://example.com/nanvix.lock",
+    }
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestResolveSysrootOnly(unittest.TestCase):
+    """Resolver with no dependencies (sysroot only)."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n' 'nanvix-version = "0.1.0"\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_sysroot_only(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(
+            tag="v0.1.0",
+            commitish="aaa111",
+            release_id=100,
+            assets=[
+                _tar_asset(
+                    "nanvix-hyperlight-multi-process-release-128mb-aaa111.tar.bz2"
+                )
+            ],
+        )
+        mock_resolve.return_value = sysroot_release
+        mock_download.return_value = None
+
+        manifest = _make_manifest()
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        self.assertEqual(len(lockfile.packages), 1)
+        self.assertEqual(lockfile.packages[0].name, "nanvix")
+        self.assertEqual(lockfile.packages[0].kind, "sysroot")
+        self.assertEqual(len(lockfile.packages[0].assets), 1)
+        self.assertTrue(lockfile.metadata.manifest_hash.startswith("sha256:"))
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestResolveDirectDep(unittest.TestCase):
+    """Resolver with one direct dependency."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            "[dependencies]\n"
+            'zlib = { tag = "v1.0.0" }\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_one_direct_dep(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(tag="v0.1.0", release_id=100)
+        zlib_release = _make_release(
+            tag="v1.0.0",
+            commitish="bbb222",
+            release_id=200,
+            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+        )
+        mock_resolve.side_effect = [sysroot_release, zlib_release]
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                )
+            ]
+        )
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        self.assertEqual(len(lockfile.packages), 2)
+        names = [p.name for p in lockfile.packages]
+        self.assertIn("nanvix", names)
+        self.assertIn("zlib", names)
+
+        zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
+        self.assertEqual(zlib_pkg.kind, "dependency")
+        self.assertFalse(zlib_pkg.transitive)
+        self.assertEqual(len(zlib_pkg.assets), 1)
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestResolveTransitive(unittest.TestCase):
+    """Resolver discovers transitive deps from a dep's lockfile asset."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            "[dependencies]\n"
+            'libfoo = { tag = "v1.0.0" }\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_transitive_discovery(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(tag="v0.1.0", release_id=100)
+        libfoo_release = _make_release(
+            tag="v1.0.0",
+            commitish="ccc333",
+            release_id=300,
+            assets=[
+                _tar_asset("libfoo-hyperlight-multi-process-128mb.tar.bz2"),
+                _lockfile_asset(),
+            ],
+        )
+        zlib_release = _make_release(
+            tag="v2.0.0",
+            commitish="ddd444",
+            release_id=400,
+            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+        )
+
+        mock_resolve.side_effect = [sysroot_release, libfoo_release, zlib_release]
+
+        # libfoo's lockfile lists zlib as a dependency
+        inner_lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:inner",
+                nanvix_zutil_version="0.2.2",
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    kind="dependency",
+                    ref=Ref(kind=RefKind.TAG, value="v2.0.0"),
+                    resolved_tag="v2.0.0",
+                    resolved_commitish="ddd444",
+                    release_id=400,
+                ),
+            ],
+        )
+        # First call (for libfoo) returns inner lockfile,
+        # second call (for zlib) returns None (leaf)
+        mock_download.side_effect = [inner_lockfile, None]
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="libfoo",
+                    repo="nanvix/libfoo",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                )
+            ]
+        )
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        self.assertEqual(len(lockfile.packages), 3)
+        names = [p.name for p in lockfile.packages]
+        self.assertIn("zlib", names)
+
+        zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
+        self.assertTrue(zlib_pkg.transitive)
+        self.assertIn("libfoo", zlib_pkg.required_by)
+
+        libfoo_pkg = next(p for p in lockfile.packages if p.name == "libfoo")
+        self.assertIn("zlib", libfoo_pkg.dependencies)
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestResolveShallow(unittest.TestCase):
+    """shallow=True does not download lockfile assets."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            "[dependencies]\n"
+            'libfoo = { tag = "v1.0.0" }\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_shallow_skips_transitive(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(tag="v0.1.0", release_id=100)
+        libfoo_release = _make_release(tag="v1.0.0", commitish="ccc333", release_id=300)
+        mock_resolve.side_effect = [sysroot_release, libfoo_release]
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="libfoo",
+                    repo="nanvix/libfoo",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                )
+            ]
+        )
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            shallow=True,
+            manifest_path=self._manifest_path,
+        )
+
+        # download_lockfile_asset should NOT be called
+        mock_download.assert_not_called()
+        # Only sysroot + direct dep
+        self.assertEqual(len(lockfile.packages), 2)
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestCycleDetection(unittest.TestCase):
+    """Resolver detects and rejects dependency cycles."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            "[dependencies]\n"
+            'liba = { tag = "v1.0.0" }\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_cycle_detected(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(tag="v0.1.0", release_id=100)
+        liba_release = _make_release(tag="v1.0.0", commitish="aaa", release_id=200)
+        libb_release = _make_release(tag="v1.0.0", commitish="bbb", release_id=300)
+
+        mock_resolve.side_effect = [sysroot_release, liba_release, libb_release]
+
+        # liba depends on libb
+        liba_lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:a", nanvix_zutil_version="0.2.2"
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="libb",
+                    repo="nanvix/libb",
+                    kind="dependency",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                    resolved_tag="v1.0.0",
+                    resolved_commitish="bbb",
+                    release_id=300,
+                ),
+            ],
+        )
+        # libb depends on liba → cycle
+        libb_lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:b", nanvix_zutil_version="0.2.2"
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="liba",
+                    repo="nanvix/liba",
+                    kind="dependency",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                    resolved_tag="v1.0.0",
+                    resolved_commitish="aaa",
+                    release_id=200,
+                ),
+            ],
+        )
+        mock_download.side_effect = [liba_lockfile, libb_lockfile]
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="liba",
+                    repo="nanvix/liba",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                )
+            ]
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            resolve(
+                manifest,
+                cache_dir=Path(self._tmpdir.name) / "cache",
+                manifest_path=self._manifest_path,
+            )
+        self.assertEqual(ctx.exception.code, 2)
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestVersionConflict(unittest.TestCase):
+    """Resolver detects version conflicts."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            "[dependencies]\n"
+            'libfoo = { tag = "v1.0.0" }\n'
+            'zlib = { tag = "v1.0.0" }\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_conflict_exits_2(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(tag="v0.1.0", release_id=100)
+        zlib_release = _make_release(tag="v1.0.0", commitish="aaa", release_id=200)
+        libfoo_release = _make_release(tag="v1.0.0", commitish="bbb", release_id=300)
+
+        mock_resolve.side_effect = [
+            sysroot_release,
+            zlib_release,
+            libfoo_release,
+        ]
+
+        # libfoo's lockfile lists zlib at a DIFFERENT version
+        inner_lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:inner", nanvix_zutil_version="0.2.2"
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    kind="dependency",
+                    ref=Ref(kind=RefKind.TAG, value="v2.0.0"),
+                    resolved_tag="v2.0.0",
+                    resolved_commitish="ccc",
+                    release_id=999,
+                ),
+            ],
+        )
+        mock_download.side_effect = [None, inner_lockfile]
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                ),
+                Dependency(
+                    name="libfoo",
+                    repo="nanvix/libfoo",
+                    ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+                ),
+            ]
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            resolve(
+                manifest,
+                cache_dir=Path(self._tmpdir.name) / "cache",
+                manifest_path=self._manifest_path,
+            )
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestIsStale(unittest.TestCase):
+    """is_stale() returns correct results."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_not_stale(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text('[package]\nname = "test"\n')
+
+        from nanvix_zutil.lockfile import compute_manifest_hash
+
+        h = compute_manifest_hash(path)
+        lockfile = Lockfile(
+            metadata=LockfileMetadata(manifest_hash=h, nanvix_zutil_version="0.2.2"),
+        )
+        self.assertFalse(is_stale(lockfile, path))
+
+    def test_stale(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text('[package]\nname = "test"\n')
+
+        lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:old", nanvix_zutil_version="0.2.2"
+            ),
+        )
+        self.assertTrue(is_stale(lockfile, path))
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestAssetFiltering(unittest.TestCase):
+    """Resolver filters out non-.tar.bz2 assets and nanvix.lock."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n' 'nanvix-version = "0.1.0"\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_filters_non_tar_bz2(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(
+            tag="v0.1.0",
+            release_id=100,
+            assets=[
+                _tar_asset("nanvix-hyperlight-multi-process-release-128mb.tar.bz2"),
+                _lockfile_asset(),
+                {
+                    "name": "source.tar.gz",
+                    "browser_download_url": "https://example.com/source.tar.gz",
+                },
+                {
+                    "name": "source.zip",
+                    "browser_download_url": "https://example.com/source.zip",
+                },
+            ],
+        )
+        mock_resolve.return_value = sysroot_release
+        mock_download.return_value = None
+
+        manifest = _make_manifest()
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        sysroot_pkg = lockfile.packages[0]
+        self.assertEqual(len(sysroot_pkg.assets), 1)
+        self.assertTrue(sysroot_pkg.assets[0].name.endswith(".tar.bz2"))
+
+
+if __name__ == "__main__":
+    unittest.main()
