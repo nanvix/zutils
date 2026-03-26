@@ -257,7 +257,7 @@ def _resolve_inner(
         if dep.name in resolved:
             # Version conflict detection: same name, different release
             existing = resolved[dep.name]
-            if existing.ref.value != dep.ref.value:
+            if (existing.ref.kind, existing.ref.value) != (dep.ref.kind, dep.ref.value):
                 requesters = [item.required_by] if item.required_by else ["manifest"]
                 existing_requesters = (
                     existing.required_by if existing.required_by else ["manifest"]
@@ -299,7 +299,7 @@ def _resolve_inner(
         # Discover transitive deps (unless shallow)
         if not shallow:
             inner_lock = download_lockfile_asset(
-                dep_release, cache_dir, gh_token=gh_token
+                dep_release, cache_dir, gh_token=gh_token, dep_name=dep.name
             )
             if inner_lock is not None:
                 for trans_pkg in inner_lock.packages:
@@ -321,7 +321,10 @@ def _resolve_inner(
                     else:
                         # Already resolved — check for version conflicts
                         existing = resolved[trans_pkg.name]
-                        if existing.ref.value != trans_pkg.ref.value:
+                        if (existing.ref.kind, existing.ref.value) != (
+                            trans_pkg.ref.kind,
+                            trans_pkg.ref.value,
+                        ):
                             existing_requesters = (
                                 existing.required_by
                                 if existing.required_by
@@ -331,7 +334,7 @@ def _resolve_inner(
                                 f"Version conflict for '{trans_pkg.name}': "
                                 f"{', '.join(existing_requesters)} require "
                                 f"'{existing.ref.value}' but "
-                                f"{dep.name} require "
+                                f"{dep.name} requires "
                                 f"'{trans_pkg.ref.value}'",
                                 code=EXIT_INVALID_ARGS,
                                 hint="Resolve the conflict by pinning "
