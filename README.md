@@ -5,7 +5,8 @@ Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix)
 `nanvix_zutil` is a Python 3.12+ library that provides a unified `ZScript`
 base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`,
 `release`, `clean`), structured logging, config persistence, GitHub release
-artifact downloading, and deterministic exit codes.
+artifact downloading, lockfile-based dependency resolution, and deterministic
+exit codes.
 
 ## Installation
 
@@ -41,9 +42,23 @@ if __name__ == "__main__":
 Then invoke via the bootstrap wrapper at the repo root:
 
 ```bash
+./z lock
 ./z setup
 ./z build
 ./z test
+```
+
+### Lockfile
+
+`./z lock` resolves the full dependency graph (including transitive
+dependencies) and writes a pinned `nanvix.lock` file to `.nanvix/`.
+Use `--check` in CI to verify the lockfile is up-to-date, or `--shallow`
+to resolve only direct dependencies (for publishing as a release asset).
+
+```bash
+./z lock              # resolve all deps and write nanvix.lock
+./z lock --check      # verify lockfile is fresh (exit 3 if missing, 2 if stale)
+./z lock --shallow    # resolve direct deps only (for CI release assets)
 ```
 
 ## Docker Integration
@@ -53,7 +68,7 @@ Docker container by passing one of the three mutually exclusive Docker flags:
 
 | Flag | Image used |
 |---|---|
-| `--with-docker` | `nanvix/toolchain:latest-minimal` (via `docker_image()`) |
+| `--with-docker` | `docker_image()` (defaults to `nanvix/toolchain:latest-minimal`) |
 | `--with-minimal-docker` | `nanvix/toolchain:latest-minimal` |
 | `--docker-image <name>` | Custom image |
 
@@ -78,6 +93,7 @@ The default `DockerConfig` mounts:
 
 * `repo_root` → `/mnt/workspace` (writable, default workdir)
 * sysroot path → `/mnt/sysroot` (read-only; writable in KVM mode)
+* `.nanvix/buildroot` → `/mnt/buildroot` (read-only; auto-added when present)
 
 Use `self.translate_path(host_path)` to obtain the container-equivalent of any
 host path when Docker is active.
@@ -89,7 +105,6 @@ Override `docker_image()` to change the default image, or override
 
 ```python
 from nanvix_zutil import DockerConfig, Mount, ZScript
-from nanvix_zutil.docker import WORKSPACE_CONTAINER_PATH
 from pathlib import Path
 
 class MyBuild(ZScript):
@@ -98,22 +113,18 @@ class MyBuild(ZScript):
 
     def docker_config(self, image: str) -> DockerConfig:
         cfg = super().docker_config(image)
-        cfg.mounts.append(
-            Mount(
-                host_path=self.nanvix_dir / "buildroot",
-                container_path=Path("/mnt/buildroot"),
-                readonly=True,
-            )
-        )
+        cfg.extra_env["MY_VAR"] = "value"
         return cfg
 ```
 
-
+## Examples
 
 - [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
   using `ZScript`.
 - [`examples/hello-zlib/`](examples/hello-zlib/) — downloads zlib via
   `nanvix.toml` and cross-compiles a program that uses it.
+- [`examples/hello-transitive/`](examples/hello-transitive/) — demonstrates
+  transitive dependency resolution via the lockfile system.
 
 ## Developer Setup
 

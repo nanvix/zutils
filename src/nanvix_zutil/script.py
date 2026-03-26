@@ -18,13 +18,14 @@ hooks they need, and call ``ZScript.main()`` as the entry point::
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 import sys
 from pathlib import Path
 
 from nanvix_zutil import log
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import CFG_SYSROOT, Config
+from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
@@ -40,7 +41,9 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.lockfile import read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.resolver import is_stale, resolve
 
 
 class ZScript:
@@ -234,6 +237,39 @@ class ZScript:
         Override to clean generated files.
         """
 
+    def lock(self, *, shallow: bool = False) -> None:
+        """Resolve the dependency graph and write ``nanvix.lock``.
+
+        Args:
+            shallow: When ``True``, resolve only direct dependencies
+                (skip transitive discovery).
+        """
+        lockfile = resolve(
+            self.manifest,
+            gh_token=self.config.get(CFG_GH_TOKEN),
+            shallow=shallow,
+            manifest_path=self.nanvix_dir / "nanvix.toml",
+        )
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        write_lockfile(lockfile, lock_path)
+        log.success(f"Wrote {lock_path}")
+
+    def lock_check(self) -> None:
+        """Verify that ``nanvix.lock`` is up-to-date.
+
+        Exits with ``EXIT_MISSING_DEP`` if the lockfile does not exist, or
+        ``EXIT_INVALID_ARGS`` if it is stale relative to ``nanvix.toml``.
+        """
+        lock_path = self.nanvix_dir / "nanvix.lock"
+        manifest_path = self.nanvix_dir / "nanvix.toml"
+        lockfile = read_lockfile(lock_path)
+        if is_stale(lockfile, manifest_path):
+            log.fatal(
+                "Lockfile is stale — nanvix.toml has changed since it was generated.",
+                code=EXIT_INVALID_ARGS,
+                hint="Run `./z lock` to regenerate the lockfile.",
+            )
+
     # ------------------------------------------------------------------
     # Subprocess helper
     # ------------------------------------------------------------------
@@ -259,7 +295,9 @@ class ZScript:
                 (the container workdir is controlled by
                 :class:`~nanvix_zutil.DockerConfig`).
             env: Environment variables for the subprocess.  ``None`` inherits
-                the current process environment.
+                the current process environment.  When Docker mode is active,
+                these variables are forwarded into the container via ``-e``
+                flags rather than being applied to the Docker client process.
             docker: When ``False``, always runs on the host even if Docker
                 mode is active.  Use this for commands that must run locally
                 (e.g. ``clean``).
@@ -275,21 +313,27 @@ class ZScript:
                 non-zero status.
         """
         if self.docker is not None and docker:
+            cfg = self.docker
+            if env:
+                merged = {**cfg.extra_env, **env}
+                cfg = dataclasses.replace(cfg, extra_env=merged)
             if kvm:
-                cmd = self.docker.build_kvm_run_cmd(*args)
+                cmd = cfg.build_kvm_run_cmd(*args)
             else:
-                cmd = self.docker.build_run_cmd(*args)
+                cmd = cfg.build_run_cmd(*args)
             working_dir = self.repo_root
+            subprocess_env: dict[str, str] | None = None
         else:
             cmd = list(args)
             working_dir = cwd if cwd is not None else self.repo_root
+            subprocess_env = env
 
         log.info(f"$ {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd,
                 cwd=working_dir,
-                env=env,
+                env=subprocess_env,
                 text=True,
                 check=True,
             )
@@ -370,6 +414,15 @@ class ZScript:
 
         if subcommand is None or subcommand == "help":
             parser.print_help()
+            return
+
+        # Special handling for lock subcommand (--check, --shallow flags).
+        if subcommand == "lock":
+            if args.check:
+                instance.lock_check()
+                log.success("Lockfile is up-to-date")
+            else:
+                instance.lock(shallow=args.shallow)
             return
 
         dispatch: dict[str, object] = {

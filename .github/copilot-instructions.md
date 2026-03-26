@@ -2,7 +2,7 @@
 
 ## What This Is
 
-`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`), structured logging, config persistence, GitHub release artifact downloading, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
+`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`, `lock`), structured logging, config persistence, GitHub release artifact downloading, lockfile-based dependency resolution with transitive discovery, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.ps1` bootstrap wrappers at the repo root.
 
 The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils/issues/1).
 
@@ -25,10 +25,13 @@ script.py  ←  CLI entry point (ZScript.main)
   ├── buildroot.py   ←  Buildroot + Dependency (build-time deps: headers, static libs)
   ├── sysroot.py     ←  Sysroot download/extraction/verification (run-time artifacts)
   ├── github.py      ←  GitHub release download with retry + GH_TOKEN
+  ├── lockfile.py    ←  Lockfile dataclasses, TOML read/write, release asset download
+  ├── resolver.py    ←  BFS dependency resolution, cycle detection, staleness check
+  ├── manifest.py    ←  nanvix.toml parser (package metadata + dependencies)
   └── log.py         ←  colored terminal output, --json mode, fatal() with hints
 ```
 
-`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, and `Dependency` — all re-exported from `__init__.py`.
+`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, and `resolve` — all re-exported from `__init__.py`.
 
 ### Bootstrap Chain
 
@@ -47,6 +50,8 @@ nanvix/<project>/
 ├── z.ps1          # PowerShell bootstrap (repo root)
 └── .nanvix/
     ├── z.py       # Subclasses ZScript, implements hooks
+    ├── nanvix.toml # Declarative dependencies
+    ├── nanvix.lock # Pinned dependency graph (committed to VCS)
     ├── venv/      # Auto-created virtualenv
     └── env.json   # Persistent config
 ```
