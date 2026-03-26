@@ -21,7 +21,7 @@ from typing import cast
 
 from nanvix_zutil import github, log
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
-from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS
+from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
     LockfileMetadata,
@@ -231,6 +231,8 @@ def _resolve_inner(
         semver=True,
     )
     tag, commitish, rel_id = _extract_release_fields(sysroot_release)
+    # ref preserves the original specifier ("latest" or semver) — resolved_tag
+    # is the canonical pin used for deterministic artifact downloads.
     sysroot_pkg = ResolvedPackage(
         name="nanvix",
         repo="nanvix/nanvix",
@@ -250,6 +252,11 @@ def _resolve_inner(
     # so the caller's Manifest is never mutated.
     if manifest.sysroot_ref.value == "latest":
         resolved_version = tag.removeprefix("v")
+        if not resolved_version:
+            log.fatal(
+                "Resolved sysroot release has no tag" " — cannot suffix VERSION deps.",
+                code=EXIT_NETWORK_ERROR,
+            )
 
         def _suffix(dep: Dependency) -> Dependency:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
@@ -393,6 +400,11 @@ def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
 
     Compares the ``manifest_hash`` stored in the lockfile metadata
     against the current hash of the manifest file.
+
+    Note: when ``nanvix-version = "latest"`` the manifest hash is
+    stable, so this function will always return ``False`` even if
+    upstream has published a new release.  Re-run ``./z lock``
+    explicitly to pick up new versions.
 
     Args:
         lockfile: The lockfile to check.

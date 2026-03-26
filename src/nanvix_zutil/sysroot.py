@@ -41,18 +41,22 @@ class Sysroot:
 
     Attributes:
         path: Absolute path to the sysroot directory.
+        commitish: Short commitish hash of the resolved release.
+        tag: Resolved tag name (e.g. ``"v0.12.277"``).
     """
 
-    def __init__(self, path: Path, commitish: str = "") -> None:
+    def __init__(self, path: Path, commitish: str = "", tag: str = "") -> None:
         """Initialise the Sysroot with an existing directory.
 
         Args:
             path: Path to the sysroot directory.
             commitish: Short commitish hash of the resolved sysroot
                 release (set by :meth:`download`).
+            tag: Resolved release tag name (set by :meth:`download`).
         """
         self.path = path
         self.commitish = commitish
+        self.tag = tag
 
     # ------------------------------------------------------------------
     # Factory / download
@@ -106,7 +110,10 @@ class Sysroot:
                     if config is not None
                     else ""
                 )
-                return Sysroot(sysroot_dir.resolve(), commitish=cached)
+                cached_tag = (
+                    config.get("sysroot_tag", "") or "" if config is not None else ""
+                )
+                return Sysroot(sysroot_dir.resolve(), commitish=cached, tag=cached_tag)
             log.fatal(
                 f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
                 code=EXIT_MISSING_DEP,
@@ -117,6 +124,8 @@ class Sysroot:
         release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
         commitish_raw = release.get("target_commitish", "")
         commitish = commitish_raw[:7] if isinstance(commitish_raw, str) else ""
+        tag_name = release.get("tag_name", "")
+        resolved_tag = tag_name if isinstance(tag_name, str) else ""
 
         asset_prefix = _SYSROOT_ASSET_PREFIX.format(
             machine=machine,
@@ -144,8 +153,9 @@ class Sysroot:
         log.success(f"Sysroot extracted to {sysroot_dir}")
         if config is not None:
             config.set("sysroot_commitish", commitish)
+            config.set("sysroot_tag", resolved_tag)
             config.save()
-        return Sysroot(sysroot_dir.resolve(), commitish=commitish)
+        return Sysroot(sysroot_dir.resolve(), commitish=commitish, tag=resolved_tag)
 
     # ------------------------------------------------------------------
     # Verification

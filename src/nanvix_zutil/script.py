@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil import log
-from nanvix_zutil.buildroot import Buildroot
+from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
@@ -280,9 +280,30 @@ class ZScript:
         self.sysroot.verify(self.sysroot_required_files())
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
 
-        if self.manifest.dependencies:
+        # Deferred auto-suffix: when sysroot is "latest", load_manifest()
+        # skips suffixing because the real version isn't known yet.  Now
+        # that the sysroot is resolved, suffix VERSION deps before
+        # passing them to install_dep().
+        deps: list[Dependency] = list(self.manifest.dependencies)
+        if self.manifest.sysroot_ref.value == "latest" and self.sysroot.tag:
+            resolved_version = self.sysroot.tag.removeprefix("v")
+
+            def _suffix_dep(dep: Dependency) -> Dependency:
+                if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+                    return dataclasses.replace(
+                        dep,
+                        ref=Ref(
+                            kind=dep.ref.kind,
+                            value=f"{dep.ref.value}-nanvix-{resolved_version}",
+                        ),
+                    )
+                return dep
+
+            deps = [_suffix_dep(d) for d in deps]
+
+        if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
-            for dep in self.manifest.dependencies:
+            for dep in deps:
                 self.buildroot.install_dep(
                     dep=dep,
                     machine=self.config.machine,
