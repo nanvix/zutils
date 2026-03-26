@@ -8,8 +8,16 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil.docker import (
+    BUILDROOT_CONTAINER_PATH,
+    DEFAULT_DOCKER_IMAGE,
+    WORKSPACE_CONTAINER_PATH,
+    DockerConfig,
+    Mount,
+)
 from nanvix_zutil.script import ZScript
 from tests.testutils import write_manifest
 
@@ -170,6 +178,188 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
         files = script.sysroot_required_files()
         self.assertIn("bin/linuxd.elf", files)
         self.assertIn("bin/uservm.elf", files)
+
+
+class TestZScriptDockerIntegration(unittest.TestCase):
+    """Tests for ZScript Docker mode."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        return ZScript(Path(self._tmpdir.name))
+
+    def test_docker_not_active_by_default(self) -> None:
+        script = self._make_script()
+        self.assertIsNone(script.docker)
+
+    def test_docker_image_default(self) -> None:
+        script = self._make_script()
+        self.assertEqual(script.docker_image(), DEFAULT_DOCKER_IMAGE)
+
+    def test_docker_config_returns_dockerconfig(self) -> None:
+        script = self._make_script()
+        cfg = script.docker_config("test-image")
+        self.assertIsInstance(cfg, DockerConfig)
+        self.assertEqual(cfg.image, "test-image")
+
+    def test_docker_config_mounts_workspace(self) -> None:
+        script = self._make_script()
+        cfg = script.docker_config("test-image")
+        workspace_mount = next(
+            (m for m in cfg.mounts if m.container_path == WORKSPACE_CONTAINER_PATH),
+            None,
+        )
+        self.assertIsNotNone(workspace_mount)
+        assert workspace_mount is not None
+        self.assertEqual(workspace_mount.host_path, script.repo_root)
+
+    def test_docker_config_no_buildroot_mount_when_absent(self) -> None:
+        """No buildroot mount is added when the buildroot dir does not exist."""
+        script = self._make_script()
+        cfg = script.docker_config("test-image")
+        buildroot_mount = next(
+            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
+            None,
+        )
+        self.assertIsNone(buildroot_mount)
+
+    def test_docker_config_auto_mounts_buildroot_when_present(self) -> None:
+        """Buildroot is auto-mounted when nanvix_dir/buildroot exists."""
+        script = self._make_script()
+        buildroot_dir = script.nanvix_dir / "buildroot"
+        buildroot_dir.mkdir(parents=True, exist_ok=True)
+        cfg = script.docker_config("test-image")
+        buildroot_mount = next(
+            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
+            None,
+        )
+        self.assertIsNotNone(buildroot_mount)
+        assert buildroot_mount is not None
+        self.assertEqual(buildroot_mount.host_path, buildroot_dir)
+        self.assertTrue(buildroot_mount.readonly)
+
+    def test_translate_path_no_docker(self) -> None:
+        """Without Docker, translate_path returns the input unchanged."""
+        script = self._make_script()
+        p = Path("/some/host/path")
+        self.assertEqual(script.translate_path(p), p)
+
+    def test_translate_path_with_docker(self) -> None:
+        """With Docker active, translate_path translates via DockerConfig."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="test-image",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+        )
+        result = script.translate_path(script.repo_root / "src" / "main.c")
+        self.assertEqual(result, WORKSPACE_CONTAINER_PATH / "src" / "main.c")
+
+    def test_run_without_docker_uses_args_directly(self) -> None:
+        """Without Docker, run() executes the command as-is."""
+        script = self._make_script()
+        result = script.run(sys.executable, "-c", "print('ok')")
+        self.assertEqual(result.returncode, 0)
+
+    def test_run_with_docker_false_opt_out(self) -> None:
+        """docker=False bypasses Docker even when _docker is set."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="should-not-be-used",
+            mounts=[],
+        )
+        # This should run on host, not via docker
+        result = script.run(sys.executable, "-c", "print('ok')", docker=False)
+        self.assertEqual(result.returncode, 0)
+
+    def test_run_with_docker_wraps_command(self) -> None:
+        """When Docker is active, run() prepends docker run to the command."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+        )
+        captured: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured)
+        self.assertIn("docker", captured[0])
+        self.assertIn("make", captured[0])
+        self.assertIn("all", captured[0])
+
+    def test_run_env_forwarded_into_container(self) -> None:
+        """env vars passed to run() are forwarded as -e flags in Docker mode."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_kwargs.append(dict(kwargs))
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all", env={"MY_VAR": "hello"})
+
+        self.assertTrue(captured_kwargs)
+        # env should NOT be passed to the docker subprocess itself
+        self.assertIsNone(captured_kwargs[0].get("env"))
+
+    def test_run_env_forwarded_into_container_as_flags(self) -> None:
+        """env vars appear as -e KEY=VAL in the docker run command."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_cmds: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all", env={"MY_VAR": "hello"})
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # -e MY_VAR=hello must appear in the docker run command
+        self.assertIn("-e", cmd)
+        self.assertIn("MY_VAR=hello", cmd)
 
 
 if __name__ == "__main__":
