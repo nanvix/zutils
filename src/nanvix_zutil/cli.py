@@ -11,24 +11,12 @@ Consumer scripts do not construct the parser directly; they call
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
+
+from nanvix_zutil.lockfile import get_zutil_version
 
 # ---------------------------------------------------------------------------
 # Version helper
 # ---------------------------------------------------------------------------
-
-
-def _get_version() -> str:
-    """Return the installed ``nanvix-zutil`` version string.
-
-    Returns:
-        Version string (e.g. ``"0.1.0"``), or ``"unknown"`` if the package
-        metadata is unavailable.
-    """
-    try:
-        return importlib.metadata.version("nanvix-zutil")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +72,7 @@ def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s (nanvix-zutil {_get_version()})",
+        version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand")

@@ -154,6 +154,32 @@ class TestLockfileRoundTrip(unittest.TestCase):
         content = path.read_text()
         self.assertTrue(content.startswith("# nanvix.lock"))
 
+    def test_round_trip_id_ref(self) -> None:
+        """Integer ref-value (RefKind.ID) survives round-trip."""
+        lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:id_test",
+                nanvix_zutil_version="0.2.2",
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="nanvix",
+                    repo="nanvix/nanvix",
+                    kind="sysroot",
+                    ref=Ref(kind=RefKind.ID, value=99999),
+                    resolved_tag="v0.1.0",
+                    resolved_commitish="aaa111",
+                    release_id=1,
+                ),
+            ],
+        )
+        path = Path(self._tmpdir.name) / "nanvix.lock"
+        write_lockfile(lockfile, path)
+        restored = read_lockfile(path)
+        self.assertEqual(restored.packages[0].ref.kind, RefKind.ID)
+        self.assertEqual(restored.packages[0].ref.value, 99999)
+        self.assertIsInstance(restored.packages[0].ref.value, int)
+
 
 class TestComputeManifestHash(unittest.TestCase):
     """compute_manifest_hash tests."""
@@ -245,9 +271,10 @@ class TestDownloadLockfileAsset(unittest.TestCase):
         result = download_lockfile_asset(release, Path(self._tmpdir.name))
         self.assertIsNone(result)
 
-    @patch("nanvix_zutil.lockfile.urllib.request.urlopen")
-    def test_downloads_and_parses_lockfile(self, mock_urlopen: MagicMock) -> None:
-        # Build a minimal valid lockfile TOML
+    @patch("nanvix_zutil.lockfile.github.download_release_asset")
+    def test_downloads_and_parses_lockfile(self, mock_download: MagicMock) -> None:
+        # Build a minimal valid lockfile and write it to a temp file
+        # that the mock will return as the download path.
         lockfile_content = (
             "[metadata]\n"
             'manifest-hash = "sha256:abc"\n'
@@ -264,13 +291,9 @@ class TestDownloadLockfileAsset(unittest.TestCase):
             "release-id = 1\n"
             "dependencies = []\n"
         )
-
-        # Mock the HTTP response
-        mock_resp = MagicMock()
-        mock_resp.read.side_effect = [lockfile_content.encode(), b""]
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
+        out_path = Path(self._tmpdir.name) / "nanvix.lock"
+        out_path.write_text(lockfile_content)
+        mock_download.return_value = out_path
 
         release: dict[str, object] = {
             "assets": [

@@ -89,6 +89,8 @@ def _extract_release_fields(
 ) -> tuple[str, str, int]:
     """Extract tag_name, target_commitish, and id from a release dict.
 
+    Logs a warning if any field is missing or has an unexpected type.
+
     Args:
         release: GitHub release metadata dictionary.
 
@@ -97,12 +99,17 @@ def _extract_release_fields(
     """
     tag_name = release.get("tag_name", "")
     if not isinstance(tag_name, str):
+        log.warning(f"Release missing 'tag_name' (got {type(tag_name).__name__})")
         tag_name = ""
     commitish = release.get("target_commitish", "")
     if not isinstance(commitish, str):
+        log.warning(
+            f"Release missing 'target_commitish' (got {type(commitish).__name__})"
+        )
         commitish = ""
     release_id = release.get("id", 0)
     if not isinstance(release_id, int):
+        log.warning(f"Release missing 'id' (got {type(release_id).__name__})")
         release_id = 0
     return tag_name, commitish, release_id
 
