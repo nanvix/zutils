@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from typing import cast
 
 from nanvix_zutil import log
@@ -57,6 +58,7 @@ _ASSET_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
 class NanvixInfo:
     """Release information resolved from a Nanvix GitHub release.
 
@@ -68,17 +70,9 @@ class NanvixInfo:
             ``None`` when the release name contains no semver.
     """
 
-    def __init__(self, tag: str, sha: str, version: str | None) -> None:
-        """Initialise NanvixInfo.
-
-        Args:
-            tag: The GitHub release tag.
-            sha: The short commit SHA from the sysroot asset filename.
-            version: Optional semver string extracted from the release name.
-        """
-        self.tag = tag
-        self.sha = sha
-        self.version = version
+    tag: str
+    sha: str
+    version: str | None
 
     def to_dict(self) -> dict[str, str]:
         """Return a plain dictionary of the non-None fields.

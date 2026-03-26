@@ -180,8 +180,10 @@ class TestNanvixInfoMain(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit) as ctx:
-                sys.argv = ["nanvix-info"]
+            with (
+                patch("sys.argv", ["nanvix-info"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -198,8 +200,10 @@ class TestNanvixInfoMain(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit):
-                sys.argv = ["nanvix-info"]
+            with (
+                patch("sys.argv", ["nanvix-info"]),
+                self.assertRaises(SystemExit),
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -213,8 +217,10 @@ class TestNanvixInfoMain(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit) as ctx:
-                sys.argv = ["nanvix-info", "--json"]
+            with (
+                patch("sys.argv", ["nanvix-info", "--json"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -230,8 +236,10 @@ class TestNanvixInfoMain(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit):
-                sys.argv = ["nanvix-info", "--json"]
+            with (
+                patch("sys.argv", ["nanvix-info", "--json"]),
+                self.assertRaises(SystemExit),
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -239,19 +247,23 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertNotIn("version", obj)
 
     def test_invalid_repo_format_exits(self) -> None:
-        with self.assertRaises(SystemExit) as ctx:
-            sys.argv = ["nanvix-info", "--repo", "invalid"]
+        with (
+            patch("sys.argv", ["nanvix-info", "--repo", "invalid"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
             main()
         self.assertEqual(ctx.exception.code, 2)  # EXIT_INVALID_ARGS
 
     @patch("nanvix_zutil.info.resolve_release")
     def test_custom_repo_passed_to_resolve(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release()
-        sys.argv = ["nanvix-info", "--repo", "nanvix/zlib"]
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit):
+            with (
+                patch("sys.argv", ["nanvix-info", "--repo", "nanvix/zlib"]),
+                self.assertRaises(SystemExit),
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -264,11 +276,13 @@ class TestNanvixInfoMain(unittest.TestCase):
 
         mock_resolve.return_value = _make_release()
         os.environ["GH_TOKEN"] = "test-token"
-        sys.argv = ["nanvix-info"]
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit):
+            with (
+                patch("sys.argv", ["nanvix-info"]),
+                self.assertRaises(SystemExit),
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -283,11 +297,13 @@ class TestNanvixInfoMain(unittest.TestCase):
 
         mock_resolve.return_value = _make_release()
         os.environ["GH_TOKEN"] = "env-token"
-        sys.argv = ["nanvix-info", "--gh-token", "cli-token"]
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit):
+            with (
+                patch("sys.argv", ["nanvix-info", "--gh-token", "cli-token"]),
+                self.assertRaises(SystemExit),
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
@@ -303,16 +319,21 @@ class TestNanvixInfoMain(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with self.assertRaises(SystemExit) as ctx:
-                sys.argv = [
-                    "nanvix-info",
-                    "--machine",
-                    "microvm",
-                    "--mode",
-                    "standalone",
-                    "--memory",
-                    "256mb",
-                ]
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "nanvix-info",
+                        "--machine",
+                        "microvm",
+                        "--mode",
+                        "standalone",
+                        "--memory",
+                        "256mb",
+                    ],
+                ),
+                self.assertRaises(SystemExit) as ctx,
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__

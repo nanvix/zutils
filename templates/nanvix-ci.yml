@@ -42,9 +42,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install nanvix-zutil
-        run: uv tool install nanvix-zutil
-
       - name: Resolve Nanvix release info
         id: info
         run: |

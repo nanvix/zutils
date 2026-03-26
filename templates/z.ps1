@@ -105,11 +105,15 @@ if (-not (Test-Path $venvPython)) {
         # release notes, so no extra network call is needed.
         Write-Host "bootstrap: resolving latest nanvix-zutil release …" -ForegroundColor Cyan
         $releaseScript = @'
-import json, re, sys, urllib.request
+import json, os, re, sys, urllib.request
 try:
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GH_TOKEN", "")
+    if token:
+        headers["Authorization"] = "token " + token
     req = urllib.request.Request(
         "https://api.github.com/repos/nanvix/zutils/releases/latest",
-        headers={"Accept": "application/vnd.github+json"},
+        headers=headers,
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())
