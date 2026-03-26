@@ -311,6 +311,56 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIn("make", captured[0])
         self.assertIn("all", captured[0])
 
+    def test_run_env_forwarded_into_container(self) -> None:
+        """env vars passed to run() are forwarded as -e flags in Docker mode."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_kwargs.append(dict(kwargs))
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all", env={"MY_VAR": "hello"})
+
+        self.assertTrue(captured_kwargs)
+        # env should NOT be passed to the docker subprocess itself
+        self.assertIsNone(captured_kwargs[0].get("env"))
+
+    def test_run_env_forwarded_into_container_as_flags(self) -> None:
+        """env vars appear as -e KEY=VAL in the docker run command."""
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_cmds: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all", env={"MY_VAR": "hello"})
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # -e MY_VAR=hello must appear in the docker run command
+        self.assertIn("-e", cmd)
+        self.assertIn("MY_VAR=hello", cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,8 +21,6 @@ from nanvix_zutil import (
     CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
-    SYSROOT_CONTAINER_PATH,
-    TOOLCHAIN_CONTAINER_PATH,
     Sysroot,
     ZScript,
     log,
