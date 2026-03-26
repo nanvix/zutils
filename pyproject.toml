@@ -23,6 +23,9 @@ dev = [
   "pytest",
 ]
 
+[project.scripts]
+nanvix-info = "nanvix_zutil.info:main"
+
 [project.urls]
 Homepage = "https://github.com/nanvix/zutils"
 Repository = "https://github.com/nanvix/zutils"

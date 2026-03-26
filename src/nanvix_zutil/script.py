@@ -525,7 +525,7 @@ class ZScript:
         # consumer hooks only appear when the subclass overrides them.
         parser = build_parser(available=instance.available_subcommands())
         args = parser.parse_args(framework_argv)
-        
+
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags.
         # ------------------------------------------------------------------

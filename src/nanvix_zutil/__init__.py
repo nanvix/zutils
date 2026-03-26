@@ -25,6 +25,8 @@ Public re-exports:
 - :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
 - :func:`~nanvix_zutil.docker.docker_available` — check Docker CLI presence
 - :func:`~nanvix_zutil.docker.image_exists` — check local image availability
+- :class:`~nanvix_zutil.info.NanvixInfo` — resolved Nanvix release information
+- :func:`~nanvix_zutil.info.get_nanvix_info` — query Nanvix release info
 - ``BUILDROOT_CONTAINER_PATH``, ``SYSROOT_CONTAINER_PATH``, ``WORKSPACE_CONTAINER_PATH``, ``TOOLCHAIN_CONTAINER_PATH`` — well-known container paths
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
@@ -33,7 +35,6 @@ from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
 from nanvix_zutil.config import (
     CFG_GH_TOKEN,
     CFG_SYSROOT,
-    CFG_TAG,
     CFG_TOOLCHAIN,
     Config,
 )
@@ -58,6 +59,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_TEST_FAILURE,
 )
 from nanvix_zutil.github import find_release_tag, resolve_release
+from nanvix_zutil.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.lockfile import (
     Lockfile,
     LockfileMetadata,
@@ -76,7 +78,6 @@ __all__ = [
     "BUILDROOT_CONTAINER_PATH",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",
-    "CFG_TAG",
     "CFG_TOOLCHAIN",
     "Config",
     "DEFAULT_DOCKER_IMAGE",
@@ -93,6 +94,7 @@ __all__ = [
     "LockfileMetadata",
     "Manifest",
     "Mount",
+    "NanvixInfo",
     "Ref",
     "RefKind",
     "ResolvedAsset",
@@ -104,6 +106,7 @@ __all__ = [
     "ZScript",
     "docker_available",
     "find_release_tag",
+    "get_nanvix_info",
     "image_exists",
     "is_stale",
     "load_manifest",
