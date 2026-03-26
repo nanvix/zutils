@@ -1,0 +1,123 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# ============================================================================
+# Nanvix Consumer CI Workflow Template
+#
+# Copy this file to .github/workflows/nanvix-ci.yml in your consumer repo and
+# fill in the placeholders marked with <...>.
+#
+# Prerequisites:
+#   - A .nanvix/z.py that subclasses ZScript
+#   - A ./z bootstrap wrapper at the repo root
+#   - A .nanvix/nanvix.toml manifest
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["dev", "main", "release-*"]
+  pull_request:
+    branches: ["dev", "main", "release-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Resolve Nanvix release info (tag, sysroot SHA, optional semver version).
+  # Uses nanvix-info from nanvix-zutil; no inline shell curl/JSON parsing.
+  # --------------------------------------------------------------------------
+  get-nanvix-info:
+    name: Get Nanvix Info
+    runs-on: ubuntu-latest
+    outputs:
+      nanvix_tag: ${{ steps.info.outputs.nanvix_tag }}
+      nanvix_sha: ${{ steps.info.outputs.nanvix_sha }}
+      nanvix_version: ${{ steps.info.outputs.nanvix_version }}
+    steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Resolve Nanvix release info
+        id: info
+        run: |
+          nanvix-info \
+            --machine "${{ vars.NANVIX_MACHINE || 'hyperlight' }}" \
+            --mode "${{ vars.NANVIX_DEPLOYMENT_MODE || 'multi-process' }}" \
+            --memory "${{ vars.NANVIX_MEMORY_SIZE || '128mb' }}" \
+            | while IFS='=' read -r key value; do
+                echo "nanvix_${key}=${value}" >> "$GITHUB_OUTPUT"
+              done
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+
+  # --------------------------------------------------------------------------
+  # Build the project.
+  # --------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: get-nanvix-info
+    container:
+      image: nanvix/toolchain:latest-minimal
+      options: --device /dev/kvm
+    env:
+      NANVIX_TOOLCHAIN: /opt/nanvix
+      NANVIX_TAG: ${{ needs.get-nanvix-info.outputs.nanvix_tag }}
+      USER: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap build environment
+        run: ./z setup
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+
+      - name: Build
+        run: ./z build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          # Replace <package-name> with your project's package name (e.g., zlib, bzip2).
+          name: build-<package-name>-${{ needs.get-nanvix-info.outputs.nanvix_sha }}
+          # Adjust the path to match your build output directory.
+          path: build/
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  # Test the project.
+  # --------------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [get-nanvix-info, build]
+    container:
+      image: nanvix/toolchain:latest-minimal
+      options: --device /dev/kvm
+    env:
+      NANVIX_TOOLCHAIN: /opt/nanvix
+      NANVIX_TAG: ${{ needs.get-nanvix-info.outputs.nanvix_tag }}
+      USER: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          # Replace <package-name> with the same name used in the build job above.
+          name: build-<package-name>-${{ needs.get-nanvix-info.outputs.nanvix_sha }}
+          # Adjust the destination path to match your project layout.
+          path: build/
+
+      - name: Bootstrap build environment
+        run: ./z setup
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+
+      - name: Test
+        run: ./z test

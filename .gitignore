@@ -23,6 +23,7 @@ venv/
 **/.nanvix/buildroot/
 **/.nanvix/cache/
 **/.nanvix/env.json
+logs/
 
 # pytest
 .pytest_cache/

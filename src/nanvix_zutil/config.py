@@ -38,9 +38,6 @@ CFG_SYSROOT: str = "NANVIX_SYSROOT"
 CFG_TOOLCHAIN: str = "NANVIX_TOOLCHAIN"
 """Path to the Nanvix cross-compilation toolchain."""
 
-CFG_TAG: str = "NANVIX_TAG"
-"""Nanvix sysroot release tag to download."""
-
 CFG_GH_TOKEN: str = "GH_TOKEN"
 """GitHub token for authenticated API requests (rate limits)."""
 

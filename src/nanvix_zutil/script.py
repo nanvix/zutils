@@ -525,34 +525,6 @@ class ZScript:
         # consumer hooks only appear when the subclass overrides them.
         parser = build_parser(available=instance.available_subcommands())
         args = parser.parse_args(framework_argv)
-        
-        # ------------------------------------------------------------------
-        # Resolve Docker image from CLI flags.
-        # ------------------------------------------------------------------
-        docker_image: str | None = None
-        if getattr(args, "docker_image", None):
-            docker_image = args.docker_image
-        elif getattr(args, "with_minimal_docker", False):
-            docker_image = DEFAULT_DOCKER_IMAGE
-        elif getattr(args, "with_docker", False):
-            docker_image = instance.docker_image()
-
-        if docker_image is not None:
-            if not docker_available():
-                log.fatal(
-                    "Docker is not available — install Docker or omit the"
-                    " --with-docker / --docker-image flag.",
-                    code=EXIT_MISSING_DEP,
-                )
-            if not image_exists(docker_image):
-                log.fatal(
-                    f"Docker image '{docker_image}' not found locally."
-                    f"  Pull it with: docker pull {docker_image}",
-                    code=EXIT_MISSING_DEP,
-                )
-            instance.docker = instance.docker_config(docker_image)
-
-        subcommand: str | None = args.subcommand
 
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags.
