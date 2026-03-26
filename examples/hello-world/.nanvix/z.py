@@ -18,10 +18,8 @@ is transparent::
 from pathlib import Path
 
 from nanvix_zutil import (
-    CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
-    Sysroot,
     ZScript,
     log,
 )
@@ -44,26 +42,16 @@ class HelloWorld(ZScript):
         """Return the sysroot path, translated for Docker if active."""
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
-            log.fatal("Sysroot not configured — run './z setup' first.", code=EXIT_BUILD_FAILURE)
+            log.fatal(
+                "Sysroot not configured — run './z setup' first.",
+                code=EXIT_BUILD_FAILURE,
+            )
         host = Path(sysroot_str)  # type: ignore[arg-type]
         return self.translate_path(host) if self.docker else host
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
     # ------------------------------------------------------------------
-
-    def setup(self) -> None:
-        """Download the Nanvix sysroot."""
-        sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag=self.manifest.sysroot_ref.value,
-            gh_token=self.config.get(CFG_GH_TOKEN),
-        )
-        sysroot.verify(self.sysroot_required_files())
-        self.config.set(CFG_SYSROOT, str(sysroot.path))
-        self.config.save()
 
     def build(self) -> None:
         """Cross-compile hello.c into hello.elf for Nanvix."""
@@ -90,7 +78,10 @@ class HelloWorld(ZScript):
         # Smoke: binary must exist and be non-trivially sized.
         log.info("=== hello-world smoke tests ===")
         if not binary.exists():
-            log.fatal(f"{binary} not found — run './z build' first.", code=EXIT_TEST_FAILURE)
+            log.fatal(
+                f"{binary} not found — run './z build' first.",
+                code=EXIT_TEST_FAILURE,
+            )
         size = binary.stat().st_size
         if size < 1000:
             log.fatal(f"{binary} too small ({size} bytes).", code=EXIT_TEST_FAILURE)

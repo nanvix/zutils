@@ -18,11 +18,8 @@ from pathlib import Path
 
 from nanvix_zutil import (
     BUILDROOT_CONTAINER_PATH,
-    CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
-    Buildroot,
-    Sysroot,
     ZScript,
     log,
 )
@@ -45,7 +42,10 @@ class HelloZlib(ZScript):
         """Return the sysroot path, translated for Docker if active."""
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
-            log.fatal("Sysroot not configured — run './z setup' first.", code=EXIT_BUILD_FAILURE)
+            log.fatal(
+                "Sysroot not configured — run './z setup' first.",
+                code=EXIT_BUILD_FAILURE,
+            )
         host = Path(sysroot_str)  # type: ignore[arg-type]
         return self.translate_path(host) if self.docker else host
 
@@ -60,31 +60,18 @@ class HelloZlib(ZScript):
     # ------------------------------------------------------------------
 
     def setup(self) -> None:
-        """Download the Nanvix sysroot and zlib dependency."""
-        # Download sysroot.
-        sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag=self.manifest.sysroot_ref.value,
-            gh_token=self.config.get(CFG_GH_TOKEN),
-        )
-        sysroot.verify(self.sysroot_required_files())
-        self.config.set(CFG_SYSROOT, str(sysroot.path))
-
-        # Download build dependencies.
-        buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
-        for dep in self.manifest.dependencies:
-            buildroot.install_dep(
-                dep=dep,
-                machine=self.config.machine,
-                deployment_mode=self.config.deployment_mode,
-                memory_size=self.config.memory_size,
-                gh_token=self.config.get(CFG_GH_TOKEN),
+        """Download the Nanvix sysroot and zlib dependency, then verify."""
+        super().setup()
+        if self.buildroot is None:
+            self.log.fatal(
+                "nanvix.toml must declare zlib as a build-time dependency.",
+                hint=(
+                    "Add zlib as a build-time dependency in nanvix.toml, then "
+                    "re-run `./z setup`. See the hello-zlib example manifest "
+                    "for reference."
+                ),
             )
-        buildroot.verify(["libz.a"])
-
-        self.config.save()
+        self.buildroot.verify(["libz.a"])
 
     def build(self) -> None:
         """Cross-compile hello-zlib.c into hello-zlib.elf for Nanvix."""

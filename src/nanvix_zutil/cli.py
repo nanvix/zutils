@@ -26,6 +26,7 @@ from nanvix_zutil.lockfile import get_zutil_version
 #: All lifecycle subcommand names.
 SUBCOMMANDS: tuple[str, ...] = (
     "setup",
+    "distclean",
     "build",
     "test",
     "benchmark",
@@ -38,6 +39,7 @@ SUBCOMMANDS: tuple[str, ...] = (
 #: Human-readable descriptions for each subcommand.
 _SUBCOMMAND_HELP: dict[str, str] = {
     "setup": "Prepare the build environment",
+    "distclean": "Remove all transient .nanvix/ artifacts",
     "build": "Build the project",
     "test": "Run tests",
     "benchmark": "Run benchmarks",
@@ -48,11 +50,17 @@ _SUBCOMMAND_HELP: dict[str, str] = {
 }
 
 
-def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
+def build_parser(
+    prog: str = "./z",
+    available: tuple[str, ...] | None = None,
+) -> argparse.ArgumentParser:
     """Build and return the top-level argument parser.
 
     Args:
         prog: Program name shown in ``--help`` output.
+        available: Subset of :data:`SUBCOMMANDS` to register.  When
+            ``None`` all subcommands are registered (backwards-compatible
+            default used by tests and the minimal pre-parser).
 
     Returns:
         Fully configured :class:`argparse.ArgumentParser`.
@@ -101,7 +109,30 @@ def build_parser(prog: str = "./z") -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
-    for name in SUBCOMMANDS:
+    if available is None:
+        cmds: tuple[str, ...] = SUBCOMMANDS
+    else:
+        # Validate that all requested subcommands are known.
+        unknown = sorted({name for name in available if name not in SUBCOMMANDS})
+        if unknown:
+            valid = ", ".join(SUBCOMMANDS)
+            bad = ", ".join(unknown)
+            msg = (
+                "Unknown subcommand(s) in 'available': "
+                f"{bad}. Valid subcommands are: {valid}."
+            )
+            raise ValueError(msg)
+
+        # De-duplicate while preserving the original order provided in ``available``.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for name in available:
+            if name not in seen:
+                seen.add(name)
+                deduped.append(name)
+        cmds = tuple(deduped)
+
+    for name in cmds:
         sub = subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
         if name == "lock":
             lock_group = sub.add_mutually_exclusive_group()
