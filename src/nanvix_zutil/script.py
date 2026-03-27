@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil import log
-from nanvix_zutil.buildroot import Buildroot
+from nanvix_zutil.buildroot import Buildroot, Dependency, suffix_dep
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
@@ -280,9 +280,24 @@ class ZScript:
         self.sysroot.verify(self.sysroot_required_files())
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
 
-        if self.manifest.dependencies:
+        # Deferred auto-suffix: when sysroot is "latest", load_manifest()
+        # skips suffixing because the real version isn't known yet.  Now
+        # that the sysroot is resolved, suffix VERSION deps before
+        # passing them to install_dep().
+        deps: list[Dependency] = list(self.manifest.dependencies)
+        if self.manifest.sysroot_ref.value == "latest":
+            if not self.sysroot.tag:
+                log.fatal(
+                    "Sysroot resolved to 'latest' but no tag is available"
+                    " — delete .nanvix/sysroot and re-run './z setup'.",
+                    code=EXIT_MISSING_DEP,
+                )
+            resolved_version = self.sysroot.tag.removeprefix("v")
+            deps = [suffix_dep(d, resolved_version) for d in deps]
+
+        if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
-            for dep in self.manifest.dependencies:
+            for dep in deps:
                 self.buildroot.install_dep(
                     dep=dep,
                     machine=self.config.machine,
@@ -339,6 +354,16 @@ class ZScript:
         lock_path = self.nanvix_dir / "nanvix.lock"
         manifest_path = self.nanvix_dir / "nanvix.toml"
         lockfile = read_lockfile(lock_path)
+
+        # Warn when "latest" lockfile may silently be stale.
+        sysroot_pkg = next((p for p in lockfile.packages if p.name == "nanvix"), None)
+        if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
+            log.warning(
+                "'nanvix-version = \"latest\"' — lockfile staleness cannot"
+                " be detected by hash; re-run './z lock' to pick up new"
+                " releases."
+            )
+
         if is_stale(lockfile, manifest_path):
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",

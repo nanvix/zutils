@@ -31,7 +31,7 @@ Public re-exports:
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
-from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
+from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind, suffix_dep
 from nanvix_zutil.config import (
     CFG_GH_TOKEN,
     CFG_SYSROOT,
@@ -113,5 +113,6 @@ __all__ = [
     "read_lockfile",
     "resolve",
     "resolve_release",
+    "suffix_dep",
     "write_lockfile",
 ]

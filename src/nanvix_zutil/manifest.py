@@ -4,9 +4,10 @@
 """TOML-based manifest parser for ``nanvix.toml``.
 
 Parses a structured TOML manifest that declares package metadata and
-dependencies.  ``nanvix-version`` must be a semver string (``X.Y.Z``).
-Dependency version fields accept a plain string (``version`` specifier),
-or a table with one of ``version``, ``tag``, ``commitish``, or ``id``.
+dependencies.  ``nanvix-version`` must be a semver string (``X.Y.Z``)
+or the literal ``"latest"``.  Dependency version fields accept a plain
+string (``version`` specifier), or a table with one of ``version``,
+``tag``, ``commitish``, or ``id``.
 
 Environment variables ``NANVIX_VERSION`` (for the sysroot) and
 ``NANVIX_VERSION_<NAME>`` (for individual dependencies) override the
@@ -16,7 +17,8 @@ Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
 ``commitish``, and ``id`` specifiers are exact-match and never suffixed.
 Refs that already contain ``-nanvix-`` are rejected to prevent accidental
-duplication.
+duplication.  When the sysroot is ``"latest"``, auto-suffixing is
+deferred to the resolver (which resolves the actual version first).
 """
 
 from __future__ import annotations
@@ -105,7 +107,7 @@ def _validate_version_string(raw: str, context: str, path: Path) -> str:
 
 
 def _parse_nanvix_version(raw: object, path: Path) -> Ref:
-    """Parse ``nanvix-version``: must be a plain semver string ``X.Y.Z``.
+    """Parse ``nanvix-version``: semver ``X.Y.Z`` or ``"latest"``.
 
     Args:
         raw: The raw TOML value for ``nanvix-version``.
@@ -119,13 +121,19 @@ def _parse_nanvix_version(raw: object, path: Path) -> Ref:
             f"{path}: 'nanvix-version' must be a plain string"
             f" (got {type(raw).__name__})",
             code=EXIT_INVALID_ARGS,
-            hint="Use 'nanvix-version = \"X.Y.Z\"' (semver).",
+            hint="Use 'nanvix-version = \"X.Y.Z\"' (semver) or"
+            " 'nanvix-version = \"latest\"'.",
         )
+    if raw == "latest":
+        # "latest" is a supported first-class sysroot specifier; no warning needed.
+        return Ref(kind=RefKind.TAG, value="latest")
     if not SEMVER_RE.match(raw):
         log.fatal(
-            f"{path}: 'nanvix-version' must be semver X.Y.Z (got '{raw}')",
+            f"{path}: 'nanvix-version' must be semver X.Y.Z"
+            f" or 'latest' (got '{raw}')",
             code=EXIT_INVALID_ARGS,
-            hint="Use a version like 'nanvix-version = \"0.12.257\"'.",
+            hint="Use a version like 'nanvix-version = \"0.12.257\"'"
+            " or 'nanvix-version = \"latest\"'.",
         )
     return Ref(kind=RefKind.TAG, value=raw)
 
@@ -362,12 +370,15 @@ def load_manifest(path: Path) -> Manifest:
     )
 
     # Auto-suffix VERSION refs with the nanvix sysroot version.
-    for dep in [*dependencies, *system_dependencies]:
-        if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
-            dep.ref = Ref(
-                kind=dep.ref.kind,
-                value=f"{dep.ref.value}-nanvix-{sysroot_ref.value}",
-            )
+    # When the sysroot is "latest", suffixing is deferred to the resolver
+    # (which resolves the sysroot first and knows the actual version).
+    if sysroot_ref.value != "latest":
+        for dep in [*dependencies, *system_dependencies]:
+            if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+                dep.ref = Ref(
+                    kind=dep.ref.kind,
+                    value=f"{dep.ref.value}-nanvix-{sysroot_ref.value}",
+                )
 
     return Manifest(
         name=pkg_name,

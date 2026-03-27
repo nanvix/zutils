@@ -39,12 +39,13 @@ def _make_release(
 def _make_manifest(
     deps: list[Dependency] | None = None,
     sys_deps: list[Dependency] | None = None,
+    sysroot_ref: Ref | None = None,
 ) -> Manifest:
     """Build a Manifest with the given dependencies."""
     return Manifest(
         name="test",
         version="0.1.0",
-        sysroot_ref=Ref(kind=RefKind.TAG, value="0.1.0"),
+        sysroot_ref=sysroot_ref or Ref(kind=RefKind.TAG, value="0.1.0"),
         dependencies=deps or [],
         system_dependencies=sys_deps or [],
     )
@@ -528,6 +529,75 @@ class TestIsStale(unittest.TestCase):
             ),
         )
         self.assertTrue(is_stale(lockfile, path))
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestResolveLatestSysroot(unittest.TestCase):
+    """Resolver with 'latest' sysroot and a VERSION dep."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_latest_sysroot_deferred_suffix(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        sysroot_release = _make_release(
+            tag="v0.12.277", commitish="fa06b88", release_id=100
+        )
+        zlib_release = _make_release(
+            tag="v1.3.1-nanvix-fa06b88",
+            commitish="bbb222",
+            release_id=200,
+            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+        )
+        mock_resolve.side_effect = [sysroot_release, zlib_release]
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+                )
+            ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
+        )
+
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        self.assertEqual(len(lockfile.packages), 2)
+        # Verify sysroot resolved correctly
+        sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
+        self.assertEqual(sysroot_pkg.resolved_tag, "v0.12.277")
+        # Verify dep was suffixed with resolved version
+        zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
+        self.assertEqual(zlib_pkg.ref.value, "1.3.1-nanvix-0.12.277")
+        # Verify resolve_release was called with suffixed value
+        mock_resolve.assert_any_call(
+            "nanvix/zlib", "1.3.1-nanvix-0.12.277", gh_token=None
+        )
 
 
 @patch("nanvix_zutil.resolver.download_lockfile_asset")

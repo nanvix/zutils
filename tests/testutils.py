@@ -21,6 +21,17 @@ MANIFEST_WITH_DEPS = (
     'zlib = "1.0"\n'
 )
 
+# Manifest with "latest" sysroot and a VERSION dep.
+MANIFEST_LATEST_WITH_DEPS = (
+    "[package]\n"
+    'name = "test"\n'
+    'version = "0.1.0"\n'
+    'nanvix-version = "latest"\n'
+    "\n"
+    "[dependencies]\n"
+    'zlib = "1.3.1"\n'
+)
+
 
 def write_manifest(repo_root: Path, content: str = MINIMAL_MANIFEST) -> None:
     """Create ``.nanvix/nanvix.toml`` inside *repo_root*."""

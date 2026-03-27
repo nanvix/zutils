@@ -15,13 +15,13 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import github, log
-from nanvix_zutil.buildroot import Dependency
-from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS
+from nanvix_zutil.buildroot import Dependency, suffix_dep
+from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
     LockfileMetadata,
@@ -231,6 +231,8 @@ def _resolve_inner(
         semver=True,
     )
     tag, commitish, rel_id = _extract_release_fields(sysroot_release)
+    # ref preserves the original specifier ("latest" or semver) — resolved_tag
+    # is the canonical pin used for deterministic artifact downloads.
     sysroot_pkg = ResolvedPackage(
         name="nanvix",
         repo="nanvix/nanvix",
@@ -242,6 +244,29 @@ def _resolve_inner(
     )
     resolved["nanvix"] = sysroot_pkg
     releases["nanvix"] = sysroot_release
+
+    # Deferred auto-suffix: when sysroot is "latest", load_manifest()
+    # skips suffixing because the real version isn't known yet.  Now
+    # that the sysroot is resolved, extract the version from its tag
+    # and apply the suffix to VERSION deps.  We build a shallow copy
+    # so the caller's Manifest is never mutated.
+    if manifest.sysroot_ref.value == "latest":
+        resolved_version = tag.removeprefix("v")
+        if not resolved_version:
+            log.fatal(
+                "Resolved sysroot release has no tag — cannot suffix VERSION deps.",
+                code=EXIT_NETWORK_ERROR,
+            )
+
+        manifest = _dc_replace(
+            manifest,
+            dependencies=[
+                suffix_dep(d, resolved_version) for d in manifest.dependencies
+            ],
+            system_dependencies=[
+                suffix_dep(d, resolved_version) for d in manifest.system_dependencies
+            ],
+        )
 
     # 2. Seed queue with direct deps
     queue: deque[_QueueItem] = deque()
@@ -368,6 +393,11 @@ def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
 
     Compares the ``manifest_hash`` stored in the lockfile metadata
     against the current hash of the manifest file.
+
+    Note: when ``nanvix-version = "latest"`` the manifest hash is
+    stable, so this function will always return ``False`` even if
+    upstream has published a new release.  Re-run ``./z lock``
+    explicitly to pick up new versions.
 
     Args:
         lockfile: The lockfile to check.
