@@ -484,14 +484,19 @@ class ZScript:
     # ------------------------------------------------------------------
 
     @classmethod
-    def main(cls) -> None:
+    def main(cls, *, repo_root: Path | None = None) -> None:
         """Parse command-line arguments and dispatch to the appropriate
         lifecycle hook.
 
-        Instantiates the class with the repository root inferred from the
-        location of the calling script (``sys.argv[0]``).  The CLI parser
-        is built *after* instantiation so that only the subcommands
-        implemented by the concrete subclass are shown in ``--help``.
+        When *repo_root* is ``None`` (the default — direct invocation via
+        ``python .nanvix/z.py``), the repository root is inferred from
+        ``sys.argv[0]``.  When provided (by the ``nanvix-zutil`` CLI),
+        the inference is skipped entirely.
+
+        Args:
+            repo_root: Optional explicit path to the consumer repository
+                root.  When ``None``, the root is inferred from the
+                location of the calling script.
         """
         argv = sys.argv[1:]
 
@@ -512,7 +517,7 @@ class ZScript:
         pre_parser.add_argument(
             "--version",
             action="version",
-            version=f"./z (nanvix-zutil {get_zutil_version()})",
+            version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
         )
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
 
@@ -536,12 +541,13 @@ class ZScript:
             return
 
         # Infer repo root: the parent of the .nanvix/ directory.
-        script_path = Path(sys.argv[0]).resolve()
-        # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
-        if script_path.parent.name == ".nanvix":
-            repo_root = script_path.parent.parent
-        else:
-            repo_root = script_path.parent
+        if repo_root is None:
+            script_path = Path(sys.argv[0]).resolve()
+            # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
+            if script_path.parent.name == ".nanvix":
+                repo_root = script_path.parent.parent
+            else:
+                repo_root = script_path.parent
 
         instance = cls(repo_root)
         instance.targets = targets

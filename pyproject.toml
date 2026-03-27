@@ -24,6 +24,7 @@ dev = [
 ]
 
 [project.scripts]
+nanvix-zutil = "nanvix_zutil.__main__:main"
 nanvix-info = "nanvix_zutil.info:main"
 
 [project.urls]
