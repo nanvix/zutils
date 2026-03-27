@@ -36,8 +36,6 @@ _CONSUMER_COMMANDS: frozenset[str] = frozenset(
 # Subcommands handled directly (standalone).
 _STANDALONE_COMMANDS: frozenset[str] = frozenset({"info", "resolve"})
 
-_ALL_COMMANDS: frozenset[str] = _CONSUMER_COMMANDS | _STANDALONE_COMMANDS
-
 
 def discover_script_class(z_py: Path) -> type[ZScript]:
     """Import ``.nanvix/z.py`` and return the first ``ZScript`` subclass found.
@@ -53,7 +51,15 @@ def discover_script_class(z_py: Path) -> type[ZScript]:
         log.fatal(f"Cannot load {z_py}", code=EXIT_GENERAL_ERROR)
     module = importlib.util.module_from_spec(spec)
     sys.modules["_z_consumer"] = module
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    try:
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+    except Exception as exc:
+        sys.modules.pop("_z_consumer", None)
+        log.fatal(
+            f"Failed to import {z_py}",
+            code=EXIT_GENERAL_ERROR,
+            hint=f"Import error: {exc}",
+        )
 
     for attr in vars(module).values():
         if isinstance(attr, type) and issubclass(attr, ZScript) and attr is not ZScript:
