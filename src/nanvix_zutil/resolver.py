@@ -407,15 +407,4 @@ def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
         ``True`` if the lockfile is stale (hashes differ).
     """
     current_hash = compute_manifest_hash(manifest_path)
-    stale = lockfile.metadata.manifest_hash != current_hash
-
-    if not stale:
-        sysroot_pkg = next((p for p in lockfile.packages if p.name == "nanvix"), None)
-        if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
-            log.warning(
-                "'nanvix-version = \"latest\"' — lockfile staleness cannot"
-                " be detected by hash; re-run './z lock' to pick up new"
-                " releases."
-            )
-
-    return stale
+    return lockfile.metadata.manifest_hash != current_hash

@@ -354,6 +354,16 @@ class ZScript:
         lock_path = self.nanvix_dir / "nanvix.lock"
         manifest_path = self.nanvix_dir / "nanvix.toml"
         lockfile = read_lockfile(lock_path)
+
+        # Warn when "latest" lockfile may silently be stale.
+        sysroot_pkg = next((p for p in lockfile.packages if p.name == "nanvix"), None)
+        if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
+            log.warning(
+                "'nanvix-version = \"latest\"' — lockfile staleness cannot"
+                " be detected by hash; re-run './z lock' to pick up new"
+                " releases."
+            )
+
         if is_stale(lockfile, manifest_path):
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
