@@ -38,6 +38,7 @@ pyrightconfig.json
 # Editor
 /.vscode
 /.vscode/
+/.zed/
 .idea/
 *.swp
 *~
