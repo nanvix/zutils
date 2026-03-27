@@ -100,12 +100,12 @@ if (-not (Test-Path $venvPython)) {
         Write-Host "bootstrap: installing nanvix-zutil (editable) …" -ForegroundColor Cyan
         & $venvPython -m pip install -q -e $zutilPath
     } else {
-        # Resolve the latest nanvix-zutil release tag and wheel hash from
-        # the GitHub Releases API.  The SHA-256 hash is embedded in the
-        # release notes, so no extra network call is needed.
+        # Resolve the latest nanvix-zutil release tag and wheel digest from
+        # the GitHub Releases API.  Each release asset exposes an immutable
+        # “digest” field (sha256:…) — no release-notes parsing required.
         Write-Host "bootstrap: resolving latest nanvix-zutil release …" -ForegroundColor Cyan
         $releaseScript = @'
-import json, os, re, sys, urllib.request
+import json, os, sys, urllib.request
 try:
     headers = {"Accept": "application/vnd.github+json"}
     token = os.environ.get("GH_TOKEN", "")
@@ -118,11 +118,18 @@ try:
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())
     tag = data["tag_name"]
-    body = data.get("body", "")
-    m = re.search(r"sha256:([a-fA-F0-9]{64})", body)
-    if not m:
+    version = tag.lstrip("v").replace("-", "")
+    whl_name = f"nanvix_zutil-{version}-py3-none-any.whl"
+    assets = data.get("assets", [])
+    asset = next((a for a in assets if a["name"] == whl_name), None)
+    if asset is None:
+        print(f"error: wheel asset {whl_name} not found in release {tag}", file=sys.stderr)
         sys.exit(1)
-    print(tag + " sha256:" + m.group(1).lower())
+    digest = asset.get("digest", "")
+    if not digest.startswith("sha256:"):
+        print(f"error: asset {whl_name} has no sha256 digest", file=sys.stderr)
+        sys.exit(1)
+    print(tag + " " + digest.lower())
 except Exception as e:
     print("error: " + str(e), file=sys.stderr)
     sys.exit(1)
