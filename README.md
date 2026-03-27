@@ -84,7 +84,7 @@ Consumer build scripts can run `build`, `test`, and other commands inside a
 Docker container by passing one of the three mutually exclusive Docker flags:
 
 | Flag | Image used |
-|---|---|
+| --- | --- |
 | `--with-docker` | `docker_image()` (defaults to `nanvix/toolchain:latest-minimal`) |
 | `--with-minimal-docker` | `nanvix/toolchain:latest-minimal` |
 | `--docker-image <name>` | Custom image |
@@ -136,11 +136,11 @@ class MyBuild(ZScript):
 
 ## Examples
 
-- [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
+* [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
   using `ZScript`.
-- [`examples/hello-zlib/`](examples/hello-zlib/) — downloads zlib via
+* [`examples/hello-zlib/`](examples/hello-zlib/) — downloads zlib via
   `nanvix.toml` and cross-compiles a program that uses it.
-- [`examples/hello-transitive/`](examples/hello-transitive/) — demonstrates
+* [`examples/hello-transitive/`](examples/hello-transitive/) — demonstrates
   transitive dependency resolution via the lockfile system.
 
 ## Developer Setup
@@ -156,13 +156,13 @@ uv run tasks.py setup         # configure git hooks
 
 ### Dev Commands
 
-| Command                       | Description                        |
-|-------------------------------|------------------------------------|
-| `uv run tasks.py lint`       | Check formatting (black)           |
-| `uv run tasks.py format`    | Fix formatting (black)             |
-| `uv run tasks.py typecheck` | Strict type checking (basedpyright)|
-| `uv run tasks.py test`      | Run test suite (pytest)            |
-| `uv run tasks.py clean`     | Remove caches and build artifacts  |
+| Command                      | Description                         |
+| ---------------------------- | ----------------------------------- |
+| `uv run tasks.py lint`       | Check formatting (black)            |
+| `uv run tasks.py format`     | Fix formatting (black)              |
+| `uv run tasks.py typecheck`  | Strict type checking (basedpyright) |
+| `uv run tasks.py test`       | Run test suite (pytest)             |
+| `uv run tasks.py clean`      | Remove caches and build artifacts   |
 
 ## License
 
