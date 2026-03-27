@@ -11,6 +11,8 @@ Consumer scripts do not construct the parser directly; they call
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
 from nanvix_zutil.lockfile import get_zutil_version
 
@@ -51,13 +53,14 @@ _SUBCOMMAND_HELP: dict[str, str] = {
 
 
 def build_parser(
-    prog: str = "./z",
+    prog: str | None = None,
     available: tuple[str, ...] | None = None,
 ) -> argparse.ArgumentParser:
     """Build and return the top-level argument parser.
 
     Args:
-        prog: Program name shown in ``--help`` output.
+        prog: Program name shown in ``--help`` output.  When ``None``
+            (the default), derived from ``sys.argv[0]``.
         available: Subset of :data:`SUBCOMMANDS` to register.  When
             ``None`` all subcommands are registered (backwards-compatible
             default used by tests and the minimal pre-parser).
@@ -65,6 +68,8 @@ def build_parser(
     Returns:
         Fully configured :class:`argparse.ArgumentParser`.
     """
+    if prog is None:
+        prog = Path(sys.argv[0]).stem
     parser = argparse.ArgumentParser(
         prog=prog,
         description="Nanvix build script.",

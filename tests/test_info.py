@@ -342,5 +342,47 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertIn("sha=deadbee", output)
 
 
+class TestNanvixZutilInfoInvocation(unittest.TestCase):
+    """Tests for invocation via ``nanvix-zutil info`` (CLI dispatcher)."""
+
+    @patch("nanvix_zutil.info.resolve_release")
+    def test_nanvix_zutil_info_key_value(self, mock_resolve: MagicMock) -> None:
+        """nanvix-zutil info produces same output as nanvix-info."""
+        mock_resolve.return_value = _make_release()
+        buf = StringIO()
+        sys.stdout = buf
+        try:
+            with (
+                patch("sys.argv", ["nanvix-zutil info"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                main()
+        finally:
+            sys.stdout = sys.__stdout__
+        self.assertEqual(ctx.exception.code, 0)
+        output = buf.getvalue()
+        self.assertIn(f"tag={_TAG}", output)
+        self.assertIn(f"sha={_SHA}", output)
+
+    @patch("nanvix_zutil.info.resolve_release")
+    def test_nanvix_zutil_info_json(self, mock_resolve: MagicMock) -> None:
+        """nanvix-zutil info --json produces valid JSON."""
+        mock_resolve.return_value = _make_release()
+        buf = StringIO()
+        sys.stdout = buf
+        try:
+            with (
+                patch("sys.argv", ["nanvix-zutil info", "--json"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                main()
+        finally:
+            sys.stdout = sys.__stdout__
+        self.assertEqual(ctx.exception.code, 0)
+        obj = json.loads(buf.getvalue().strip())
+        self.assertEqual(obj["tag"], _TAG)
+        self.assertEqual(obj["sha"], _SHA)
+
+
 if __name__ == "__main__":
     unittest.main()

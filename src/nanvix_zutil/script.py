@@ -14,6 +14,12 @@ hooks they need, and call ``ZScript.main()`` as the entry point::
 
     if __name__ == "__main__":
         MyBuild.main()
+
+Invoke via the ``nanvix-zutil`` CLI::
+
+    nanvix-zutil setup
+    nanvix-zutil build
+    nanvix-zutil test
 """
 
 from __future__ import annotations
@@ -76,7 +82,7 @@ class ZScript:
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
         targets: Arguments passed after ``--`` on the command line.
             Lifecycle hooks can use these to customise behavior
-            (e.g. ``./z test -- smoke integration``).
+            (e.g. ``nanvix-zutil test -- smoke integration``).
         sysroot: The :class:`~nanvix_zutil.Sysroot` downloaded by
             :meth:`setup`, or ``None`` before setup runs.
         buildroot: The :class:`~nanvix_zutil.Buildroot` populated by
@@ -289,7 +295,7 @@ class ZScript:
             if not self.sysroot.tag:
                 log.fatal(
                     "Sysroot resolved to 'latest' but no tag is available"
-                    " — delete .nanvix/sysroot and re-run './z setup'.",
+                    " — delete .nanvix/sysroot and re-run 'nanvix-zutil setup'.",
                     code=EXIT_MISSING_DEP,
                 )
             resolved_version = self.sysroot.tag.removeprefix("v")
@@ -360,7 +366,7 @@ class ZScript:
         if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
             log.warning(
                 "'nanvix-version = \"latest\"' — lockfile staleness cannot"
-                " be detected by hash; re-run './z lock' to pick up new"
+                " be detected by hash; re-run 'nanvix-zutil lock' to pick up new"
                 " releases."
             )
 
@@ -368,7 +374,7 @@ class ZScript:
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
                 code=EXIT_INVALID_ARGS,
-                hint="Run `./z lock` to regenerate the lockfile.",
+                hint="Run `nanvix-zutil lock` to regenerate the lockfile.",
             )
 
     # ------------------------------------------------------------------
@@ -484,14 +490,19 @@ class ZScript:
     # ------------------------------------------------------------------
 
     @classmethod
-    def main(cls) -> None:
+    def main(cls, *, repo_root: Path | None = None) -> None:
         """Parse command-line arguments and dispatch to the appropriate
         lifecycle hook.
 
-        Instantiates the class with the repository root inferred from the
-        location of the calling script (``sys.argv[0]``).  The CLI parser
-        is built *after* instantiation so that only the subcommands
-        implemented by the concrete subclass are shown in ``--help``.
+        When *repo_root* is ``None`` (the default — direct invocation via
+        ``python .nanvix/z.py``), the repository root is inferred from
+        ``sys.argv[0]``.  When provided (by the ``nanvix-zutil`` CLI),
+        the inference is skipped entirely.
+
+        Args:
+            repo_root: Optional explicit path to the consumer repository
+                root.  When ``None``, the root is inferred from the
+                location of the calling script.
         """
         argv = sys.argv[1:]
 
@@ -512,7 +523,7 @@ class ZScript:
         pre_parser.add_argument(
             "--version",
             action="version",
-            version=f"./z (nanvix-zutil {get_zutil_version()})",
+            version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
         )
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
 
@@ -536,12 +547,13 @@ class ZScript:
             return
 
         # Infer repo root: the parent of the .nanvix/ directory.
-        script_path = Path(sys.argv[0]).resolve()
-        # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
-        if script_path.parent.name == ".nanvix":
-            repo_root = script_path.parent.parent
-        else:
-            repo_root = script_path.parent
+        if repo_root is None:
+            script_path = Path(sys.argv[0]).resolve()
+            # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
+            if script_path.parent.name == ".nanvix":
+                repo_root = script_path.parent.parent
+            else:
+                repo_root = script_path.parent
 
         instance = cls(repo_root)
         instance.targets = targets

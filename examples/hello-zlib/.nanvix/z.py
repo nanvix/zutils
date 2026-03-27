@@ -8,10 +8,10 @@ supported via the ``--with-docker`` / ``--with-minimal-docker`` /
 ``--docker-image`` flags.  The buildroot is automatically mounted at
 ``/mnt/buildroot`` when Docker is active::
 
-    ./z setup                     # download sysroot + zlib (host)
-    ./z build --with-docker       # cross-compile inside Docker container
-    ./z test  --with-docker       # run tests (smoke + integration + functional)
-    ./z clean                     # remove build artifacts (host)
+    nanvix-zutil setup                     # download sysroot + zlib (host)
+    nanvix-zutil build --with-docker       # cross-compile inside Docker container
+    nanvix-zutil test  --with-docker       # run tests (smoke + integration + functional)
+    nanvix-zutil clean                     # remove build artifacts (host)
 """
 
 from pathlib import Path
@@ -43,7 +43,7 @@ class HelloZlib(ZScript):
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
             log.fatal(
-                "Sysroot not configured — run './z setup' first.",
+                "Sysroot not configured — run 'nanvix-zutil setup' first.",
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
@@ -67,7 +67,7 @@ class HelloZlib(ZScript):
                 "nanvix.toml must declare zlib as a build-time dependency.",
                 hint=(
                     "Add zlib as a build-time dependency in nanvix.toml, then "
-                    "re-run `./z setup`. See the hello-zlib example manifest "
+                    "re-run `nanvix-zutil setup`. See the hello-zlib example manifest "
                     "for reference."
                 ),
             )
@@ -101,7 +101,7 @@ class HelloZlib(ZScript):
         log.info("=== hello-zlib smoke tests ===")
         if not binary.exists():
             log.fatal(
-                f"{binary} not found — run './z build' first.", code=EXIT_TEST_FAILURE
+                f"{binary} not found — run 'nanvix-zutil build' first.", code=EXIT_TEST_FAILURE
             )
         size = binary.stat().st_size
         if size < 1000:
