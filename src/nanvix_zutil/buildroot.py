@@ -11,7 +11,7 @@ describes a single library fetched from a GitHub release.
 from __future__ import annotations
 
 import tarfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from enum import Enum
 from pathlib import Path
 
@@ -84,6 +84,31 @@ class Dependency:
     artifact_pattern: str = "{name}-{machine}-{mode}-{mem}.tar.bz2"
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
+
+
+def suffix_dep(dep: Dependency, version: str) -> Dependency:
+    """Return a copy of *dep* with its VERSION ref suffixed with *version*.
+
+    If *dep* has a non-VERSION ref kind, it is returned unchanged.
+
+    Args:
+        dep: The dependency to suffix.
+        version: The nanvix sysroot version to append
+            (e.g. ``"0.12.277"``).
+
+    Returns:
+        A new :class:`Dependency` with the suffixed ref, or the
+        original if no suffixing is needed.
+    """
+    if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+        return _dc_replace(
+            dep,
+            ref=Ref(
+                kind=dep.ref.kind,
+                value=f"{dep.ref.value}-nanvix-{version}",
+            ),
+        )
+    return dep
 
 
 # ---------------------------------------------------------------------------

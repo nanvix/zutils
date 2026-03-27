@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil import log
-from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
+from nanvix_zutil.buildroot import Buildroot, Dependency, suffix_dep
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
@@ -285,21 +285,15 @@ class ZScript:
         # that the sysroot is resolved, suffix VERSION deps before
         # passing them to install_dep().
         deps: list[Dependency] = list(self.manifest.dependencies)
-        if self.manifest.sysroot_ref.value == "latest" and self.sysroot.tag:
+        if self.manifest.sysroot_ref.value == "latest":
+            if not self.sysroot.tag:
+                log.fatal(
+                    "Sysroot resolved to 'latest' but no tag is available"
+                    " — delete .nanvix/sysroot and re-run './z setup'.",
+                    code=EXIT_MISSING_DEP,
+                )
             resolved_version = self.sysroot.tag.removeprefix("v")
-
-            def _suffix_dep(dep: Dependency) -> Dependency:
-                if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
-                    return dataclasses.replace(
-                        dep,
-                        ref=Ref(
-                            kind=dep.ref.kind,
-                            value=f"{dep.ref.value}-nanvix-{resolved_version}",
-                        ),
-                    )
-                return dep
-
-            deps = [_suffix_dep(d) for d in deps]
+            deps = [suffix_dep(d, resolved_version) for d in deps]
 
         if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")

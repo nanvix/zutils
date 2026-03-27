@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import github, log
-from nanvix_zutil.buildroot import Dependency, Ref, RefKind
+from nanvix_zutil.buildroot import Dependency, suffix_dep
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -254,25 +254,18 @@ def _resolve_inner(
         resolved_version = tag.removeprefix("v")
         if not resolved_version:
             log.fatal(
-                "Resolved sysroot release has no tag" " — cannot suffix VERSION deps.",
+                "Resolved sysroot release has no tag — cannot suffix VERSION deps.",
                 code=EXIT_NETWORK_ERROR,
             )
 
-        def _suffix(dep: Dependency) -> Dependency:
-            if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
-                return _dc_replace(
-                    dep,
-                    ref=Ref(
-                        kind=dep.ref.kind,
-                        value=f"{dep.ref.value}-nanvix-{resolved_version}",
-                    ),
-                )
-            return dep
-
         manifest = _dc_replace(
             manifest,
-            dependencies=[_suffix(d) for d in manifest.dependencies],
-            system_dependencies=[_suffix(d) for d in manifest.system_dependencies],
+            dependencies=[
+                suffix_dep(d, resolved_version) for d in manifest.dependencies
+            ],
+            system_dependencies=[
+                suffix_dep(d, resolved_version) for d in manifest.system_dependencies
+            ],
         )
 
     # 2. Seed queue with direct deps
@@ -414,4 +407,15 @@ def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
         ``True`` if the lockfile is stale (hashes differ).
     """
     current_hash = compute_manifest_hash(manifest_path)
-    return lockfile.metadata.manifest_hash != current_hash
+    stale = lockfile.metadata.manifest_hash != current_hash
+
+    if not stale:
+        sysroot_pkg = next((p for p in lockfile.packages if p.name == "nanvix"), None)
+        if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
+            log.warning(
+                "'nanvix-version = \"latest\"' — lockfile staleness cannot"
+                " be detected by hash; re-run './z lock' to pick up new"
+                " releases."
+            )
+
+    return stale

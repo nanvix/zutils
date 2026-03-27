@@ -19,7 +19,11 @@ from nanvix_zutil.docker import (
     Mount,
 )
 from nanvix_zutil.script import ZScript
-from tests.testutils import MANIFEST_WITH_DEPS, write_manifest
+from tests.testutils import (
+    MANIFEST_LATEST_WITH_DEPS,
+    MANIFEST_WITH_DEPS,
+    write_manifest,
+)
 
 
 class TestZScriptInit(unittest.TestCase):
@@ -181,6 +185,63 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
         config_file = Path(self._tmpdir.name) / ".nanvix" / "env.json"
         self.assertTrue(config_file.exists())
+
+
+class TestZScriptSetupLatestSysroot(unittest.TestCase):
+    """setup() with nanvix-version = "latest" suffixes deps correctly."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name), MANIFEST_LATEST_WITH_DEPS)
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_setup_latest_sysroot_suffixes_deps(self) -> None:
+        """setup() suffixes VERSION deps with the resolved sysroot tag."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = "fa06b88"
+        fake_sysroot.tag = "v0.12.277"
+
+        fake_buildroot = MagicMock()
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        # install_dep should be called with the suffixed ref value.
+        fake_buildroot.install_dep.assert_called_once()
+        _, kwargs = fake_buildroot.install_dep.call_args
+        self.assertEqual(kwargs["dep"].ref.value, "1.3.1-nanvix-0.12.277")
+
+    def test_setup_latest_sysroot_empty_tag_fatal(self) -> None:
+        """setup() exits fatally when sysroot tag is empty (upgrade path)."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.commitish = "fa06b88"
+        fake_sysroot.tag = ""
+
+        log_mod.set_json_mode(True)
+        try:
+            with (
+                patch(
+                    "nanvix_zutil.script.Sysroot.download",
+                    return_value=fake_sysroot,
+                ),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                script = ZScript(Path(self._tmpdir.name))
+                script.setup()
+
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
 
 
 class TestZScriptLifecycleHooks(unittest.TestCase):
