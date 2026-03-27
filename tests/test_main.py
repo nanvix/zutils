@@ -191,6 +191,17 @@ class TestConsumerCommandWithZPy(unittest.TestCase):
                 discover_script_class(z_py)
             self.assertEqual(ctx.exception.code, 1)
 
+    def test_import_error_cleans_up_sys_modules(self) -> None:
+        """discover_script_class cleans up sys.modules on import failure."""
+        from nanvix_zutil.__main__ import discover_script_class
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            z_py = Path(tmpdir) / "z.py"
+            z_py.write_text("raise RuntimeError('boom')\n")
+            with self.assertRaises(SystemExit):
+                discover_script_class(z_py)
+            self.assertNotIn("_z_consumer", sys.modules)
+
 
 class TestUnknownCommand(unittest.TestCase):
     """Unknown subcommand exits with code 2."""

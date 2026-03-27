@@ -215,14 +215,19 @@ def get_nanvix_info(
 # ---------------------------------------------------------------------------
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser(prog: str = "nanvix-info") -> argparse.ArgumentParser:
     """Build and return the argument parser for ``nanvix-info``.
+
+    Args:
+        prog: Program name shown in ``--help`` output.  Defaults to
+            ``"nanvix-info"`` for standalone use; the ``nanvix-zutil``
+            CLI passes ``"nanvix-zutil info"`` for integrated help.
 
     Returns:
         Configured :class:`argparse.ArgumentParser`.
     """
     parser = argparse.ArgumentParser(
-        prog="nanvix-info",
+        prog=prog,
         description=(
             "Query a Nanvix GitHub release and emit the release tag, "
             "sysroot commit SHA, and optional semver version."
