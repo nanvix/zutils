@@ -36,6 +36,8 @@ htmlcov/
 pyrightconfig.json
 
 # Editor
+/.vscode
+/.vscode/
 .idea/
 *.swp
 *~
