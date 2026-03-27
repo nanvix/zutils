@@ -84,10 +84,8 @@ locally, plus the `gh act` extension (`gh extension install nektos/gh-act`).
    - Validates the version in `pyproject.toml` matches the branch name.
    - Validates the tag does not already exist.
    - Builds the wheel (`.whl`) and source distribution (`.tar.gz`).
-   - Computes a SHA-256 checksum of the wheel.
    - Creates and pushes the git tag `v<version>`.
-   - Creates a GitHub release with the artifacts, checksums, and
-     auto-generated release notes.
+   - Creates a GitHub release with the artifacts and auto-generated release notes.
 
 4. **Verify the release** on the
    [GitHub releases page](https://github.com/nanvix/zutils/releases).
@@ -128,8 +126,6 @@ After the release is published:
 
 - The git tag `v<version>` is pushed automatically by the workflow.
 - Consumer repos can pin the new version in their bootstrap wrappers.
-- Update the `_ZUTIL_HASH` constant in consumer `z` / `z.ps1` scripts to the
-  SHA-256 printed in the release notes.
 
 > **Note:** PyPI publishing is not yet active — the publish step is present in
 > the workflow but commented out.

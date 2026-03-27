@@ -119,16 +119,6 @@ jobs:
             - name: Build wheel and sdist
               run: uv build
 
-            - name: Compute wheel checksum
-              id: checksum
-              run: |
-                  whl=$(ls dist/*.whl)
-                  hash=$(sha256sum "$whl" | cut -d' ' -f1)
-                  echo "sha256=$hash" >> "$GITHUB_OUTPUT"
-                  echo "wheel=$(basename "$whl")" >> "$GITHUB_OUTPUT"
-                  # Write checksums file for machine consumption
-                  sha256sum dist/* > dist/checksums.sha256
-
             - name: Create and push release tag
               run: |
                   git config user.name "github-actions[bot]"
@@ -138,16 +128,10 @@ jobs:
 
             - name: Create GitHub release
               run: |
-                  WHEEL="${{ steps.checksum.outputs.wheel }}"
-                  HASH="${{ steps.checksum.outputs.sha256 }}"
-                  printf '## Checksums\n\n**%s**\n```\nsha256:%s\n```\n\nBootstrap preamble hash constant:\n```python\n_ZUTIL_HASH = "sha256:%s"\n```\n' \
-                    "$WHEEL" "$HASH" "$HASH" > /tmp/release-notes.md
-
                   gh release create "v${{ steps.version.outputs.value }}" \
-                    dist/* \
+                    dist/*.whl dist/*.tar.gz \
                     --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
-                    --generate-notes \
-                    --notes-file /tmp/release-notes.md
+                    --generate-notes
               env:
                   GH_TOKEN: ${{ github.token }}
 
