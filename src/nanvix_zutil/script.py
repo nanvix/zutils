@@ -14,6 +14,12 @@ hooks they need, and call ``ZScript.main()`` as the entry point::
 
     if __name__ == "__main__":
         MyBuild.main()
+
+Invoke via the ``nanvix-zutil`` CLI::
+
+    nanvix-zutil setup
+    nanvix-zutil build
+    nanvix-zutil test
 """
 
 from __future__ import annotations
@@ -76,7 +82,7 @@ class ZScript:
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
         targets: Arguments passed after ``--`` on the command line.
             Lifecycle hooks can use these to customise behavior
-            (e.g. ``./z test -- smoke integration``).
+            (e.g. ``nanvix-zutil test -- smoke integration``).
         sysroot: The :class:`~nanvix_zutil.Sysroot` downloaded by
             :meth:`setup`, or ``None`` before setup runs.
         buildroot: The :class:`~nanvix_zutil.Buildroot` populated by
@@ -289,7 +295,7 @@ class ZScript:
             if not self.sysroot.tag:
                 log.fatal(
                     "Sysroot resolved to 'latest' but no tag is available"
-                    " — delete .nanvix/sysroot and re-run './z setup'.",
+                    " — delete .nanvix/sysroot and re-run 'nanvix-zutil setup'.",
                     code=EXIT_MISSING_DEP,
                 )
             resolved_version = self.sysroot.tag.removeprefix("v")
@@ -360,7 +366,7 @@ class ZScript:
         if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
             log.warning(
                 "'nanvix-version = \"latest\"' — lockfile staleness cannot"
-                " be detected by hash; re-run './z lock' to pick up new"
+                " be detected by hash; re-run 'nanvix-zutil lock' to pick up new"
                 " releases."
             )
 
@@ -368,7 +374,7 @@ class ZScript:
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
                 code=EXIT_INVALID_ARGS,
-                hint="Run `./z lock` to regenerate the lockfile.",
+                hint="Run `nanvix-zutil lock` to regenerate the lockfile.",
             )
 
     # ------------------------------------------------------------------

@@ -3,16 +3,16 @@
 
 """Hello-transitive example — demonstrates transitive dependency resolution.
 
-Shows how ``./z lock`` discovers transitive dependencies by downloading
+Shows how ``nanvix-zutil lock`` discovers transitive dependencies by downloading
 each dependency's shallow ``nanvix.lock`` release asset.  In this
 example, ``libfoo`` depends on ``zlib``, so locking the manifest
 automatically pulls in ``zlib`` as a transitive dependency.
 
-    ./z lock       # resolve deps (discovers zlib via libfoo's lockfile)
-    ./z setup      # download sysroot + all resolved deps
-    ./z build      # cross-compile hello.c → hello-transitive.elf
-    ./z test       # run tests (smoke + integration + functional)
-    ./z clean      # remove build artifacts
+    nanvix-zutil lock       # resolve deps (discovers zlib via libfoo's lockfile)
+    nanvix-zutil setup      # download sysroot + all resolved deps
+    nanvix-zutil build      # cross-compile hello.c → hello-transitive.elf
+    nanvix-zutil test       # run tests (smoke + integration + functional)
+    nanvix-zutil clean      # remove build artifacts
 """
 
 from nanvix_zutil import (

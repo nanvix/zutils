@@ -13,8 +13,8 @@
 #
 # Prerequisites:
 #   - A .nanvix/z.py that subclasses ZScript
-#   - A ./z bootstrap wrapper at the repo root
 #   - A .nanvix/nanvix.toml manifest
+#   - nanvix-zutil installed (via GitHub Releases wheel)
 # ==========================================================================
 
 name: Nanvix CI
@@ -51,7 +51,7 @@ jobs:
       package_name: ${{ steps.resolve.outputs.package_name }}
       package_version: ${{ steps.resolve.outputs.package_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install nanvix-zutil
         env:
@@ -65,48 +65,7 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
-        # TODO: nanvix_zutils cli
-        run: |
-          python3 -c "
-          import os
-          from pathlib import Path
-          from nanvix_zutil.manifest import load_manifest
-          from nanvix_zutil.resolver import resolve
-
-          manifest = load_manifest(Path('.nanvix/nanvix.toml'))
-          lockfile = resolve(manifest, gh_token=os.environ.get('GH_TOKEN'), shallow=True)
-
-          sysroot = next(
-              (p for p in lockfile.packages if p.kind == 'sysroot'),
-              None,
-          )
-          if sysroot is None:
-              raise SystemExit('No sysroot package in lockfile — check .nanvix/nanvix.toml nanvix-version')
-          with Path(os.environ['GITHUB_OUTPUT']).open('a') as f:
-              f.write(
-                  f'nanvix_tag={sysroot.resolved_tag}\n'
-                  f'nanvix_sha={sysroot.resolved_commitish[:7]}\n'
-                  f'nanvix_version={sysroot.resolved_tag.lstrip(\"v\")}\n'
-                  f'package_name={manifest.name}\n'
-                  f'package_version={manifest.version}\n'
-              )
-          "
-
-      - name: Download Nanvix sysroot assets
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
-        run: |
-          gh release download "${{ steps.resolve.outputs.nanvix_tag }}" \
-            --repo nanvix/nanvix \
-            --pattern "*.tar.bz2" \
-            --dir nanvix-artifacts
-
-      - name: Upload Nanvix artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nanvix-release-artifacts
-          path: nanvix-artifacts/*.tar.bz2
-          retention-days: 1
+        run: nanvix-zutil resolve >> "$GITHUB_OUTPUT"
 
   build:
     needs: get-nanvix-info
@@ -130,51 +89,40 @@ jobs:
       NANVIX_MEMORY_SIZE: ${{ matrix.memory }}
       USER: runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Download Nanvix artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: nanvix-release-artifacts
-          path: nanvix-artifacts
-
-      - name: Extract matching sysroot
+      - name: Install nanvix-zutil
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
         run: |
-          set -euo pipefail
-          PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*${{ matrix.memory }}.*\.tar\.bz2"
-          ARTIFACT=$(find nanvix-artifacts -maxdepth 1 -type f -name "*.tar.bz2" \
-            | grep -E "$PATTERN" | head -1)
-          if [[ -z "$ARTIFACT" ]]; then
-            echo "::error::No sysroot artifact for ${{ matrix.platform }}/${{ matrix.process-mode }}/${{ matrix.memory }}"
-            exit 1
-          fi
-          mkdir -p nanvix-artifacts/extracted
-          tar -xjf "$ARTIFACT" -C nanvix-artifacts/extracted
+          WHEEL_URL=$(gh api repos/nanvix/zutils/releases/latest \
+            --jq '.assets[] | select(.name | endswith(".whl")) | .browser_download_url')
+          pip install "$WHEEL_URL"
 
       - name: Setup
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
-        run: ./z setup
+        run: nanvix-zutil setup
 
       - name: Build
-        run: ./z build
+        run: nanvix-zutil build
 
       - name: Test
         if: matrix.process-mode != 'standalone'
-        run: ./z test
+        run: nanvix-zutil test
 
       # CUSTOMIZE: standalone test targets may vary by consumer
       - name: Test (standalone — smoke + integration only)
         if: matrix.process-mode == 'standalone'
-        run: ./z test -- test-smoke test-integration
+        run: nanvix-zutil test -- test-smoke test-integration
 
       - name: Release
         if: success()
-        run: ./z release
+        run: nanvix-zutil release
 
       - name: Upload build artifacts
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ needs.get-nanvix-info.outputs.package_name }}-${{ needs.get-nanvix-info.outputs.package_version }}-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ matrix.memory }}
           path: dist/*.tar.bz2
@@ -189,7 +137,7 @@ jobs:
 
       - name: Upload failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: failure-logs-${{ matrix.platform }}-${{ matrix.process-mode }}
           path: ci-logs/*
@@ -200,11 +148,11 @@ jobs:
     if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all build artifacts
         id: download-artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         continue-on-error: true
         with:
           path: release-artifacts
@@ -225,6 +173,18 @@ jobs:
             exit 1
           fi
           ls -la release-assets/
+
+      - name: Generate lockfile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          WHEEL_URL=$(gh api repos/nanvix/zutils/releases/latest \
+            --jq '.assets[] | select(.name | endswith(".whl")) | .browser_download_url')
+          pip install "$WHEEL_URL"
+          nanvix-zutil resolve > /dev/null  # validate manifest resolves
+          nanvix-zutil lock --shallow
+          cp .nanvix/nanvix.lock release-assets/nanvix.lock
 
       - name: Create release
         env:
@@ -300,6 +260,16 @@ jobs:
               await github.rest.issues.createComment({
                 owner, repo, issue_number: existing.number, body
               });
+
+              // Reconcile assignees: add any missing desired assignees.
+              const currentAssignees = existing.assignees.map(a => a.login);
+              const desired = [];  // CUSTOMIZE: e.g. ['ppenna', 'danbugs']
+              const missing = desired.filter(a => !currentAssignees.includes(a));
+              if (missing.length > 0) {
+                await github.rest.issues.addAssignees({
+                  owner, repo, issue_number: existing.number, assignees: missing
+                });
+              }
             } else {
               await github.rest.issues.create({
                 owner, repo, title, body,

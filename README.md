@@ -10,8 +10,19 @@ exit codes.
 
 ## Installation
 
+Install from the latest [GitHub Release](https://github.com/nanvix/zutils/releases):
+
 ```bash
-pip install nanvix-zutil
+# Requires gh CLI (https://cli.github.com)
+WHEEL_URL=$(gh api repos/nanvix/zutils/releases/latest \
+  --jq '.assets[] | select(.name | endswith(".whl")) | .browser_download_url')
+pip install "$WHEEL_URL"
+```
+
+Or install a specific version directly:
+
+```bash
+pip install "https://github.com/nanvix/zutils/releases/download/v0.3.0/nanvix_zutil-0.3.0-py3-none-any.whl"
 ```
 
 ## Usage
@@ -39,26 +50,32 @@ if __name__ == "__main__":
     MyBuild.main()
 ```
 
-Then invoke via the bootstrap wrapper at the repo root:
+Then invoke via the `nanvix-zutil` CLI:
 
 ```bash
-./z lock
-./z setup
-./z build
-./z test
+nanvix-zutil lock
+nanvix-zutil setup
+nanvix-zutil build
+nanvix-zutil test
+```
+
+Or with `uvx` for zero-install usage:
+
+```bash
+uvx nanvix-zutil build
 ```
 
 ### Lockfile
 
-`./z lock` resolves the full dependency graph (including transitive
+`nanvix-zutil lock` resolves the full dependency graph (including transitive
 dependencies) and writes a pinned `nanvix.lock` file to `.nanvix/`.
 Use `--check` in CI to verify the lockfile is up-to-date, or `--shallow`
 to resolve only direct dependencies (for publishing as a release asset).
 
 ```bash
-./z lock              # resolve all deps and write nanvix.lock
-./z lock --check      # verify lockfile is fresh (exit 3 if missing, 2 if stale)
-./z lock --shallow    # resolve direct deps only (for CI release assets)
+nanvix-zutil lock              # resolve all deps and write nanvix.lock
+nanvix-zutil lock --check      # verify lockfile is fresh (exit 3 if missing, 2 if stale)
+nanvix-zutil lock --shallow    # resolve direct deps only (for CI release assets)
 ```
 
 ## Docker Integration
@@ -76,10 +93,10 @@ Docker container by passing one of the three mutually exclusive Docker flags:
 `self.run()` call is transparently wrapped in `docker run`.
 
 ```bash
-./z setup                          # download sysroot on host
-./z build --with-docker            # cross-compile inside Docker
-./z test  --with-minimal-docker    # run tests inside Docker
-./z clean                          # clean (host)
+nanvix-zutil setup                          # download sysroot on host
+nanvix-zutil build --with-docker            # cross-compile inside Docker
+nanvix-zutil test  --with-minimal-docker    # run tests inside Docker
+nanvix-zutil clean                          # clean (host)
 ```
 
 ### How it works

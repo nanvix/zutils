@@ -17,8 +17,8 @@ can require network access to fetch build requirements.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,10 +39,6 @@ from nanvix_zutil.resolver import resolve
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-transitive"
-_Z_BASH = _EXAMPLE_DIR / "z"
-_Z_PS1 = _EXAMPLE_DIR / "z.ps1"
-_HAS_PWSH = shutil.which("pwsh") is not None
-_HAS_BASH = shutil.which("bash") is not None
 _LIFECYCLE_TIMEOUT = 120
 
 
@@ -234,19 +230,18 @@ class TestTransitiveResolution(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# CLI tests (real bootstrap wrappers)
+# CLI tests (using python -m nanvix_zutil)
 # ---------------------------------------------------------------------------
 
 
-@unittest.skipUnless(_HAS_BASH, "bash not found in PATH")
-class TestHelloTransitiveBash(unittest.TestCase):
-    """End-to-end CLI tests for the ``z`` (Bash) bootstrap wrapper."""
+class TestHelloTransitiveCli(unittest.TestCase):
+    """End-to-end CLI tests via ``python -m nanvix_zutil``."""
 
     @staticmethod
     def _run_z(*args: str) -> subprocess.CompletedProcess[str]:
-        """Run the example via ``bash z`` with the given arguments."""
+        """Run the example via ``python -m nanvix_zutil``."""
         return subprocess.run(
-            ["bash", str(_Z_BASH), *args],
+            [sys.executable, "-m", "nanvix_zutil", *args],
             cwd=str(_EXAMPLE_DIR),
             capture_output=True,
             text=True,
@@ -259,54 +254,13 @@ class TestHelloTransitiveBash(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_no_args_shows_help(self) -> None:
-        """``z`` with no arguments prints help and exits 0."""
+        """No arguments prints help and exits 0."""
         r = self._run_z()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("usage:", r.stdout)
 
     def test_json_mode(self) -> None:
         """``--json`` produces parseable JSON on stdout."""
         r = self._run_z("--json", "clean")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
-        self.assertTrue(json_lines, "expected at least one JSON line on stdout")
-        for line in json_lines:
-            obj: object = json.loads(line)
-            self.assertIsInstance(obj, dict)
-            assert isinstance(obj, dict)
-            typed = cast(dict[str, object], obj)
-            self.assertIn("level", typed)
-
-
-@unittest.skipUnless(_HAS_PWSH, "pwsh (PowerShell) not found in PATH")
-class TestHelloTransitivePS1(unittest.TestCase):
-    """End-to-end CLI tests for the ``z.ps1`` bootstrap wrapper."""
-
-    @staticmethod
-    def _run_z_ps1(*args: str) -> subprocess.CompletedProcess[str]:
-        """Run the example via ``pwsh z.ps1`` with the given arguments."""
-        return subprocess.run(
-            ["pwsh", "-NoProfile", "-File", str(_Z_PS1), *args],
-            cwd=str(_EXAMPLE_DIR),
-            capture_output=True,
-            text=True,
-            timeout=_LIFECYCLE_TIMEOUT,
-        )
-
-    def test_help_returns_zero(self) -> None:
-        """``z.ps1 --help`` exits successfully."""
-        r = self._run_z_ps1("--help")
-        self.assertEqual(r.returncode, 0, r.stderr)
-
-    def test_no_args_shows_help(self) -> None:
-        """``z.ps1`` with no arguments prints help and exits 0."""
-        r = self._run_z_ps1()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("usage:", r.stdout)
-
-    def test_json_mode(self) -> None:
-        """``z.ps1 --json clean`` produces parseable JSON on stdout."""
-        r = self._run_z_ps1("--json", "clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stdout")

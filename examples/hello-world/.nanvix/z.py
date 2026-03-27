@@ -9,10 +9,10 @@ supported via the ``--with-docker`` / ``--with-minimal-docker`` /
 directly — it calls :meth:`~nanvix_zutil.ZScript.run` and Docker wrapping
 is transparent::
 
-    ./z setup                     # download Nanvix sysroot (host)
-    ./z build --with-docker       # cross-compile inside Docker container
-    ./z test  --with-docker       # run tests (smoke + integration + functional)
-    ./z clean                     # remove build artifacts (host)
+    nanvix-zutil setup                     # download Nanvix sysroot (host)
+    nanvix-zutil build --with-docker       # cross-compile inside Docker container
+    nanvix-zutil test  --with-docker       # run tests (smoke + integration + functional)
+    nanvix-zutil clean                     # remove build artifacts (host)
 """
 
 from pathlib import Path
@@ -43,7 +43,7 @@ class HelloWorld(ZScript):
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
             log.fatal(
-                "Sysroot not configured — run './z setup' first.",
+                "Sysroot not configured — run 'nanvix-zutil setup' first.",
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
@@ -79,7 +79,7 @@ class HelloWorld(ZScript):
         log.info("=== hello-world smoke tests ===")
         if not binary.exists():
             log.fatal(
-                f"{binary} not found — run './z build' first.",
+                f"{binary} not found — run 'nanvix-zutil build' first.",
                 code=EXIT_TEST_FAILURE,
             )
         size = binary.stat().st_size
