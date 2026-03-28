@@ -4,137 +4,137 @@
 name: Release
 
 on:
-    push:
-        branches: ["release-*"]
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Version to release (must match pyproject.toml, e.g. 0.1.0)"
-                required: true
-                type: string
+  push:
+    branches: ["release/v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (must match pyproject.toml, e.g. 0.1.0)"
+        required: true
+        type: string
 
 permissions:
-    contents: write # create tags and GitHub releases
-    id-token: write # OIDC trusted publishing to PyPI
+  contents: write # create tags and GitHub releases
+  id-token: write # OIDC trusted publishing to PyPI
 
 jobs:
-    lint-and-typecheck:
-        name: Lint & Type Check
-        runs-on: ubuntu-latest
-        if: >-
-            github.event_name == 'workflow_dispatch' ||
-            github.event_name == 'push' ||
-            (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release-'))
-        steps:
-            - uses: actions/checkout@v4
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release/v'))
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v7
-              with:
-                  python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
 
-            - name: Install dependencies
-              run: uv sync
+      - name: Install dependencies
+        run: uv sync
 
-            - name: Check formatting (black)
-              run: uv run black --check src/ tests/
+      - name: Check formatting (black)
+        run: uv run black --check src/ tests/
 
-            - name: Type check (basedpyright)
-              run: uv run basedpyright src/ tests/
+      - name: Type check (basedpyright)
+        run: uv run basedpyright src/ tests/
 
-    test:
-        name: Tests
-        runs-on: ubuntu-latest
-        container:
-            image: nanvix/toolchain:latest-minimal
-            options: --device /dev/kvm
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    container:
+      image: nanvix/toolchain:latest-minimal
+      options: --device /dev/kvm
+    env:
+      NANVIX_TOOLCHAIN: /opt/nanvix
+      USER: runner
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release/v'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install project and dev dependencies
+        run: uv sync --python 3.12
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+  release:
+    name: Build & Publish
+    needs: [lint-and-typecheck, test]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#release/v}"
+          fi
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Invalid semver: $VERSION"
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Verify version matches pyproject.toml
+        run: |
+          actual=$(python -c "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
+          if [ "$actual" != "${{ steps.version.outputs.value }}" ]; then
+            echo "Version mismatch: pyproject.toml=$actual expected=${{ steps.version.outputs.value }}"
+            exit 1
+          fi
+
+      - name: Check tag does not already exist
+        run: |
+          if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.value }}" | grep -q .; then
+            echo "Tag v${{ steps.version.outputs.value }} already exists on origin. Bump the version in pyproject.toml before releasing."
+            exit 1
+          fi
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Create and push release tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.version.outputs.value }}"
+          git push origin "v${{ steps.version.outputs.value }}"
+
+      - name: Create GitHub release
+        run: |
+          gh release create "v${{ steps.version.outputs.value }}" \
+            dist/*.whl dist/*.tar.gz \
+            --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
+            --generate-notes
         env:
-            NANVIX_TOOLCHAIN: /opt/nanvix
-            USER: runner
-        if: >-
-            github.event_name == 'workflow_dispatch' ||
-            github.event_name == 'push' ||
-            (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release-'))
-        steps:
-            - uses: actions/checkout@v4
+          GH_TOKEN: ${{ github.token }}
 
-            - name: Install uv
-              run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-                  echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-            - name: Install project and dev dependencies
-              run: uv sync --python 3.12
-
-            - name: Run tests
-              run: uv run pytest tests/ -v
-
-    release:
-        name: Build & Publish
-        needs: [lint-and-typecheck, test]
-        runs-on: ubuntu-latest
-        environment: release
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Resolve version
-              id: version
-              run: |
-                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    VERSION="${{ inputs.version }}"
-                  else
-                    VERSION="${GITHUB_REF_NAME#release-}"
-                  fi
-                  if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
-                    echo "::error::Invalid semver: $VERSION"
-                    exit 1
-                  fi
-                  echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-
-            - name: Install uv
-              uses: astral-sh/setup-uv@v7
-              with:
-                  python-version: "3.12"
-
-            - name: Install dependencies
-              run: uv sync
-
-            - name: Verify version matches pyproject.toml
-              run: |
-                  actual=$(python -c "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
-                  if [ "$actual" != "${{ steps.version.outputs.value }}" ]; then
-                    echo "Version mismatch: pyproject.toml=$actual expected=${{ steps.version.outputs.value }}"
-                    exit 1
-                  fi
-
-            - name: Check tag does not already exist
-              run: |
-                  if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.value }}" | grep -q .; then
-                    echo "Tag v${{ steps.version.outputs.value }} already exists on origin. Bump the version in pyproject.toml before releasing."
-                    exit 1
-                  fi
-
-            - name: Build wheel and sdist
-              run: uv build
-
-            - name: Create and push release tag
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "github-actions[bot]@users.noreply.github.com"
-                  git tag "v${{ steps.version.outputs.value }}"
-                  git push origin "v${{ steps.version.outputs.value }}"
-
-            - name: Create GitHub release
-              run: |
-                  gh release create "v${{ steps.version.outputs.value }}" \
-                    dist/*.whl dist/*.tar.gz \
-                    --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
-                    --generate-notes
-              env:
-                  GH_TOKEN: ${{ github.token }}
-
-            # TODO: PyPI repo not yet set up
-            # - name: Publish to PyPI
-            #   run: uv publish
+      # TODO: PyPI repo not yet set up
+      # - name: Publish to PyPI
+      #   run: uv publish
