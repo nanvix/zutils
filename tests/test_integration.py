@@ -131,7 +131,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self.assertIn("distclean", instance.called)
 
     def test_json_flag_enables_json_mode(self) -> None:
-        """--json flag produces JSON output on stdout."""
+        """--json flag produces JSON output on stderr."""
         from io import StringIO
 
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
@@ -144,12 +144,12 @@ class TestIntegrationLifecycle(unittest.TestCase):
 
         # After main(), log mode was set to True. Verify it produces JSON output.
         buf = StringIO()
-        original_stdout = sys.stdout
-        sys.stdout = buf
+        original_stderr = sys.stderr
+        sys.stderr = buf
         try:
             log_mod.info("json-check")
         finally:
-            sys.stdout = original_stdout
+            sys.stderr = original_stderr
             log_mod.set_json_mode(False)
 
         raw: object = json.loads(buf.getvalue().strip())
