@@ -69,13 +69,12 @@ locally, plus the `gh act` extension (`gh extension install nektos/gh-act`).
    ```bash
    git checkout dev
    git pull origin dev
-   git checkout -b release-0.3.0   # must be release-<version>
-   git push origin release-0.3.0
+   git checkout -b release/v0.3.0   # must be release/vX.Y.Z
+   git push origin release/v0.3.0
    ```
 
-   > **Important:** the branch name must use a hyphen (`release-X.Y.Z`), not a
-   > slash. The release workflow triggers on `push` to branches matching
-   > `release-*`.
+   > The release workflow triggers on `push` to branches matching
+   > `release/v*`.
 
 3. **Wait for the workflow.** Pushing the branch automatically triggers the
    [Release workflow](/.github/workflows/release.yml), which:
@@ -106,7 +105,7 @@ Append a pre-release suffix to the version for release candidates:
 version = "0.4.0-rc1"
 ```
 
-Branch name: `release-0.4.0-rc1`. The workflow accepts any valid semver
+Branch name: `release/v0.4.0-rc1`. The workflow accepts any valid semver
 string, including pre-release (`-rc1`, `-alpha.2`) and build metadata
 (`+build.42`) suffixes.
 
