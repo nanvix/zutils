@@ -164,6 +164,16 @@ uv run tasks.py setup         # configure git hooks
 | `uv run tasks.py test`       | Run test suite (pytest)             |
 | `uv run tasks.py clean`      | Remove caches and build artifacts   |
 
+### Git Hooks
+
+`uv run tasks.py setup` points Git at the `.githooks/` directory, which
+contains:
+
+| Hook         | What it does                                                    |
+| ------------ | --------------------------------------------------------------- |
+| `commit-msg` | Validates `[module] type: Description` format (B, E, F, or W)   |
+| `pre-push`   | Runs formatting (black) and type checking (basedpyright) checks |
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
