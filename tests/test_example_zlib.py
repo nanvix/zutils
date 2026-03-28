@@ -124,11 +124,11 @@ class TestHelloZlibBash(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_json_mode(self) -> None:
-        """``--json`` produces parseable JSON on stdout."""
+        """``--json`` produces parseable JSON on stderr."""
         r = self._run_z("--json", "clean")
         self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
-        self.assertTrue(json_lines, "expected at least one JSON line on stdout")
+        json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
+        self.assertTrue(json_lines, "expected at least one JSON line on stderr")
         for line in json_lines:
             obj: object = json.loads(line)
             self.assertIsInstance(obj, dict)

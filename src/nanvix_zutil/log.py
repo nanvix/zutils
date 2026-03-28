@@ -46,9 +46,13 @@ def info(msg: str) -> None:
         msg: The message text.
     """
     if _json_mode:
-        print(json.dumps({"level": "info", "message": msg}), flush=True)
+        print(
+            json.dumps({"level": "info", "message": msg}),
+            file=sys.stderr,
+            flush=True,
+        )
     else:
-        print(f"\033[36minfo:\033[0m {msg}", flush=True)
+        print(f"\033[36minfo:\033[0m {msg}", file=sys.stderr, flush=True)
 
 
 def success(msg: str) -> None:
@@ -58,9 +62,13 @@ def success(msg: str) -> None:
         msg: The message text.
     """
     if _json_mode:
-        print(json.dumps({"level": "success", "message": msg}), flush=True)
+        print(
+            json.dumps({"level": "success", "message": msg}),
+            file=sys.stderr,
+            flush=True,
+        )
     else:
-        print(f"\033[32msuccess:\033[0m {msg}", flush=True)
+        print(f"\033[32msuccess:\033[0m {msg}", file=sys.stderr, flush=True)
 
 
 def warning(msg: str) -> None:

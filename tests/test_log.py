@@ -19,21 +19,21 @@ class TestInfo(unittest.TestCase):
 
     def test_basic(self) -> None:
         buf = StringIO()
-        sys.stdout = buf
+        sys.stderr = buf
         try:
             log_mod.info("hello")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
         self.assertIn("hello", buf.getvalue())
 
     def test_json_mode(self) -> None:
         log_mod.set_json_mode(True)
         buf = StringIO()
-        sys.stdout = buf
+        sys.stderr = buf
         try:
             log_mod.info("hello json")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
             log_mod.set_json_mode(False)
         obj = json.loads(buf.getvalue().strip())
         self.assertEqual(obj["level"], "info")
@@ -48,21 +48,21 @@ class TestSuccess(unittest.TestCase):
 
     def test_basic(self) -> None:
         buf = StringIO()
-        sys.stdout = buf
+        sys.stderr = buf
         try:
             log_mod.success("done")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
         self.assertIn("done", buf.getvalue())
 
     def test_json_mode(self) -> None:
         log_mod.set_json_mode(True)
         buf = StringIO()
-        sys.stdout = buf
+        sys.stderr = buf
         try:
             log_mod.success("all good")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
             log_mod.set_json_mode(False)
         obj = json.loads(buf.getvalue().strip())
         self.assertEqual(obj["level"], "success")
