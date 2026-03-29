@@ -372,12 +372,15 @@ def load_manifest(path: Path) -> Manifest:
     # Auto-suffix VERSION refs with the nanvix sysroot version.
     # When the sysroot is "latest", suffixing is deferred to the resolver
     # (which resolves the sysroot first and knows the actual version).
-    if sysroot_ref.value != "latest":
+    # Strip the leading "v" from the sysroot version to match the release
+    # tag format used by nanvix-zutil (e.g. "1.3.1-nanvix-0.12.291").
+    if sysroot_ref.value != "latest" and isinstance(sysroot_ref.value, str):
+        version_suffix = sysroot_ref.value.removeprefix("v")
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
                 dep.ref = Ref(
                     kind=dep.ref.kind,
-                    value=f"{dep.ref.value}-nanvix-{sysroot_ref.value}",
+                    value=f"{dep.ref.value}-nanvix-{version_suffix}",
                 )
 
     return Manifest(

@@ -549,6 +549,24 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
         self.assertEqual(m.sysroot_ref.value, "override_sha")
         self.assertEqual(m.dependencies[0].ref.value, "1.0.0-nanvix-override_sha")
 
+    def test_nanvix_version_v_prefix_stripped_in_suffix(self) -> None:
+        """NANVIX_VERSION with 'v' prefix must strip it for dep suffix."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "v0.12.291"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.value, "v0.12.291")
+        self.assertEqual(m.dependencies[0].ref.value, "1.3.1-nanvix-0.12.291")
+
     def test_nanvix_version_dep_overrides_dep(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
