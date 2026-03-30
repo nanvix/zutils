@@ -7,36 +7,47 @@
 
 set -euo pipefail
 
-# In CI containers the checkout directory may be owned by a different uid than
-# the process running this script, triggering git's "dubious ownership" check.
-# Mark the current directory safe before calling git rev-parse.
-if [ -n "${CI:-}" ]; then
-	git config --global --add safe.directory "$(pwd)"
+# If nanvix-zutil is already on PATH (e.g. CI), use it directly.
+if command -v nanvix-zutil &>/dev/null; then
+	exec nanvix-zutil "$@"
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+
 VENV="$REPO_ROOT/.nanvix/venv"
 
-if ! "$VENV/bin/nanvix-zutil" --version &>/dev/null 2>&1 && ! command -v nanvix-zutil &>/dev/null; then
+if ! "$VENV/bin/nanvix-zutil" --version &>/dev/null && ! command -v nanvix-zutil &>/dev/null; then
 	echo "nanvix-zutil not found — bootstrapping from nanvix/zutils latest release..." >&2
 	WHEEL_URL=$(curl -fsSL "https://api.github.com/repos/nanvix/zutils/releases/latest" |
 		python3 -c "
 import sys, json
 data = json.load(sys.stdin)
+assets = data.get('assets') or []
 wheel = next(
-    a['browser_download_url']
-    for a in data['assets']
-    if a['name'].endswith('.whl')
+    (a['browser_download_url'] for a in assets if a.get('name', '').endswith('.whl')),
+    None,
 )
+if not wheel:
+    print('Error: no .whl asset in latest nanvix/zutils release.', file=sys.stderr)
+    print('Install manually: pip install nanvix-zutil', file=sys.stderr)
+    sys.exit(1)
 print(wheel)
 ")
-	python3 -m venv "$VENV"
+	if [ -d "$VENV" ]; then
+		python3 -m venv --clear "$VENV"
+	else
+		python3 -m venv "$VENV"
+	fi
 	"$VENV/bin/pip" install --quiet "$WHEEL_URL"
 fi
 
-if [ -f "$VENV/bin/activate" ]; then
-	# shellcheck source=/dev/null
-	source "$VENV/bin/activate"
+# Prefer the venv copy if it exists; otherwise use the global install.
+if [ -x "$VENV/bin/nanvix-zutil" ]; then
+	exec "$VENV/bin/nanvix-zutil" "$@"
+elif command -v nanvix-zutil &>/dev/null; then
+	exec nanvix-zutil "$@"
+else
+	echo "nanvix-zutil not found in venv ($VENV) or on PATH." >&2
+	exit 1
 fi
-
-exec nanvix-zutil "$@"
