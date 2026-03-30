@@ -1,0 +1,8 @@
+# Nanvix build state — keep z.py, nanvix.toml tracked; ignore runtime artifacts
+venv/
+cache/
+sysroot/
+buildroot/
+env.json
+nanvix.lock
+__pycache__/
