@@ -5,9 +5,7 @@
 
 """Tests for nanvix_zutil.github."""
 
-import io
 import json
-import tarfile
 import tempfile
 import unittest
 import urllib.error
@@ -17,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.github as github_mod
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.sysroot import Sysroot
 
 
 def _make_urlopen_response(body: bytes, chunked: bool = False) -> MagicMock:
@@ -53,17 +50,6 @@ def _make_release_payload(asset_name: str, download_url: str) -> bytes:
             ]
         }
     ).encode()
-
-
-def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
-    """Return a ``.tar.bz2`` archive containing the given *members*."""
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:bz2") as tf:
-        for name, data in members.items():
-            info = tarfile.TarInfo(name=name)
-            info.size = len(data)
-            tf.addfile(info, io.BytesIO(data))
-    return buf.getvalue()
 
 
 class TestDownloadReleaseAssetAlreadyExists(unittest.TestCase):
@@ -415,89 +401,6 @@ class TestDownloadReleaseAssetPrefixMatch(unittest.TestCase):
                     match_prefix=True,
                 )
         self.assertEqual(ctx.exception.code, 3)
-
-
-# ---------------------------------------------------------------------------
-# find_release_tag
-# ---------------------------------------------------------------------------
-
-
-def _make_releases_list_payload(tags: list[str]) -> bytes:
-    """Return a minimal GitHub ``GET /repos/{repo}/releases`` response."""
-    return json.dumps([{"tag_name": t} for t in tags]).encode()
-
-
-class TestFindReleaseTag(unittest.TestCase):
-    """Tests for :func:`github.find_release_tag`."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def test_returns_matching_tag(self) -> None:
-        tags = [
-            "b7a6a3c-nanvix-fa06b88",
-            "25e1341-nanvix-fa06b88",
-            "bd416c7-nanvix-98c15d9",
-        ]
-        resp = _make_urlopen_response(_make_releases_list_payload(tags))
-
-        with patch("urllib.request.urlopen", return_value=resp):
-            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
-
-        self.assertEqual(result, "b7a6a3c-nanvix-fa06b88")
-
-    def test_returns_none_when_no_match(self) -> None:
-        tags = ["b7a6a3c-nanvix-fa06b88", "25e1341-nanvix-fa06b88"]
-        resp = _make_urlopen_response(_make_releases_list_payload(tags))
-
-        with patch("urllib.request.urlopen", return_value=resp):
-            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-000000")
-
-        self.assertIsNone(result)
-
-    def test_returns_none_for_empty_releases(self) -> None:
-        resp = _make_urlopen_response(json.dumps([]).encode())
-
-        with patch("urllib.request.urlopen", return_value=resp):
-            result = github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
-
-        self.assertIsNone(result)
-
-    def test_gh_token_passed_in_header(self) -> None:
-        tags = ["abc-nanvix-def"]
-        resp = _make_urlopen_response(_make_releases_list_payload(tags))
-
-        captured: list[urllib.request.Request] = []
-
-        def capture(req: object, **kwargs: object) -> object:
-            assert isinstance(req, urllib.request.Request)
-            captured.append(req)
-            return resp
-
-        with patch("urllib.request.urlopen", side_effect=capture):
-            github_mod.find_release_tag("nanvix/zlib", "nanvix-def", gh_token="tok123")
-
-        self.assertEqual(len(captured), 1)
-        self.assertIn("Authorization", captured[0].headers)
-        self.assertEqual(captured[0].headers["Authorization"], "Bearer tok123")
-
-    def test_network_error_exits_4(self) -> None:
-        log_mod.set_json_mode(True)
-
-        with (
-            patch(
-                "urllib.request.urlopen",
-                side_effect=urllib.error.URLError("connection refused"),
-            ),
-            patch("time.sleep"),
-        ):
-            with self.assertRaises(SystemExit) as ctx:
-                github_mod.find_release_tag("nanvix/zlib", "nanvix-fa06b88")
-
-        self.assertEqual(ctx.exception.code, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -1169,66 +1072,6 @@ class TestResolveReleaseSemverGating(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["tag_name"], "v1.2.3")
         self.assertIn("/releases/tags/v1.2.3", captured[0].full_url)
-
-
-# ---------------------------------------------------------------------------
-# Sysroot commitish
-# ---------------------------------------------------------------------------
-
-
-class TestSysrootCommitish(unittest.TestCase):
-    """Sysroot.download() stores the commitish from the resolved release."""
-
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
-
-    def test_commitish_set_on_fresh_download(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
-        archive = _make_tar_bz2({})
-        archive_path = Path(self._tmpdir.name) / "nanvix.tar.bz2"
-        archive_path.write_bytes(archive)
-
-        mock_release: dict[str, object] = {
-            "target_commitish": "e63706b1234567890abcdef",
-        }
-        with (
-            patch(
-                "nanvix_zutil.github.resolve_release",
-                return_value=mock_release,
-            ),
-            patch(
-                "nanvix_zutil.github.download_release_asset",
-                return_value=archive_path,
-            ),
-        ):
-            sysroot = Sysroot.download(
-                machine="hyperlight",
-                deployment_mode="multi-process",
-                memory_size="128mb",
-                tag="0.12.257",
-                dest=dest,
-            )
-
-        self.assertEqual(sysroot.commitish, "e63706b")
-
-    def test_commitish_empty_when_cached(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
-
-        sysroot = Sysroot.download(
-            machine="hyperlight",
-            deployment_mode="multi-process",
-            memory_size="128mb",
-            tag="0.12.257",
-            dest=dest,
-        )
-
-        self.assertEqual(sysroot.commitish, "")
 
 
 if __name__ == "__main__":

@@ -102,7 +102,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
         """setup() calls Sysroot.download with config values."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = "abc1234"
 
         with patch(
             "nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot
@@ -129,7 +128,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = "abc1234"
 
         fake_buildroot = MagicMock()
 
@@ -151,13 +149,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
         dep_count = len(script.manifest.dependencies)
         self.assertEqual(fake_buildroot.install_dep.call_count, dep_count)
 
-        # Verify sysroot_commitish is forwarded to every install_dep call.
-        for call in fake_buildroot.install_dep.call_args_list:
-            _, install_kwargs = call
-            self.assertEqual(
-                install_kwargs["sysroot_commitish"], fake_sysroot.commitish
-            )
-
         # buildroot attribute is set on the instance.
         self.assertIs(script.buildroot, fake_buildroot)
 
@@ -165,7 +156,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
         """setup() with no manifest dependencies leaves buildroot as None."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = ""
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
             script = ZScript(Path(self._tmpdir.name))
@@ -177,7 +167,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
         """setup() persists the sysroot path to env.json."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = ""
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
             script = ZScript(Path(self._tmpdir.name))
@@ -203,7 +192,6 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
         """setup() suffixes VERSION deps with the resolved sysroot tag."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = "fa06b88"
         fake_sysroot.tag = "v0.12.277"
 
         fake_buildroot = MagicMock()
@@ -224,7 +212,6 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
         """setup() exits fatally when sysroot tag is empty (upgrade path)."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.commitish = "fa06b88"
         fake_sysroot.tag = ""
 
         log_mod.set_json_mode(True)

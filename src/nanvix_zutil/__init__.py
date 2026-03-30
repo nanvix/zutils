@@ -12,7 +12,6 @@ Public re-exports:
 - :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot management
 - :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
 - :func:`~nanvix_zutil.manifest.load_manifest` — parse nanvix.toml
-- :func:`~nanvix_zutil.github.find_release_tag` — find release tag by suffix
 - :class:`~nanvix_zutil.lockfile.Lockfile` — resolved dependency graph
 - :class:`~nanvix_zutil.lockfile.ResolvedPackage` — a resolved dependency
 - :class:`~nanvix_zutil.lockfile.ResolvedAsset` — a downloadable release artifact
@@ -58,7 +57,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
 )
-from nanvix_zutil.github import find_release_tag, resolve_release
+from nanvix_zutil.github import resolve_release
 from nanvix_zutil.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -105,7 +104,6 @@ __all__ = [
     "Sysroot",
     "ZScript",
     "docker_available",
-    "find_release_tag",
     "get_nanvix_info",
     "image_exists",
     "is_stale",

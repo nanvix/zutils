@@ -165,7 +165,6 @@ class Buildroot:
         deployment_mode: str = "multi-process",
         memory_size: str = "128mb",
         gh_token: str | None = None,
-        sysroot_commitish: str | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.
 
@@ -173,18 +172,12 @@ class Buildroot:
         extracted.  Selected ``.a`` and ``.h`` files are copied into
         ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
-        For ``VERSION`` refs, if the primary tag is not found and
-        *sysroot_commitish* is provided, a fallback tag is tried by
-        replacing the sysroot version suffix with the commitish hash.
-
         Args:
             dep: The :class:`Dependency` descriptor.
             machine: Target machine identifier.
             deployment_mode: Deployment mode string.
             memory_size: Memory size string.
             gh_token: Optional GitHub token.
-            sysroot_commitish: Short commitish hash of the resolved
-                sysroot release, used for VERSION ref fallback.
         """
         asset_name = dep.artifact_pattern.format(
             name=dep.name,
@@ -195,44 +188,13 @@ class Buildroot:
 
         cache_dir = self.path.parent / "cache"
 
-        if dep.ref.kind == RefKind.VERSION and sysroot_commitish:
-            result = github.download_release_asset(
-                repo=dep.repo,
-                version_specifier=dep.ref.value,
-                asset_name=asset_name,
-                dest=cache_dir,
-                gh_token=gh_token,
-                allow_missing=True,
-            )
-            if result is not None:
-                asset_path = result
-            else:
-                primary = str(dep.ref.value)
-                parts = primary.rsplit("-nanvix-", 1)
-                if len(parts) != 2:
-                    log.fatal(
-                        f"Asset not found for {dep.name}@{dep.ref.value}",
-                        code=EXIT_MISSING_DEP,
-                    )
-                fallback_tag = f"{parts[0]}-nanvix-{sysroot_commitish}"
-                log.warning(
-                    f"Tag '{primary}' not found," f" trying '{fallback_tag}'\u2026"
-                )
-                asset_path = github.download_release_asset(
-                    repo=dep.repo,
-                    version_specifier=fallback_tag,
-                    asset_name=asset_name,
-                    dest=cache_dir,
-                    gh_token=gh_token,
-                )
-        else:
-            asset_path = github.download_release_asset(
-                repo=dep.repo,
-                version_specifier=dep.ref.value,
-                asset_name=asset_name,
-                dest=cache_dir,
-                gh_token=gh_token,
-            )
+        asset_path = github.download_release_asset(
+            repo=dep.repo,
+            version_specifier=dep.ref.value,
+            asset_name=asset_name,
+            dest=cache_dir,
+            gh_token=gh_token,
+        )
 
         log.info(f"Extracting {asset_name}...")
         with tarfile.open(asset_path, "r:bz2") as tf:

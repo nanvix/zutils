@@ -614,37 +614,3 @@ def download_release_asset(
 
     # Unreachable — log.fatal exits. Satisfy type checker.
     return out_path  # pragma: no cover
-
-
-# TODO: O(n) over all releases — acceptable for repos with few releases,
-# but may need a tag-based API lookup for larger repos.
-def find_release_tag(
-    repo: str,
-    suffix: str,
-    gh_token: str | None = None,
-) -> str | None:
-    """Find a release tag ending with *suffix* in *repo*.
-
-    Queries ``GET /repos/{repo}/releases`` and returns the first tag name
-    whose value ends with *suffix*.  Returns ``None`` when no release
-    matches.
-
-    Args:
-        repo: Repository in ``owner/name`` format (e.g. ``"nanvix/zlib"``).
-        suffix: The suffix to match against release tag names
-            (e.g. ``"nanvix-fa06b88"``).
-        gh_token: Optional GitHub personal access token.
-
-    Returns:
-        The matching tag name, or ``None`` if no release tag ends with
-        *suffix*.
-    """
-    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
-    if gh_token:
-        headers["Authorization"] = f"Bearer {gh_token}"
-
-    for release in _list_releases(repo, headers):
-        tag = release.get("tag_name")
-        if isinstance(tag, str) and tag.endswith(suffix):
-            return tag
-    return None
