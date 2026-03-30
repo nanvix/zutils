@@ -304,14 +304,21 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
             for dep in deps:
-                self.buildroot.install_dep(
-                    dep=dep,
-                    machine=self.config.machine,
-                    deployment_mode=self.config.deployment_mode,
-                    memory_size=self.config.memory_size,
-                    gh_token=self.config.get(CFG_GH_TOKEN),
-                    sysroot_commitish=self.sysroot.commitish,
-                )
+                try:
+                    self.buildroot.install_dep(
+                        dep=dep,
+                        machine=self.config.machine,
+                        deployment_mode=self.config.deployment_mode,
+                        memory_size=self.config.memory_size,
+                        gh_token=self.config.get(CFG_GH_TOKEN),
+                        sysroot_commitish=self.sysroot.commitish,
+                    )
+                except SystemExit:
+                    log.note(
+                        f"while installing dependency '{dep.name}'"
+                        f" ({dep.repo}@{dep.ref.value})"
+                    )
+                    raise
 
         self.config.save()
 

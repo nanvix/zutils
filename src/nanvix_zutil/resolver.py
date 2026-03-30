@@ -224,12 +224,19 @@ def _resolve_inner(
     releases: dict[str, dict[str, object]] = {}
 
     # 1. Resolve sysroot
-    sysroot_release = github.resolve_release(
-        "nanvix/nanvix",
-        manifest.sysroot_ref.value,
-        gh_token=gh_token,
-        semver=True,
-    )
+    try:
+        sysroot_release = github.resolve_release(
+            "nanvix/nanvix",
+            manifest.sysroot_ref.value,
+            gh_token=gh_token,
+            semver=True,
+        )
+    except SystemExit:
+        log.note(
+            "while resolving the Nanvix sysroot"
+            f" (nanvix/nanvix@{manifest.sysroot_ref.value})"
+        )
+        raise
     tag, commitish, rel_id = _extract_release_fields(sysroot_release)
     # ref preserves the original specifier ("latest" or semver) — resolved_tag
     # is the canonical pin used for deterministic artifact downloads.
@@ -300,11 +307,20 @@ def _resolve_inner(
                 existing.required_by.append(item.required_by)
             continue
 
-        dep_release = github.resolve_release(
-            dep.repo,
-            dep.ref.value,
-            gh_token=gh_token,
-        )
+        try:
+            dep_release = github.resolve_release(
+                dep.repo,
+                dep.ref.value,
+                gh_token=gh_token,
+            )
+        except SystemExit:
+            requester = item.required_by or "manifest"
+            log.note(
+                f"while resolving dependency '{dep.name}'"
+                f" ({dep.repo}@{dep.ref.value}),"
+                f" required by {requester}"
+            )
+            raise
         d_tag, d_commitish, d_rel_id = _extract_release_fields(dep_release)
 
         pkg = ResolvedPackage(

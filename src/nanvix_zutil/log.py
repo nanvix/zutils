@@ -105,6 +105,22 @@ def error(msg: str, hint: str | None = None) -> None:
             print(f"\033[90mhint:\033[0m {hint}", file=sys.stderr, flush=True)
 
 
+def note(msg: str) -> None:
+    """Emit a contextual note (supplementary information after an error).
+
+    Args:
+        msg: The note text.
+    """
+    if _json_mode:
+        print(
+            json.dumps({"level": "note", "message": msg}),
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
+        print(f"\033[90mnote:\033[0m {msg}", file=sys.stderr, flush=True)
+
+
 def fatal(msg: str, code: int = 1, hint: str | None = None) -> NoReturn:
     """Emit an error message and exit with the given exit code.
 
