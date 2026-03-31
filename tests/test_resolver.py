@@ -78,7 +78,7 @@ class TestResolveSysrootOnly(unittest.TestCase):
         self._manifest_dir.mkdir(parents=True)
         self._manifest_path = self._manifest_dir / "nanvix.toml"
         self._manifest_path.write_text(
-            '[package]\nname = "test"\nversion = "0.1.0"\n' 'nanvix-version = "0.1.0"\n'
+            '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
         log_mod.set_json_mode(True)
 
@@ -562,7 +562,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
             tag="v0.12.277", commitish="fa06b88", release_id=100
         )
         zlib_release = _make_release(
-            tag="v1.3.1-nanvix-fa06b88",
+            tag="v1.3.1-nanvix-0.12.277",
             commitish="bbb222",
             release_id=200,
             assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
@@ -611,7 +611,7 @@ class TestAssetFiltering(unittest.TestCase):
         self._manifest_dir.mkdir(parents=True)
         self._manifest_path = self._manifest_dir / "nanvix.toml"
         self._manifest_path.write_text(
-            '[package]\nname = "test"\nversion = "0.1.0"\n' 'nanvix-version = "0.1.0"\n'
+            '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
         log_mod.set_json_mode(True)
 

@@ -41,21 +41,17 @@ class Sysroot:
 
     Attributes:
         path: Absolute path to the sysroot directory.
-        commitish: Short commitish hash of the resolved release.
         tag: Resolved tag name (e.g. ``"v0.12.277"``).
     """
 
-    def __init__(self, path: Path, commitish: str = "", tag: str = "") -> None:
+    def __init__(self, path: Path, tag: str = "") -> None:
         """Initialise the Sysroot with an existing directory.
 
         Args:
             path: Path to the sysroot directory.
-            commitish: Short commitish hash of the resolved sysroot
-                release (set by :meth:`download`).
             tag: Resolved release tag name (set by :meth:`download`).
         """
         self.path = path
-        self.commitish = commitish
         self.tag = tag
 
     # ------------------------------------------------------------------
@@ -86,34 +82,23 @@ class Sysroot:
             dest: Directory where the sysroot will be extracted.  Defaults
                 to ``.nanvix/sysroot`` relative to the current working
                 directory.
-            config: Optional :class:`Config` instance used to persist and
-                restore the ``sysroot_commitish`` value.  When the sysroot
-                is already cached and *config* is provided, the commitish
-                is read from ``config["sysroot_commitish"]``.  After a
-                successful download the commitish is written back to
-                *config* and saved to disk.
+            config: Optional :class:`Config` instance used to persist
+                the resolved ``sysroot_tag``.  After a successful
+                download the tag is written back to *config* and
+                saved to disk.
 
         Returns:
             A :class:`Sysroot` pointing at the extracted directory.
-            The :attr:`commitish` attribute is set to the short
-            ``target_commitish`` hash of the resolved release, or
-            empty string when the sysroot was already cached and no
-            config is available.
         """
         sysroot_dir = dest if dest is not None else _DEFAULT_SYSROOT_DIR
 
         if sysroot_dir.exists():
             if sysroot_dir.is_dir():
                 log.info(f"Sysroot already present at {sysroot_dir}")
-                cached = (
-                    config.get("sysroot_commitish", "") or ""
-                    if config is not None
-                    else ""
-                )
                 cached_tag = (
                     config.get("sysroot_tag", "") or "" if config is not None else ""
                 )
-                return Sysroot(sysroot_dir.resolve(), commitish=cached, tag=cached_tag)
+                return Sysroot(sysroot_dir.resolve(), tag=cached_tag)
             log.fatal(
                 f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
                 code=EXIT_MISSING_DEP,
@@ -122,8 +107,6 @@ class Sysroot:
             )
 
         release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
-        commitish_raw = release.get("target_commitish", "")
-        commitish = commitish_raw[:7] if isinstance(commitish_raw, str) else ""
         tag_name = release.get("tag_name", "")
         resolved_tag = tag_name if isinstance(tag_name, str) else ""
 
@@ -152,10 +135,9 @@ class Sysroot:
 
         log.success(f"Sysroot extracted to {sysroot_dir}")
         if config is not None:
-            config.set("sysroot_commitish", commitish)
             config.set("sysroot_tag", resolved_tag)
             config.save()
-        return Sysroot(sysroot_dir.resolve(), commitish=commitish, tag=resolved_tag)
+        return Sysroot(sysroot_dir.resolve(), tag=resolved_tag)
 
     # ------------------------------------------------------------------
     # Verification

@@ -58,7 +58,7 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
             mock_dl.assert_not_called()
 
         self.assertEqual(sysroot.path, dest.resolve())
-        self.assertEqual(sysroot.commitish, "")
+        self.assertEqual(sysroot.tag, "")
 
 
 class TestSysrootDownloadFetches(unittest.TestCase):

@@ -155,8 +155,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         br = self._setup_buildroot()
         archive = _make_tar_bz2(
             {
-                "libz.a": b"lib-content",
-                "zlib.h": b"header-content",
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
             }
         )
         dep = Dependency(
@@ -180,8 +180,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         br = self._setup_buildroot()
         archive = _make_tar_bz2(
             {
-                "libz.a": b"lib-content",
-                "zlib.h": b"header-content",
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
             }
         )
         dep = Dependency(
@@ -202,8 +202,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         br = self._setup_buildroot()
         archive = _make_tar_bz2(
             {
-                "libz.a": b"libz",
-                "libextra.a": b"libextra",
+                "sysroot/lib/libz.a": b"libz",
+                "sysroot/lib/libextra.a": b"libextra",
             }
         )
         dep = Dependency(
@@ -228,8 +228,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         br = self._setup_buildroot()
         archive = _make_tar_bz2(
             {
-                "zlib.h": b"wanted",
-                "internal.h": b"not-wanted",
+                "sysroot/include/zlib.h": b"wanted",
+                "sysroot/include/internal.h": b"not-wanted",
             }
         )
         dep = Dependency(
@@ -252,7 +252,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
 
     def test_install_dep_artifact_name_interpolated(self) -> None:
         br = self._setup_buildroot()
-        archive = _make_tar_bz2({"libz.a": b""})
+        archive = _make_tar_bz2({"sysroot/lib/libz.a": b""})
         archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
@@ -283,6 +283,88 @@ class TestBuildrootInstallDep(unittest.TestCase):
             )
 
         self.assertEqual(captured[0], "zlib-microvm-single-process-256mb.tar.bz2")
+
+    def test_install_dep_preserves_header_subdirectory(self) -> None:
+        """Headers in subdirectories are extracted with directory structure preserved."""
+        br = self._setup_buildroot()
+        archive = _make_tar_bz2(
+            {
+                "sysroot/include/openssl/ssl.h": b"ssl-header",
+                "sysroot/include/openssl/crypto.h": b"crypto-header",
+                "sysroot/lib/libssl.a": b"ssl-lib",
+            }
+        )
+        dep = Dependency(
+            name="openssl",
+            repo="nanvix/openssl",
+            ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
+        )
+        archive_path = Path(self._tmpdir.name) / "openssl.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((br.path / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((br.path / "lib" / "libssl.a").exists())
+        # Verify headers are NOT flattened to include/ssl.h
+        self.assertFalse((br.path / "include" / "ssl.h").exists())
+
+    def test_install_dep_preserves_lib_subdirectory(self) -> None:
+        """Libraries in subdirectories are extracted with directory structure preserved."""
+        br = self._setup_buildroot()
+        archive = _make_tar_bz2(
+            {
+                "sysroot/lib/engines/libcapi.a": b"engine-lib",
+                "sysroot/lib/libssl.a": b"ssl-lib",
+            }
+        )
+        dep = Dependency(
+            name="openssl",
+            repo="nanvix/openssl",
+            ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
+        )
+        archive_path = Path(self._tmpdir.name) / "openssl.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "engines" / "libcapi.a").exists())
+        self.assertTrue((br.path / "lib" / "libssl.a").exists())
+
+    def test_install_dep_flat_tarball_without_segments(self) -> None:
+        """Tarballs with bare filenames (no include/ or lib/ segment) still work."""
+        br = self._setup_buildroot()
+        archive = _make_tar_bz2(
+            {
+                "libz.a": b"lib-content",
+                "zlib.h": b"header-content",
+            }
+        )
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertTrue((br.path / "include" / "zlib.h").exists())
 
 
 if __name__ == "__main__":
