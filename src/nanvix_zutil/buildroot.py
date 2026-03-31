@@ -26,6 +26,34 @@ _DEFAULT_BUILDROOT_DIR = Path(".nanvix") / "buildroot"
 
 
 # ---------------------------------------------------------------------------
+# Tarball path helpers
+# ---------------------------------------------------------------------------
+
+
+def _relative_to_segment(member_path: Path, segment: str) -> str:
+    """Return the path portion after *segment* in *member_path*.
+
+    If *segment* is not found, return the bare filename.
+
+    Args:
+        member_path: Full archive member path
+            (e.g. ``sysroot/include/openssl/ssl.h``).
+        segment: Directory segment to search for
+            (e.g. ``"include"`` or ``"lib"``).
+
+    Returns:
+        Relative path after the segment, or the bare filename as
+        fallback.
+    """
+    parts = member_path.parts
+    try:
+        idx = parts.index(segment)
+        return str(Path(*parts[idx + 1 :]))
+    except ValueError:
+        return member_path.name
+
+
+# ---------------------------------------------------------------------------
 # Version reference
 # ---------------------------------------------------------------------------
 
@@ -205,13 +233,13 @@ class Buildroot:
                         if dep.install_libs is None or member_path.name in (
                             dep.install_libs
                         ):
-                            member.name = member_path.name
+                            member.name = _relative_to_segment(member_path, "lib")
                             tf.extract(member, path=self.path / "lib", filter="data")
                     elif member_path.suffix == ".h":
                         if dep.install_headers is None or member_path.name in (
                             dep.install_headers
                         ):
-                            member.name = member_path.name
+                            member.name = _relative_to_segment(member_path, "include")
                             tf.extract(
                                 member, path=self.path / "include", filter="data"
                             )
