@@ -176,6 +176,42 @@ VERSION_REFS: list[tuple[str, str, str, int]] = [
         r"\g<1>{new}",
         0,
     ),
+    (
+        "examples/hello-world/z.sh",
+        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
+        r"\g<1>{new}",
+        0,
+    ),
+    (
+        "examples/hello-world/z.ps1",
+        r'(?<=^    ")[\d][^"]*',
+        r"{new}",
+        re.MULTILINE,
+    ),
+    (
+        "examples/hello-transitive/z.sh",
+        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
+        r"\g<1>{new}",
+        0,
+    ),
+    (
+        "examples/hello-transitive/z.ps1",
+        r'(?<=^    ")[\d][^"]*',
+        r"{new}",
+        re.MULTILINE,
+    ),
+    (
+        "examples/hello-zlib/z.sh",
+        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
+        r"\g<1>{new}",
+        0,
+    ),
+    (
+        "examples/hello-zlib/z.ps1",
+        r'(?<=^    ")[\d][^"]*',
+        r"{new}",
+        re.MULTILINE,
+    ),
 ]
 
 
