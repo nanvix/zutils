@@ -24,7 +24,6 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Callable
-from logging import captureWarnings
 from pathlib import Path
 
 SOURCES = ["src/", "tests/"]
@@ -197,6 +196,11 @@ def version() -> int:
         print("  bump: major | minor | patch | alpha | beta | rc | post | dev | stable")
         return 2
 
+    uv = shutil.which("uv")
+    if uv is None:
+        print("error: 'uv' not found on PATH. Install it from https://astral.sh/uv")
+        return 1
+
     bump = sys.argv[2]
     if bump.startswith("--"):
         print(f"error: expected bump type, got flag '{bump}'")
@@ -215,7 +219,7 @@ def version() -> int:
 
     if dry_run:
         result = subprocess.run(
-            ["uv", "version", "--bump", bump, "--dry-run", "--short"],
+            [uv, "version", "--bump", bump, "--dry-run", "--short"],
             capture_output=True,
             text=True,
             cwd=_REPO_ROOT,
@@ -235,7 +239,7 @@ def version() -> int:
     # Apply bump to pyproject.toml (and uv.lock) via uv
     print("> uv version --bump", bump)
     result = subprocess.run(
-        ["uv", "version", "--bump", bump],
+        [uv, "version", "--bump", bump],
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,
@@ -244,7 +248,16 @@ def version() -> int:
         print(f"error: uv version failed: {result.stderr.strip()}")
         return 1
 
-    new = result.stdout.strip()
+    # Re-read the version from pyproject.toml to get the canonical new version.
+    pyproject_path = _REPO_ROOT / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as f:
+            updated_data = tomllib.load(f)
+        new: str = updated_data["project"]["version"]
+    except (OSError, KeyError) as exc:
+        print(f"error: failed to read new version from pyproject.toml: {exc}")
+        return 1
+
     # Update all version references
     for filepath, pattern, repl_template, flags in VERSION_REFS:
         path = _REPO_ROOT / filepath
@@ -257,11 +270,17 @@ def version() -> int:
         path.write_text(updated)
         print(f"  Updated {filepath}")
 
-    # cp templates to examples dir
+    # Sync bootstrapper templates into each example directory.
     templates_dir = _REPO_ROOT / "templates"
     examples_dir = _REPO_ROOT / "examples"
-    for template in templates_dir.glob("*"):
-        shutil.copy(template, examples_dir / template.name)
+    bootstrappers = ["z", "z.sh", "z.ps1"]
+    for example in sorted(examples_dir.iterdir()):
+        if not example.is_dir():
+            continue
+        for name in bootstrappers:
+            src = templates_dir / name
+            if src.exists():
+                shutil.copy(src, example / name)
 
     print(f"\nVersion bumped: {current} -> {new}")
     return 0
