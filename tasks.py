@@ -28,6 +28,11 @@ from collections.abc import Callable
 
 SOURCES = ["src/", "tests/"]
 
+# Anchor all repo-relative paths to the directory containing this script so
+# that commands like `uv run tasks.py version patch` work regardless of the
+# caller's working directory.
+_REPO_ROOT = Path(__file__).parent
+
 
 def _run(*args: str) -> int:
     """Run a command, returning its exit code."""
@@ -235,7 +240,7 @@ def version() -> int:
     dry_run = "--dry-run" in sys.argv[3:]
 
     # Read current version from pyproject.toml
-    with Path("pyproject.toml").open("rb") as f:
+    with (_REPO_ROOT / "pyproject.toml").open("rb") as f:
         data = tomllib.load(f)
     try:
         current: str = data["project"]["version"]
@@ -248,6 +253,7 @@ def version() -> int:
         ["uv", "version", "--bump", bump, "--dry-run", "--short"],
         capture_output=True,
         text=True,
+        cwd=_REPO_ROOT,
     )
     if result.returncode != 0:
         print(f"error: uv version failed: {result.stderr.strip()}")
@@ -263,13 +269,14 @@ def version() -> int:
         return 0
 
     # Apply bump to pyproject.toml (and uv.lock) via uv
-    code = _run("uv", "version", "--bump", bump)
+    print("> uv version --bump", bump)
+    code = subprocess.call(["uv", "version", "--bump", bump], cwd=_REPO_ROOT)
     if code != 0:
         return code
 
     # Update all version references
     for filepath, pattern, repl_template, flags in VERSION_REFS:
-        path = Path(filepath)
+        path = _REPO_ROOT / filepath
         content = path.read_text()
         replacement = repl_template.format(new=new)
         updated = re.sub(pattern, replacement, content, flags=flags)
