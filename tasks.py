@@ -8,7 +8,7 @@ Usage: uv run tasks.py <command>
 
 Commands:
   setup         Configure git hooks and sync dev dependencies
-  lint          Check code formatting with black
+  lint          Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)
   format        Fix code formatting with black
   typecheck     Run strict type checking with basedpyright
   test          Run the test suite with pytest
@@ -49,8 +49,25 @@ def setup() -> int:
 
 
 def lint() -> int:
-    """Check code formatting with black."""
-    return _run(sys.executable, "-m", "black", "--check", *SOURCES)
+    """Run all linters: black, shfmt, shellcheck, PSScriptAnalyzer, yamllint."""
+    rc = 0
+
+    # Python formatting (black)
+    code = _run(sys.executable, "-m", "black", "--check", *SOURCES)
+    if code != 0:
+        rc = 1
+
+    # Shell scripts (shfmt + shellcheck + PSScriptAnalyzer)
+    code = shell_lint()
+    if code != 0:
+        rc = 1
+
+    # YAML (yamllint)
+    code = yaml_lint()
+    if code != 0:
+        rc = 1
+
+    return rc
 
 
 def format_code() -> int:
@@ -219,6 +236,8 @@ def shell_lint() -> int:
             rc = 1
 
     # PSScriptAnalyzer (optional — skip gracefully if not installed)
+    # Invoke-ScriptAnalyzer always exits 0 — even when findings are reported —
+    # so we capture findings into a variable and exit 1 when any are found.
     if ps1_files:
         for ps1 in ps1_files:
             try:
@@ -227,9 +246,10 @@ def shell_lint() -> int:
                         "pwsh",
                         "-NoProfile",
                         "-Command",
-                        f"if (Get-Module -ListAvailable PSScriptAnalyzer) "
-                        f"{{ Invoke-ScriptAnalyzer -Path '{ps1}' -Severity Warning }}"
-                        f" else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1}' }}",
+                        f"if (Get-Module -ListAvailable PSScriptAnalyzer) {{"
+                        f" $findings = Invoke-ScriptAnalyzer -Path '{ps1}' -Severity Warning;"
+                        f" if ($findings) {{ $findings | Format-List; exit 1 }}"
+                        f"}} else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1}' }}",
                     ],
                     capture_output=True,
                     text=True,
@@ -397,7 +417,10 @@ def version() -> int:
 
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
-    "lint": (lint, "Check code formatting with black"),
+    "lint": (
+        lint,
+        "Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)",
+    ),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),

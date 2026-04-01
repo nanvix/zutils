@@ -33,15 +33,15 @@ print_step() {
 
 #
 # Description
-#   Check code formatting with black.
+#   Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint).
 #
 # Return Value
 #   0 on success, 1 on failure.
 #
 check_formatting() {
-    print_step "Checking formatting (black)..."
+    print_step "Linting (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)..."
     if ! uv run tasks.py lint; then
-        print_error "Formatting check failed. Run 'uv run tasks.py format' to fix."
+        print_error "Lint failed. Run 'uv run tasks.py format' and 'uv run tasks.py shell-format' to fix formatting."
         return 1
     fi
 }
@@ -61,36 +61,6 @@ check_types() {
     fi
 }
 
-#
-# Description
-#   Check shell script formatting and lint.
-#
-# Return Value
-#   0 on success, 1 on failure.
-#
-check_shell_lint() {
-    print_step "Checking shell scripts (shfmt + shellcheck)..."
-    if ! uv run tasks.py shell-lint; then
-        print_error "Shell lint failed. Run 'uv run tasks.py shell-format' to fix formatting."
-        return 1
-    fi
-}
-
-#
-# Description
-#   Lint YAML files.
-#
-# Return Value
-#   0 on success, 1 on failure.
-#
-check_yaml_lint() {
-    print_step "Checking YAML files (yamllint)..."
-    if ! uv run tasks.py yaml-lint; then
-        print_error "YAML lint failed. Fix the reported issues."
-        return 1
-    fi
-}
-
 #==================================================================================================
 # Main Script
 #==================================================================================================
@@ -100,8 +70,6 @@ main() {
 
     check_formatting
     check_types
-    check_shell_lint
-    check_yaml_lint
 
     print_step "All checks passed."
 }

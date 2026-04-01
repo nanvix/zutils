@@ -16,7 +16,7 @@ ZUTIL_GLOBAL_VERSION="$(nanvix-zutil --version 2>/dev/null || true)"
 function bootstrap() {
     # Pin nanvix-zutil version for reproducible bootstrapping.
     # Override with NANVIX_ZUTIL_VERSION env var if needed.
-    echo "nanvix-zutil not found — bootstrapping nanvix-zutil==${ZUTIL_VERSION}..." >&2
+    echo "nanvix-zutil not found -- bootstrapping nanvix-zutil==${ZUTIL_VERSION}..." >&2
 
     if ! command -v python3 &>/dev/null; then
         echo "Error: python3 not found. Install Python 3 and ensure python3 is on PATH." >&2
