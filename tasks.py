@@ -435,6 +435,19 @@ def version() -> int:
             if src.exists():
                 shutil.copy(src, example / name)
 
+    # Sync .nanvix directory templates into each example.
+    nanvix_templates = [".gitignore"]
+    for example in sorted(examples_dir.iterdir()):
+        if not example.is_dir():
+            continue
+        nanvix_dir = example / ".nanvix"
+        if not nanvix_dir.is_dir():
+            continue
+        for name in nanvix_templates:
+            src = templates_dir / name
+            if src.exists():
+                shutil.copy(src, nanvix_dir / name)
+
     print(f"\nVersion bumped: {current} -> {new}")
     return 0
 
