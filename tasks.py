@@ -239,6 +239,7 @@ def shell_lint() -> int:
     # Invoke-ScriptAnalyzer always exits 0 — even when findings are reported —
     # so we capture findings into a variable and exit 1 when any are found.
     if ps1_files:
+        print(f"> PSScriptAnalyzer {' '.join(ps1_files)}")
         for ps1 in ps1_files:
             try:
                 result = subprocess.run(
