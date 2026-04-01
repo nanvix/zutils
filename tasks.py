@@ -15,15 +15,23 @@ Commands:
   ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean      Remove Python bytecode caches and build artifacts
   release    Build distribution artifacts (wheel + sdist) for release
+  version    Bump version across pyproject.toml and templates
 """
 
+import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+import tomllib
 from collections.abc import Callable
+from pathlib import Path
 
 SOURCES = ["src/", "tests/"]
+
+# Anchor all repo-relative paths to the directory containing this script so
+# that commands like `uv run tasks.py version patch` work regardless of the
+# caller's working directory.
+_REPO_ROOT = Path(__file__).parent
 
 
 def _run(*args: str) -> int:
@@ -127,6 +135,7 @@ def ci() -> int:
     print("ci: All jobs passed.")
     return 0
 
+
 def release() -> int:
     """Build distribution artifacts (wheel and sdist) for release.
 
@@ -151,15 +160,145 @@ def release() -> int:
     return 0
 
 
+VERSION_REFS: list[tuple[str, str, str, int]] = [
+    # (filepath, pattern, replacement_template, re_flags)
+    # pattern must have a group so replacement can anchor to context
+    (
+        "templates/z.sh",
+        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
+        r"\g<1>{new}",
+        0,
+    ),
+    (
+        "templates/z.ps1",
+        r'(?<=^    ")[\d][^"]*',
+        r"{new}",
+        re.MULTILINE,
+    ),
+    (
+        "templates/nanvix-ci.yml",
+        r'(zutil-version:\s*"v)[^"]+',
+        r"\g<1>{new}",
+        0,
+    ),
+]
+
+
+def version() -> int:
+    """Bump the version across pyproject.toml and all template files.
+
+    Usage:
+        uv run tasks.py version <bump>            # bump = major | minor | patch | ...
+        uv run tasks.py version <bump> --dry-run   # preview changes without writing
+    """
+    if len(sys.argv) < 3:
+        print("Usage: uv run tasks.py version <bump> [--dry-run]")
+        print("  bump: major | minor | patch | alpha | beta | rc | post | dev | stable")
+        return 2
+
+    uv = shutil.which("uv")
+    if uv is None:
+        print("error: 'uv' not found on PATH. Install it from https://astral.sh/uv")
+        return 1
+
+    bump = sys.argv[2]
+    if bump.startswith("--"):
+        print(f"error: expected bump type, got flag '{bump}'")
+        print("Usage: uv run tasks.py version <bump> [--dry-run]")
+        return 2
+    dry_run = "--dry-run" in sys.argv[3:]
+
+    # Read current version from pyproject.toml
+    with (_REPO_ROOT / "pyproject.toml").open("rb") as f:
+        data = tomllib.load(f)
+    try:
+        current: str = data["project"]["version"]
+    except KeyError as exc:
+        print(f"error: pyproject.toml missing key: {exc}")
+        return 1
+
+    if dry_run:
+        result = subprocess.run(
+            [uv, "version", "--bump", bump, "--dry-run", "--short"],
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+        )
+        if result.returncode != 0:
+            print(f"error: uv version failed: {result.stderr.strip()}")
+            return 1
+        new = result.stdout.strip()
+
+        print(f"Version: {current} -> {new}")
+        print("Files that would be updated:")
+        print(f"  pyproject.toml  (via uv version --bump {bump})")
+        for filepath, _, _, _ in VERSION_REFS:
+            print(f"  {filepath}")
+        return 0
+
+    # Apply bump to pyproject.toml (and uv.lock) via uv
+    print("> uv version --bump", bump)
+    result = subprocess.run(
+        [uv, "version", "--bump", bump],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"error: uv version failed: {result.stderr.strip()}")
+        return 1
+
+    # Re-read the version from pyproject.toml to get the canonical new version.
+    pyproject_path = _REPO_ROOT / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as f:
+            updated_data = tomllib.load(f)
+        new: str = updated_data["project"]["version"]
+    except (OSError, KeyError) as exc:
+        print(f"error: failed to read new version from pyproject.toml: {exc}")
+        return 1
+
+    # Update all version references
+    for filepath, pattern, repl_template, flags in VERSION_REFS:
+        path = _REPO_ROOT / filepath
+        content = path.read_text()
+        replacement = repl_template.format(new=new)
+        updated = re.sub(pattern, replacement, content, flags=flags)
+        if updated == content:
+            print(f"warning: no match in {filepath}")
+            continue
+        path.write_text(updated)
+        print(f"  Updated {filepath}")
+
+    # Sync bootstrapper templates into each example directory.
+    templates_dir = _REPO_ROOT / "templates"
+    examples_dir = _REPO_ROOT / "examples"
+    bootstrappers = ["z", "z.sh", "z.ps1"]
+    for example in sorted(examples_dir.iterdir()):
+        if not example.is_dir():
+            continue
+        for name in bootstrappers:
+            src = templates_dir / name
+            if src.exists():
+                shutil.copy(src, example / name)
+
+    print(f"\nVersion bumped: {current} -> {new}")
+    return 0
+
+
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (lint, "Check code formatting with black"),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
-    "ci": (ci, "Run CI locally using gh act (requires Docker + nanvix toolchain image)"),
+    "ci": (
+        ci,
+        "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
+    ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
+    "version": (version, "Bump version across pyproject.toml and templates"),
 }
 
 
