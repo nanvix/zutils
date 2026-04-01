@@ -201,7 +201,8 @@ def shell_lint() -> int:
     rc = 0
 
     # shfmt: check formatting (diff mode, 4-space indent, case indent)
-    # shfmt --diff exits 0 on no diff, 1 when diffs are found (also used for errors).
+    # shfmt --diff exits 0 on no diff, 1 when diffs are found or on I/O/parse errors;
+    # we treat both cases the same — fail the lint step in either scenario.
     if bash_files:
         print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
         print(print_step)
