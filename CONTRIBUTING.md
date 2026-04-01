@@ -97,18 +97,6 @@ Instead of pushing a branch, you can trigger the release from the GitHub UI:
 2. Enter the version (must match `pyproject.toml`).
 3. The workflow runs the same pipeline as above.
 
-### Pre-release Versions
-
-Append a pre-release suffix to the version for release candidates:
-
-```
-version = "0.4.0-rc1"
-```
-
-Branch name: `release/v0.4.0-rc1`. The workflow accepts any valid semver
-string, including pre-release (`-rc1`, `-alpha.2`) and build metadata
-(`+build.42`) suffixes.
-
 ### Building Locally (Dry Run)
 
 To build artifacts without publishing:

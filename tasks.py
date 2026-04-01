@@ -23,8 +23,9 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from pathlib import Path
 from collections.abc import Callable
+from logging import captureWarnings
+from pathlib import Path
 
 SOURCES = ["src/", "tests/"]
 
@@ -181,42 +182,6 @@ VERSION_REFS: list[tuple[str, str, str, int]] = [
         r"\g<1>{new}",
         0,
     ),
-    (
-        "examples/hello-world/z.sh",
-        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
-        r"\g<1>{new}",
-        0,
-    ),
-    (
-        "examples/hello-world/z.ps1",
-        r'(?<=^    ")[\d][^"]*',
-        r"{new}",
-        re.MULTILINE,
-    ),
-    (
-        "examples/hello-transitive/z.sh",
-        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
-        r"\g<1>{new}",
-        0,
-    ),
-    (
-        "examples/hello-transitive/z.ps1",
-        r'(?<=^    ")[\d][^"]*',
-        r"{new}",
-        re.MULTILINE,
-    ),
-    (
-        "examples/hello-zlib/z.sh",
-        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
-        r"\g<1>{new}",
-        0,
-    ),
-    (
-        "examples/hello-zlib/z.ps1",
-        r'(?<=^    ")[\d][^"]*',
-        r"{new}",
-        re.MULTILINE,
-    ),
 ]
 
 
@@ -248,19 +213,18 @@ def version() -> int:
         print(f"error: pyproject.toml missing key: {exc}")
         return 1
 
-    # Compute new version via uv
-    result = subprocess.run(
-        ["uv", "version", "--bump", bump, "--dry-run", "--short"],
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-    )
-    if result.returncode != 0:
-        print(f"error: uv version failed: {result.stderr.strip()}")
-        return 1
-    new = result.stdout.strip()
-
     if dry_run:
+        result = subprocess.run(
+            ["uv", "version", "--bump", bump, "--dry-run", "--short"],
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+        )
+        if result.returncode != 0:
+            print(f"error: uv version failed: {result.stderr.strip()}")
+            return 1
+        new = result.stdout.strip()
+
         print(f"Version: {current} -> {new}")
         print("Files that would be updated:")
         print(f"  pyproject.toml  (via uv version --bump {bump})")
@@ -270,10 +234,17 @@ def version() -> int:
 
     # Apply bump to pyproject.toml (and uv.lock) via uv
     print("> uv version --bump", bump)
-    code = subprocess.call(["uv", "version", "--bump", bump], cwd=_REPO_ROOT)
-    if code != 0:
-        return code
+    result = subprocess.run(
+        ["uv", "version", "--bump", bump],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"error: uv version failed: {result.stderr.strip()}")
+        return 1
 
+    new = result.stdout.strip()
     # Update all version references
     for filepath, pattern, repl_template, flags in VERSION_REFS:
         path = _REPO_ROOT / filepath
@@ -285,6 +256,12 @@ def version() -> int:
             continue
         path.write_text(updated)
         print(f"  Updated {filepath}")
+
+    # cp templates to examples dir
+    templates_dir = _REPO_ROOT / "templates"
+    examples_dir = _REPO_ROOT / "examples"
+    for template in templates_dir.glob("*"):
+        shutil.copy(template, examples_dir / template.name)
 
     print(f"\nVersion bumped: {current} -> {new}")
     return 0
