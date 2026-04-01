@@ -183,11 +183,11 @@ def _find_bash_scripts() -> list[str]:
 
 
 def _find_ps1_scripts() -> list[str]:
-    """Discover PowerShell scripts to lint."""
+    """Discover PowerShell scripts to lint (excludes vendored venv and sysroot paths)."""
     return sorted(
         str(p)
         for p in _REPO_ROOT.rglob("*.ps1")
-        if ".venv" not in p.parts and "venv" not in p.parts
+        if ".venv" not in p.parts and "venv" not in p.parts and "sysroot" not in p.parts
     )
 
 
@@ -201,6 +201,7 @@ def shell_lint() -> int:
     rc = 0
 
     # shfmt: check formatting (diff mode, 4-space indent, case indent)
+    # shfmt --diff exits 0 on no diff, 1 when diffs are found (also used for errors).
     if bash_files:
         print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
         print(print_step)
@@ -234,6 +235,8 @@ def shell_lint() -> int:
                 )
                 if result.stdout.strip():
                     print(result.stdout)
+                if result.stderr.strip():
+                    print(result.stderr, file=sys.stderr)
                 if result.returncode != 0:
                     rc = 1
             except FileNotFoundError:
@@ -255,7 +258,9 @@ def shell_format() -> int:
 def yaml_lint() -> int:
     """Lint YAML files with yamllint."""
     yml_files = sorted(
-        str(p) for p in Path(".").rglob("*.yml") if ".venv" not in p.parts
+        str(p)
+        for p in _REPO_ROOT.rglob("*.yml")
+        if ".venv" not in p.parts and "venv" not in p.parts
     )
     if not yml_files:
         print("No YAML files found.")
