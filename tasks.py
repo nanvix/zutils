@@ -221,19 +221,31 @@ def shell_lint() -> int:
     # shfmt --diff exits 0 on no diff, 1 when diffs are found or on I/O/parse errors;
     # we treat both cases the same — fail the lint step in either scenario.
     if bash_files:
-        print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
-        print(print_step)
-        code = subprocess.call(["shfmt", "--diff", "-i", "4", "-ci", *bash_files])
-        if code != 0:
+        shfmt_path = shutil.which("shfmt")
+        if shfmt_path is None:
+            print("shfmt not found — skipping shell formatting checks")
             rc = 1
+        else:
+            print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
+            print(print_step)
+            code = subprocess.call(
+                [shfmt_path, "--diff", "-i", "4", "-ci", *bash_files]
+            )
+            if code != 0:
+                rc = 1
 
     # shellcheck
     if bash_files:
-        print_step = f"> shellcheck {' '.join(bash_files)}"
-        print(print_step)
-        code = subprocess.call(["shellcheck", *bash_files])
-        if code != 0:
+        shellcheck_path = shutil.which("shellcheck")
+        if shellcheck_path is None:
+            print("shellcheck not found — skipping shell correctness checks")
             rc = 1
+        else:
+            print_step = f"> shellcheck {' '.join(bash_files)}"
+            print(print_step)
+            code = subprocess.call([shellcheck_path, *bash_files])
+            if code != 0:
+                rc = 1
 
     # PSScriptAnalyzer (optional — skip gracefully if not installed)
     # Invoke-ScriptAnalyzer always exits 0 — even when findings are reported —
@@ -242,15 +254,19 @@ def shell_lint() -> int:
         print(f"> PSScriptAnalyzer {' '.join(ps1_files)}")
         for ps1 in ps1_files:
             try:
+                ps1_escaped = ps1.replace("'", "''")
+                command = (
+                    "if (Get-Module -ListAvailable PSScriptAnalyzer) {"
+                    f" $findings = Invoke-ScriptAnalyzer -Path '{ps1_escaped}' -Severity Warning;"
+                    " if ($findings) { $findings | Format-List; exit 1 }"
+                    f"}} else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1_escaped}' }}"
+                )
                 result = subprocess.run(
                     [
                         "pwsh",
                         "-NoProfile",
                         "-Command",
-                        f"if (Get-Module -ListAvailable PSScriptAnalyzer) {{"
-                        f" $findings = Invoke-ScriptAnalyzer -Path '{ps1}' -Severity Warning;"
-                        f" if ($findings) {{ $findings | Format-List; exit 1 }}"
-                        f"}} else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1}' }}",
+                        command,
                     ],
                     capture_output=True,
                     text=True,
@@ -287,7 +303,14 @@ def yaml_lint() -> int:
     if not yml_files:
         print("No YAML files found.")
         return 0
-    return _run(sys.executable, "-m", "yamllint", "-c", ".yamllint.yml", *yml_files)
+    return _run(
+        sys.executable,
+        "-m",
+        "yamllint",
+        "-c",
+        str(_REPO_ROOT / ".yamllint.yml"),
+        *yml_files,
+    )
 
 
 VERSION_REFS: list[tuple[str, str, str, int]] = [
