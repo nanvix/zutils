@@ -15,11 +15,14 @@ Commands:
   ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean      Remove Python bytecode caches and build artifacts
   release    Build distribution artifacts (wheel + sdist) for release
+  version    Bump version across pyproject.toml and templates
 """
 
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from collections.abc import Callable
 
@@ -127,6 +130,7 @@ def ci() -> int:
     print("ci: All jobs passed.")
     return 0
 
+
 def release() -> int:
     """Build distribution artifacts (wheel and sdist) for release.
 
@@ -151,15 +155,101 @@ def release() -> int:
     return 0
 
 
+VERSION_REFS: list[tuple[str, str, str, int]] = [
+    # (filepath, pattern, replacement_template, re_flags)
+    # pattern must have a group so replacement can anchor to context
+    (
+        "templates/z.sh",
+        r"(NANVIX_ZUTIL_VERSION:-)[^\}]+",
+        r"\g<1>{new}",
+        0,
+    ),
+    (
+        "templates/z.ps1",
+        r'(?<=^    ")[\d][^"]*(?="$)',
+        r"{new}",
+        re.MULTILINE,
+    ),
+    (
+        "templates/nanvix-ci.yml",
+        r'(zutil-version:\s*"v)[^"]+',
+        r"\g<1>{new}",
+        0,
+    ),
+]
+
+
+def version() -> int:
+    """Bump the version across pyproject.toml and all template files.
+
+    Usage:
+        uv run tasks.py version <bump>            # bump = major | minor | patch | ...
+        uv run tasks.py version <bump> --dry-run   # preview changes without writing
+    """
+    if len(sys.argv) < 3:
+        print("Usage: uv run tasks.py version <bump> [--dry-run]")
+        print("  bump: major | minor | patch | alpha | beta | rc | post | dev | stable")
+        return 2
+
+    bump = sys.argv[2]
+    dry_run = "--dry-run" in sys.argv[3:]
+
+    # Read current version from pyproject.toml
+    with open("pyproject.toml", "rb") as f:
+        current = tomllib.load(f)["project"]["version"]
+
+    # Compute new version via uv
+    result = subprocess.run(
+        ["uv", "version", "--bump", bump, "--dry-run", "--short"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"error: uv version failed: {result.stderr.strip()}")
+        return 1
+    new = result.stdout.strip()
+
+    if dry_run:
+        print(f"Version: {current} -> {new}")
+        print("Files that would be updated:")
+        print(f"  pyproject.toml  (via uv version --bump {bump})")
+        for filepath, _, _, _ in VERSION_REFS:
+            print(f"  {filepath}")
+        return 0
+
+    # Apply bump to pyproject.toml (and uv.lock) via uv
+    code = _run("uv", "version", "--bump", bump)
+    if code != 0:
+        return code
+
+    # Update all version references
+    for filepath, pattern, repl_template, flags in VERSION_REFS:
+        path = Path(filepath)
+        content = path.read_text()
+        replacement = repl_template.format(new=new)
+        updated = re.sub(pattern, replacement, content, flags=flags)
+        if updated == content:
+            print(f"warning: no match in {filepath}")
+        path.write_text(updated)
+        print(f"  Updated {filepath}")
+
+    print(f"\nVersion bumped: {current} -> {new}")
+    return 0
+
+
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (lint, "Check code formatting with black"),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
-    "ci": (ci, "Run CI locally using gh act (requires Docker + nanvix toolchain image)"),
+    "ci": (
+        ci,
+        "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
+    ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
+    "version": (version, "Bump version across pyproject.toml and templates"),
 }
 
 
