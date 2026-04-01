@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-0.5.0}"
+ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-0.5.1}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 VENV="$REPO_ROOT/.nanvix/venv"
 VENV_BIN="$VENV/bin/nanvix-zutil"
