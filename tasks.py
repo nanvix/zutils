@@ -160,13 +160,13 @@ VERSION_REFS: list[tuple[str, str, str, int]] = [
     # pattern must have a group so replacement can anchor to context
     (
         "templates/z.sh",
-        r"(NANVIX_ZUTIL_VERSION:-)[^\}]+",
+        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
         r"\g<1>{new}",
         0,
     ),
     (
         "templates/z.ps1",
-        r'(?<=^    ")[\d][^"]*(?="$)',
+        r'(?<=^    ")[\d][^"]*',
         r"{new}",
         re.MULTILINE,
     ),
@@ -196,7 +196,12 @@ def version() -> int:
 
     # Read current version from pyproject.toml
     with open("pyproject.toml", "rb") as f:
-        current = tomllib.load(f)["project"]["version"]
+        data = tomllib.load(f)
+    try:
+        current: str = data["project"]["version"]
+    except KeyError as exc:
+        print(f"error: pyproject.toml missing key: {exc}")
+        return 1
 
     # Compute new version via uv
     result = subprocess.run(
@@ -230,6 +235,7 @@ def version() -> int:
         updated = re.sub(pattern, replacement, content, flags=flags)
         if updated == content:
             print(f"warning: no match in {filepath}")
+            continue
         path.write_text(updated)
         print(f"  Updated {filepath}")
 
