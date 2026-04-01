@@ -29,9 +29,6 @@ jobs:
           curl -sS https://webinstall.dev/shfmt@v3.8.0 | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install PSScriptAnalyzer
-        run: pwsh -NoProfile -Command "Install-Module PSScriptAnalyzer -Force -Scope CurrentUser"
-
       - name: Install dependencies
         run: uv sync
 
