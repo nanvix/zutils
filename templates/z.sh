@@ -35,24 +35,24 @@ function bootstrap() {
 # Prefer the venv copy if it exists; otherwise use the global install.
 BIN=""
 if [ ! -d "$VENV" ] && [ -z "$ZUTIL_GLOBAL_VERSION" ]; then
-	bootstrap
-	BIN="$VENV_BIN"
+    bootstrap
+    BIN="$VENV_BIN"
 elif [ -x "$VENV_BIN" ]; then
-	VENV_VERSION="$("$VENV_BIN" --version 2>/dev/null || true)"
-	if [ "$VENV_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
-		echo "Warning: venv nanvix-zutil version mismatch. Expected ${ZUTIL_VERSION}, found ${VENV_VERSION}. Re-bootstrapping..." >&2
-		bootstrap
-	fi
-	BIN="$VENV_BIN"
+    VENV_VERSION="$("$VENV_BIN" --version 2>/dev/null || true)"
+    if [ "$VENV_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
+        echo "Warning: venv nanvix-zutil version mismatch. Expected ${ZUTIL_VERSION}, found ${VENV_VERSION}. Re-bootstrapping..." >&2
+        bootstrap
+    fi
+    BIN="$VENV_BIN"
 elif [ -d "$VENV" ] && ! command -v nanvix-zutil &>/dev/null; then
-	echo "Warning: incomplete venv detected (binary missing). Re-running bootstrap..." >&2
-	bootstrap
-	BIN="$VENV_BIN"
+    echo "Warning: incomplete venv detected (binary missing). Re-running bootstrap..." >&2
+    bootstrap
+    BIN="$VENV_BIN"
 else
-	BIN="nanvix-zutil"
-	if [ "$ZUTIL_GLOBAL_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
-		echo "Warning: nanvix-zutil global install does not match expected version. Expected ${ZUTIL_VERSION}, found ${ZUTIL_GLOBAL_VERSION}." >&2
-	fi
+    BIN="nanvix-zutil"
+    if [ "$ZUTIL_GLOBAL_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
+        echo "Warning: nanvix-zutil global install does not match expected version. Expected ${ZUTIL_VERSION}, found ${ZUTIL_GLOBAL_VERSION}." >&2
+    fi
 fi
 
 exec "$BIN" "$@"
