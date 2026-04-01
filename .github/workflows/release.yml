@@ -119,6 +119,9 @@ jobs:
       - name: Build wheel and sdist
         run: uv build
 
+      - name: Package templates
+        run: tar czf templates.tar.gz -C templates .
+
       - name: Create and push release tag
         run: |
           git config user.name "github-actions[bot]"
@@ -130,6 +133,7 @@ jobs:
         run: |
           gh release create "v${{ steps.version.outputs.value }}" \
             dist/*.whl dist/*.tar.gz \
+            templates.tar.gz \
             --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
             --generate-notes
         env:
