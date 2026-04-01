@@ -56,3 +56,39 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+  script-lint:
+    name: Script & YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shfmt
+        run: |
+          curl -sS https://webinstall.dev/shfmt | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Shell format check (shfmt)
+        run: |
+          shfmt --diff -i 4 -ci \
+            templates/z.sh templates/z \
+            examples/*/z.sh examples/*/z \
+            .githooks/commit-msg .githooks/pre-push
+
+      - name: Shell lint (shellcheck)
+        run: |
+          shellcheck \
+            templates/z.sh templates/z \
+            examples/*/z.sh examples/*/z \
+            .githooks/commit-msg .githooks/pre-push
+
+      - name: YAML lint
+        run: uv run tasks.py yaml-lint
