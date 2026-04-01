@@ -7,15 +7,18 @@ Development task runner for nanvix-zutil.
 Usage: uv run tasks.py <command>
 
 Commands:
-  setup      Configure git hooks and sync dev dependencies
-  lint       Check code formatting with black
-  format     Fix code formatting with black
-  typecheck  Run strict type checking with basedpyright
-  test       Run the test suite with pytest
-  ci         Run CI locally using gh act (requires Docker + nanvix toolchain image)
-  clean      Remove Python bytecode caches and build artifacts
-  release    Build distribution artifacts (wheel + sdist) for release
-  version    Bump version across pyproject.toml and templates
+  setup         Configure git hooks and sync dev dependencies
+  lint          Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)
+  format        Fix code formatting with black
+  typecheck     Run strict type checking with basedpyright
+  test          Run the test suite with pytest
+  ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
+  clean         Remove Python bytecode caches and build artifacts
+  release       Build distribution artifacts (wheel + sdist) for release
+  version       Bump version across pyproject.toml and templates
+  shell-lint    Check shell script formatting and correctness
+  shell-format  Auto-fix shell script formatting with shfmt
+  yaml-lint     Lint YAML files with yamllint
 """
 
 import re
@@ -46,8 +49,25 @@ def setup() -> int:
 
 
 def lint() -> int:
-    """Check code formatting with black."""
-    return _run(sys.executable, "-m", "black", "--check", *SOURCES)
+    """Run all linters: black, shfmt, shellcheck, PSScriptAnalyzer, yamllint."""
+    rc = 0
+
+    # Python formatting (black)
+    code = _run(sys.executable, "-m", "black", "--check", *SOURCES)
+    if code != 0:
+        rc = 1
+
+    # Shell scripts (shfmt + shellcheck + PSScriptAnalyzer)
+    code = shell_lint()
+    if code != 0:
+        rc = 1
+
+    # YAML (yamllint)
+    code = yaml_lint()
+    if code != 0:
+        rc = 1
+
+    return rc
 
 
 def format_code() -> int:
@@ -158,6 +178,139 @@ def release() -> int:
         for f in artifacts:
             print(f"  {f}")
     return 0
+
+
+def _find_bash_scripts() -> list[str]:
+    """Discover bash scripts to lint: *.sh, extensionless wrappers, git hooks."""
+    files: list[str] = []
+    # *.sh files in templates/ and examples/ (excluding vendored sysroot and venv)
+    files.extend(
+        str(p)
+        for p in _REPO_ROOT.rglob("*.sh")
+        if ".venv" not in p.parts and "venv" not in p.parts and "sysroot" not in p.parts
+    )
+    # Extensionless wrappers (templates/z, examples/*/z)
+    for pattern in ["templates/z", "examples/*/z"]:
+        files.extend(str(p) for p in _REPO_ROOT.glob(pattern))
+    # Git hooks
+    hooks_dir = _REPO_ROOT / ".githooks"
+    if hooks_dir.is_dir():
+        files.extend(str(p) for p in hooks_dir.iterdir() if p.is_file())
+    return sorted(set(files))
+
+
+def _find_ps1_scripts() -> list[str]:
+    """Discover PowerShell scripts to lint (excludes vendored venv and sysroot paths)."""
+    return sorted(
+        str(p)
+        for p in _REPO_ROOT.rglob("*.ps1")
+        if ".venv" not in p.parts and "venv" not in p.parts and "sysroot" not in p.parts
+    )
+
+
+def shell_lint() -> int:
+    """Check shell script formatting (shfmt) and correctness (shellcheck).
+
+    Also runs PSScriptAnalyzer on .ps1 files if available.
+    """
+    bash_files = _find_bash_scripts()
+    ps1_files = _find_ps1_scripts()
+    rc = 0
+
+    # shfmt: check formatting (diff mode, 4-space indent, case indent)
+    # shfmt --diff exits 0 on no diff, 1 when diffs are found or on I/O/parse errors;
+    # we treat both cases the same — fail the lint step in either scenario.
+    if bash_files:
+        shfmt_path = shutil.which("shfmt")
+        if shfmt_path is None:
+            print("shfmt not found — skipping shell formatting checks")
+            rc = 1
+        else:
+            print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
+            print(print_step)
+            code = subprocess.call(
+                [shfmt_path, "--diff", "-i", "4", "-ci", *bash_files]
+            )
+            if code != 0:
+                rc = 1
+
+    # shellcheck
+    if bash_files:
+        shellcheck_path = shutil.which("shellcheck")
+        if shellcheck_path is None:
+            print("shellcheck not found — skipping shell correctness checks")
+            rc = 1
+        else:
+            print_step = f"> shellcheck {' '.join(bash_files)}"
+            print(print_step)
+            code = subprocess.call([shellcheck_path, *bash_files])
+            if code != 0:
+                rc = 1
+
+    # PSScriptAnalyzer (optional — skip gracefully if not installed)
+    # Invoke-ScriptAnalyzer always exits 0 — even when findings are reported —
+    # so we capture findings into a variable and exit 1 when any are found.
+    if ps1_files:
+        print(f"> PSScriptAnalyzer {' '.join(ps1_files)}")
+        for ps1 in ps1_files:
+            try:
+                ps1_escaped = ps1.replace("'", "''")
+                command = (
+                    "if (Get-Module -ListAvailable PSScriptAnalyzer) {"
+                    f" $findings = Invoke-ScriptAnalyzer -Path '{ps1_escaped}' -Severity Warning;"
+                    " if ($findings) { $findings | Format-List; exit 1 }"
+                    f"}} else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1_escaped}' }}"
+                )
+                result = subprocess.run(
+                    [
+                        "pwsh",
+                        "-NoProfile",
+                        "-Command",
+                        command,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.stdout.strip():
+                    print(result.stdout)
+                if result.stderr.strip():
+                    print(result.stderr, file=sys.stderr)
+                if result.returncode != 0:
+                    rc = 1
+            except FileNotFoundError:
+                print("pwsh not found — skipping PSScriptAnalyzer checks")
+                break
+
+    return rc
+
+
+def shell_format() -> int:
+    """Auto-fix shell script formatting with shfmt."""
+    bash_files = _find_bash_scripts()
+    if not bash_files:
+        print("No bash scripts found.")
+        return 0
+    return _run("shfmt", "-w", "-i", "4", "-ci", *bash_files)
+
+
+def yaml_lint() -> int:
+    """Lint YAML files with yamllint."""
+    yml_files = sorted(
+        str(p)
+        for p in _REPO_ROOT.rglob("*.yml")
+        if ".venv" not in p.parts and "venv" not in p.parts
+    )
+    if not yml_files:
+        print("No YAML files found.")
+        return 0
+    return _run(
+        sys.executable,
+        "-m",
+        "yamllint",
+        "-c",
+        str(_REPO_ROOT / ".yamllint.yml"),
+        *yml_files,
+    )
 
 
 VERSION_REFS: list[tuple[str, str, str, int]] = [
@@ -288,7 +441,10 @@ def version() -> int:
 
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
-    "lint": (lint, "Check code formatting with black"),
+    "lint": (
+        lint,
+        "Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)",
+    ),
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
@@ -299,6 +455,9 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
     "version": (version, "Bump version across pyproject.toml and templates"),
+    "shell-lint": (shell_lint, "Check shell script formatting and correctness"),
+    "shell-format": (shell_format, "Auto-fix shell script formatting with shfmt"),
+    "yaml-lint": (yaml_lint, "Lint YAML files with yamllint"),
 }
 
 

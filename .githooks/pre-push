@@ -33,15 +33,15 @@ print_step() {
 
 #
 # Description
-#   Check code formatting with black.
+#   Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint).
 #
 # Return Value
 #   0 on success, 1 on failure.
 #
 check_formatting() {
-    print_step "Checking formatting (black)..."
+    print_step "Linting (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)..."
     if ! uv run tasks.py lint; then
-        print_error "Formatting check failed. Run 'uv run tasks.py format' to fix."
+        print_error "Lint failed. Run 'uv run tasks.py format' and 'uv run tasks.py shell-format' to fix formatting."
         return 1
     fi
 }

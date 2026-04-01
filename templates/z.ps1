@@ -34,7 +34,7 @@ catch {
 function Bootstrap {
     # Pin nanvix-zutil version for reproducible bootstrapping.
     # Override with NANVIX_ZUTIL_VERSION env var if needed.
-    Write-Host "nanvix-zutil not found — bootstrapping nanvix-zutil==${zutilVersion}..." -ForegroundColor Yellow
+    Write-Information "nanvix-zutil not found -- bootstrapping nanvix-zutil==${zutilVersion}..." -InformationAction Continue
 
     $wheelUrl = "https://github.com/nanvix/zutils/releases/download/v${zutilVersion}/nanvix_zutil-${zutilVersion}-py3-none-any.whl"
 

@@ -6,7 +6,7 @@
 
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Args
+    [string[]]$ZArgs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,12 +24,17 @@ $repoRoot = $PSScriptRoot
 $venvDir = Join-Path $repoRoot ".nanvix\venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $venvZutil = Join-Path $venvDir "Scripts\nanvix-zutil.exe"
-$zutilGlobalVersion = try { & nanvix-zutil --version 2>$null } catch { $null }
+$zutilGlobalVersion = try {
+    & nanvix-zutil --version 2>$null
+}
+catch {
+    $null
+}
 
 function Bootstrap {
     # Pin nanvix-zutil version for reproducible bootstrapping.
     # Override with NANVIX_ZUTIL_VERSION env var if needed.
-    Write-Host "nanvix-zutil not found — bootstrapping nanvix-zutil==${zutilVersion}..." -ForegroundColor Yellow
+    Write-Information "nanvix-zutil not found -- bootstrapping nanvix-zutil==${zutilVersion}..." -InformationAction Continue
 
     $wheelUrl = "https://github.com/nanvix/zutils/releases/download/v${zutilVersion}/nanvix_zutil-${zutilVersion}-py3-none-any.whl"
 
@@ -70,5 +75,5 @@ else {
     }
 }
 
-& $bin @Args
+& $bin @ZArgs
 exit $LASTEXITCODE
