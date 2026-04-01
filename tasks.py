@@ -192,10 +192,14 @@ def version() -> int:
         return 2
 
     bump = sys.argv[2]
+    if bump.startswith("--"):
+        print(f"error: expected bump type, got flag '{bump}'")
+        print("Usage: uv run tasks.py version <bump> [--dry-run]")
+        return 2
     dry_run = "--dry-run" in sys.argv[3:]
 
     # Read current version from pyproject.toml
-    with open("pyproject.toml", "rb") as f:
+    with Path("pyproject.toml").open("rb") as f:
         data = tomllib.load(f)
     try:
         current: str = data["project"]["version"]
