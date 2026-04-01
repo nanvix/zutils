@@ -21,6 +21,7 @@ dev = [
   "black",
   "basedpyright",
   "pytest",
+  "yamllint",
 ]
 
 [project.scripts]
