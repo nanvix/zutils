@@ -214,6 +214,32 @@ def _try_fetch_release_by_tag(
     return _fetch_release_by_url(repo, tag, url, headers, allow_404=True)
 
 
+def _find_best_release(
+    repo: str,
+    tag_prefix: str,
+    headers: dict[str, str],
+) -> dict[str, object] | None:
+    """Find the newest release whose tag starts with *tag_prefix*.
+
+    Scans releases in reverse-chronological order (GitHub API default)
+    and returns the first match. Because GitHub lists releases newest
+    first, the first match is the most recent.
+
+    Args:
+        repo: Repository in ``owner/name`` format.
+        tag_prefix: Tag prefix to match (e.g. ``"1.3.1-nanvix-"``).
+        headers: HTTP headers.
+
+    Returns:
+        The release metadata dictionary, or ``None`` if no match.
+    """
+    for release in _list_releases(repo, headers):
+        tag = release.get("tag_name")
+        if isinstance(tag, str) and tag.startswith(tag_prefix):
+            return release
+    return None
+
+
 def _list_releases(
     repo: str,
     headers: dict[str, str],
@@ -420,6 +446,76 @@ def resolve_release(
     result = _resolve_release(repo, version_specifier, headers, semver=semver)
     assert result is not None  # allow_missing defaults to False
     return result
+
+
+def resolve_release_with_fallback(
+    repo: str,
+    version_specifier: str,
+    base_version: str,
+    gh_token: str | None = None,
+) -> tuple[dict[str, object], str | None]:
+    """Resolve a release, falling back to the best available on 404.
+
+    Tries to fetch the release by exact tag. If the tag does not exist
+    (HTTP 404), scans the repo's releases for the newest tag matching
+    ``{base_version}-nanvix-*``.
+
+    Args:
+        repo: Repository in ``owner/name`` format.
+        version_specifier: Exact tag to try first
+            (e.g. ``"1.3.1-nanvix-0.12.337"``).
+        base_version: The base package version without nanvix suffix
+            (e.g. ``"1.3.1"``). Used to construct the fallback prefix.
+        gh_token: Optional GitHub personal access token.
+
+    Returns:
+        A tuple of (release_dict, fallback_nanvix_version). The second
+        element is ``None`` when the exact tag was found, or the nanvix
+        version string from the fallback tag (e.g. ``"0.12.291"``) when
+        a fallback was used.
+
+    Raises:
+        SystemExit: If no matching release is found at all.
+    """
+    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+
+    # Try exact tag first.
+    result = _resolve_release(repo, version_specifier, headers, allow_missing=True)
+    if result is not None:
+        return result, None
+
+    # Fallback: scan for best available release matching the base version.
+    prefix = f"{base_version}-nanvix-"
+    best = _find_best_release(repo, prefix, headers)
+    if best is None:
+        log.fatal(
+            f"No release found for {repo}@{version_specifier} and no "
+            f"fallback release matching '{prefix}*' exists",
+            code=EXIT_MISSING_DEP,
+            hint=f"Ensure {repo} has at least one release tagged "
+            f"'{base_version}-nanvix-<version>'.",
+        )
+
+    tag = best.get("tag_name")
+    if not isinstance(tag, str):
+        log.fatal(
+            f"Fallback release for {repo} has no tag_name",
+            code=EXIT_NETWORK_ERROR,
+        )
+
+    from nanvix_zutil.buildroot import extract_nanvix_version
+
+    nanvix_ver = extract_nanvix_version(tag)
+    if nanvix_ver is None:
+        log.fatal(
+            f"Fallback release tag '{tag}' for {repo} does not contain "
+            f"a nanvix version suffix",
+            code=EXIT_NETWORK_ERROR,
+        )
+
+    return best, nanvix_ver
 
 
 @overload
