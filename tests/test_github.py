@@ -5,6 +5,7 @@
 
 """Tests for nanvix_zutil.github."""
 
+import collections.abc
 import json
 import tempfile
 import unittest
@@ -1072,6 +1073,121 @@ class TestResolveReleaseSemverGating(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["tag_name"], "v1.2.3")
         self.assertIn("/releases/tags/v1.2.3", captured[0].full_url)
+
+
+class TestFindBestRelease(unittest.TestCase):
+    """Tests for _find_best_release()."""
+
+    def setUp(self) -> None:
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        log_mod.set_json_mode(False)
+
+    def test_finds_matching_release(self) -> None:
+        """First release whose tag matches the prefix is returned."""
+        releases = [
+            {"tag_name": "1.3.1-nanvix-0.12.320"},
+            {"tag_name": "1.3.1-nanvix-0.12.291"},
+            {"tag_name": "1.2.0-nanvix-0.12.291"},
+        ]
+        with patch.object(github_mod, "_list_releases", return_value=iter(releases)):
+            result = github_mod._find_best_release("nanvix/zlib", "1.3.1-nanvix-", {})
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["tag_name"], "1.3.1-nanvix-0.12.320")
+
+    def test_returns_none_when_no_match(self) -> None:
+        """Returns None when no tags match the prefix."""
+        releases = [
+            {"tag_name": "2.0.0-nanvix-0.12.320"},
+            {"tag_name": "1.2.0-nanvix-0.12.291"},
+        ]
+        with patch.object(github_mod, "_list_releases", return_value=iter(releases)):
+            result = github_mod._find_best_release("nanvix/zlib", "1.3.1-nanvix-", {})
+        self.assertIsNone(result)
+
+    def test_short_circuits_on_first_match(self) -> None:
+        """Generator stops iterating after the first match."""
+        call_count = 0
+
+        def counting_gen(
+            repo: str, headers: dict[str, str]
+        ) -> collections.abc.Generator[dict[str, object], None, None]:
+            nonlocal call_count
+            items: list[dict[str, object]] = [
+                {"tag_name": "1.3.1-nanvix-0.12.320"},
+                {"tag_name": "1.3.1-nanvix-0.12.291"},
+            ]
+            for rel in items:
+                call_count += 1
+                yield rel
+
+        with patch.object(github_mod, "_list_releases", side_effect=counting_gen):
+            result = github_mod._find_best_release("nanvix/zlib", "1.3.1-nanvix-", {})
+        self.assertIsNotNone(result)
+        # The generator yielded 1 item and then the function returned.
+        # Python generators only advance when next() is called, and
+        # _find_best_release returns on the first match before calling
+        # next() again.  So call_count should be 1.
+        self.assertEqual(call_count, 1)
+
+
+class TestResolveReleaseWithFallback(unittest.TestCase):
+    """Tests for resolve_release_with_fallback()."""
+
+    def setUp(self) -> None:
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        log_mod.set_json_mode(False)
+
+    @patch.object(github_mod, "_find_best_release")
+    @patch.object(github_mod, "_resolve_release")
+    def test_exact_tag_found_no_fallback(
+        self, mock_resolve: MagicMock, mock_best: MagicMock
+    ) -> None:
+        """When the exact tag exists, returns (release, None)."""
+        release: dict[str, object] = {"tag_name": "1.3.1-nanvix-0.12.337"}
+        mock_resolve.return_value = release
+
+        result, fallback_ver = github_mod.resolve_release_with_fallback(
+            "nanvix/zlib", "1.3.1-nanvix-0.12.337", "1.3.1"
+        )
+        self.assertEqual(result, release)
+        self.assertIsNone(fallback_ver)
+        mock_best.assert_not_called()
+
+    @patch.object(github_mod, "_find_best_release")
+    @patch.object(github_mod, "_resolve_release")
+    def test_404_triggers_fallback(
+        self, mock_resolve: MagicMock, mock_best: MagicMock
+    ) -> None:
+        """When exact tag 404s, scans releases and returns fallback."""
+        mock_resolve.return_value = None  # allow_missing=True returns None
+        fallback_release: dict[str, object] = {"tag_name": "1.3.1-nanvix-0.12.291"}
+        mock_best.return_value = fallback_release
+
+        result, fallback_ver = github_mod.resolve_release_with_fallback(
+            "nanvix/zlib", "1.3.1-nanvix-0.12.337", "1.3.1"
+        )
+        self.assertEqual(result, fallback_release)
+        self.assertEqual(fallback_ver, "0.12.291")
+
+    @patch.object(github_mod, "_find_best_release")
+    @patch.object(github_mod, "_resolve_release")
+    def test_no_fallback_release_exits(
+        self, mock_resolve: MagicMock, mock_best: MagicMock
+    ) -> None:
+        """When both exact and scan fail, exits with code 3."""
+        mock_resolve.return_value = None
+        mock_best.return_value = None
+
+        with self.assertRaises(SystemExit) as ctx:
+            github_mod.resolve_release_with_fallback(
+                "nanvix/zlib", "1.3.1-nanvix-0.12.337", "1.3.1"
+            )
+        self.assertEqual(ctx.exception.code, 3)
 
 
 if __name__ == "__main__":
