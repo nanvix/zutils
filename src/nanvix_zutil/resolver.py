@@ -20,7 +20,14 @@ from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import github, log
-from nanvix_zutil.buildroot import Dependency, suffix_dep
+from nanvix_zutil.buildroot import (
+    Dependency,
+    Ref,
+    RefKind,
+    extract_nanvix_version_base,
+    parse_semver_tuple,
+    suffix_dep,
+)
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -156,6 +163,32 @@ def _detect_cycles(packages: list[ResolvedPackage]) -> None:
             dfs(node)
 
 
+def _unsuffix_deps(deps: list[Dependency]) -> list[Dependency]:
+    """Return copies of *deps* with nanvix suffixes stripped from VERSION refs.
+
+    For deps whose ref kind is VERSION and whose value contains
+    ``-nanvix-``, strips the suffix so the dep can be re-suffixed with
+    a different version.
+    """
+    result: list[Dependency] = []
+    for dep in deps:
+        if (
+            dep.ref.kind == RefKind.VERSION
+            and isinstance(dep.ref.value, str)
+            and "-nanvix-" in dep.ref.value
+        ):
+            base = dep.ref.value.split("-nanvix-")[0]
+            result.append(
+                _dc_replace(
+                    dep,
+                    ref=Ref(kind=dep.ref.kind, value=base),
+                )
+            )
+        else:
+            result.append(dep)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -265,6 +298,9 @@ def _resolve_inner(
                 code=EXIT_NETWORK_ERROR,
             )
 
+        original_deps = list(manifest.dependencies)
+        original_sys_deps = list(manifest.system_dependencies)
+
         manifest = _dc_replace(
             manifest,
             dependencies=[
@@ -274,6 +310,103 @@ def _resolve_inner(
                 suffix_dep(d, resolved_version) for d in manifest.system_dependencies
             ],
         )
+
+        # --- Fallback probe (only when sysroot is "latest") ---
+        # Probe each VERSION dep once.  Cache the release dict so the
+        # BFS can reuse it instead of making a second API call.
+        fallback_versions: list[str] = []
+        probe_cache: dict[str, dict[str, object]] = {}
+        all_probe_deps = list(manifest.dependencies) + list(
+            manifest.system_dependencies
+        )
+        for dep in all_probe_deps:
+            if dep.ref.kind != RefKind.VERSION or not isinstance(dep.ref.value, str):
+                continue
+            # dep.ref.value is already suffixed, e.g. "1.3.1-nanvix-0.12.337"
+            base_ver = extract_nanvix_version_base(dep.ref.value)
+            if base_ver is None:
+                continue
+            rel, fallback_ver = github.resolve_release_with_fallback(
+                dep.repo,
+                dep.ref.value,
+                base_ver,
+                gh_token=gh_token,
+            )
+            if fallback_ver is not None:
+                fallback_versions.append(fallback_ver)
+            else:
+                # Exact tag matched — cache for BFS reuse.
+                probe_cache[dep.name] = rel
+
+        if fallback_versions:
+            # Tags will change after re-suffix — cached releases are
+            # stale, so discard them.
+            probe_cache.clear()
+
+            min_ver = min(fallback_versions, key=parse_semver_tuple)
+            log.warning(
+                f"nanvix v{resolved_version} is latest but dependencies "
+                f"only available up to v{min_ver}; falling back to "
+                f"v{min_ver}"
+            )
+
+            # Re-resolve sysroot at the downgraded version.
+            try:
+                sysroot_release = github.resolve_release(
+                    "nanvix/nanvix",
+                    min_ver,
+                    gh_token=gh_token,
+                    semver=True,
+                )
+            except SystemExit:
+                log.note(f"while re-resolving sysroot at downgraded version v{min_ver}")
+                raise
+            tag, commitish, rel_id = _extract_release_fields(sysroot_release)
+            sysroot_pkg = ResolvedPackage(
+                name="nanvix",
+                repo="nanvix/nanvix",
+                kind="sysroot",
+                ref=manifest.sysroot_ref,
+                resolved_tag=tag,
+                resolved_commitish=commitish,
+                release_id=rel_id,
+            )
+            resolved["nanvix"] = sysroot_pkg
+            releases["nanvix"] = sysroot_release
+
+            # Re-suffix deps with downgraded version.
+            resolved_version = min_ver
+            manifest = _dc_replace(
+                manifest,
+                dependencies=[
+                    suffix_dep(d, resolved_version)
+                    for d in _unsuffix_deps(original_deps)
+                ],
+                system_dependencies=[
+                    suffix_dep(d, resolved_version)
+                    for d in _unsuffix_deps(original_sys_deps)
+                ],
+            )
+
+        # Pre-populate resolved/releases from the probe cache so the
+        # BFS skips these deps instead of re-fetching them.
+        all_deps_after = list(manifest.dependencies) + list(
+            manifest.system_dependencies
+        )
+        for dep in all_deps_after:
+            if dep.name in probe_cache:
+                rel = probe_cache[dep.name]
+                d_tag, d_commitish, d_rel_id = _extract_release_fields(rel)
+                resolved[dep.name] = ResolvedPackage(
+                    name=dep.name,
+                    repo=dep.repo,
+                    kind="dependency",
+                    ref=dep.ref,
+                    resolved_tag=d_tag,
+                    resolved_commitish=d_commitish,
+                    release_id=d_rel_id,
+                )
+                releases[dep.name] = rel
 
     # 2. Seed queue with direct deps
     queue: deque[_QueueItem] = deque()

@@ -11,7 +11,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind
+from nanvix_zutil.buildroot import (
+    Buildroot,
+    Dependency,
+    Ref,
+    RefKind,
+    extract_nanvix_version,
+    extract_nanvix_version_base,
+    parse_semver_tuple,
+)
 
 
 def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
@@ -365,6 +373,39 @@ class TestBuildrootInstallDep(unittest.TestCase):
 
         self.assertTrue((br.path / "lib" / "libz.a").exists())
         self.assertTrue((br.path / "include" / "zlib.h").exists())
+
+
+class TestExtractNanvixVersion(unittest.TestCase):
+    """Tests for extract_nanvix_version()."""
+
+    def test_extracts_version(self) -> None:
+        self.assertEqual(extract_nanvix_version("1.3.1-nanvix-0.12.291"), "0.12.291")
+
+    def test_returns_none_without_marker(self) -> None:
+        self.assertIsNone(extract_nanvix_version("v1.3.1"))
+
+    def test_extracts_from_complex_base(self) -> None:
+        self.assertEqual(extract_nanvix_version("3.12.3-nanvix-0.12.291"), "0.12.291")
+
+
+class TestExtractNanvixVersionBase(unittest.TestCase):
+    """Tests for extract_nanvix_version_base()."""
+
+    def test_extracts_base(self) -> None:
+        self.assertEqual(extract_nanvix_version_base("1.3.1-nanvix-0.12.291"), "1.3.1")
+
+    def test_returns_none_without_marker(self) -> None:
+        self.assertIsNone(extract_nanvix_version_base("v1.3.1"))
+
+
+class TestParseSemverTuple(unittest.TestCase):
+    """Tests for parse_semver_tuple()."""
+
+    def test_parses_semver(self) -> None:
+        self.assertEqual(parse_semver_tuple("0.12.291"), (0, 12, 291))
+
+    def test_ordering(self) -> None:
+        self.assertLess(parse_semver_tuple("0.12.291"), parse_semver_tuple("0.12.337"))
 
 
 if __name__ == "__main__":

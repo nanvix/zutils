@@ -1,6 +1,8 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# pyright: reportPrivateUsage=false
+
 """Tests for nanvix_zutil.resolver."""
 
 import tempfile
@@ -16,7 +18,7 @@ from nanvix_zutil.lockfile import (
     ResolvedPackage,
 )
 from nanvix_zutil.manifest import Manifest
-from nanvix_zutil.resolver import is_stale, resolve
+from nanvix_zutil.resolver import _unsuffix_deps, is_stale, resolve
 
 
 def _make_release(
@@ -533,6 +535,7 @@ class TestIsStale(unittest.TestCase):
 
 @patch("nanvix_zutil.resolver.download_lockfile_asset")
 @patch("nanvix_zutil.resolver.github.resolve_release")
+@patch("nanvix_zutil.resolver.github.resolve_release_with_fallback")
 class TestResolveLatestSysroot(unittest.TestCase):
     """Resolver with 'latest' sysroot and a VERSION dep."""
 
@@ -555,6 +558,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
 
     def test_latest_sysroot_deferred_suffix(
         self,
+        mock_fallback: MagicMock,
         mock_resolve: MagicMock,
         mock_download: MagicMock,
     ) -> None:
@@ -567,7 +571,11 @@ class TestResolveLatestSysroot(unittest.TestCase):
             release_id=200,
             assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
-        mock_resolve.side_effect = [sysroot_release, zlib_release]
+        # resolve_release is only called for sysroot — zlib is served
+        # from the probe cache, eliminating a duplicate API call.
+        mock_resolve.side_effect = [sysroot_release]
+        # Fallback probe: exact tag found, no fallback needed.
+        mock_fallback.return_value = (zlib_release, None)
         mock_download.return_value = None
 
         manifest = _make_manifest(
@@ -594,9 +602,16 @@ class TestResolveLatestSysroot(unittest.TestCase):
         # Verify dep was suffixed with resolved version
         zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
         self.assertEqual(zlib_pkg.ref.value, "1.3.1-nanvix-0.12.277")
-        # Verify resolve_release was called with suffixed value
-        mock_resolve.assert_any_call(
-            "nanvix/zlib", "1.3.1-nanvix-0.12.277", gh_token=None
+        # zlib resolved via probe cache — resolve_release NOT called for it.
+        mock_resolve.assert_called_once_with(
+            "nanvix/nanvix", "latest", gh_token=None, semver=True
+        )
+        # Probe was called with the suffixed tag.
+        mock_fallback.assert_called_once_with(
+            "nanvix/zlib",
+            "1.3.1-nanvix-0.12.277",
+            "1.3.1",
+            gh_token=None,
         )
 
 
@@ -653,6 +668,282 @@ class TestAssetFiltering(unittest.TestCase):
         sysroot_pkg = lockfile.packages[0]
         self.assertEqual(len(sysroot_pkg.assets), 1)
         self.assertTrue(sysroot_pkg.assets[0].name.endswith(".tar.bz2"))
+
+
+class TestUnsuffixDeps(unittest.TestCase):
+    """Tests for _unsuffix_deps()."""
+
+    def test_strips_suffix(self) -> None:
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.VERSION, value="1.3.1-nanvix-0.12.337"),
+        )
+        result = _unsuffix_deps([dep])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].ref.value, "1.3.1")
+
+    def test_preserves_non_version_refs(self) -> None:
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.3.1-nanvix-0.12.337"),
+        )
+        result = _unsuffix_deps([dep])
+        self.assertEqual(result[0].ref.value, "v1.3.1-nanvix-0.12.337")
+
+    def test_preserves_unsuffixed(self) -> None:
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+        )
+        result = _unsuffix_deps([dep])
+        self.assertEqual(result[0].ref.value, "1.3.1")
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+@patch("nanvix_zutil.resolver.github.resolve_release_with_fallback")
+class TestResolveVersionFallback(unittest.TestCase):
+    """Tests for fallback version downgrade in the resolver."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_fallback_downgrades_sysroot(
+        self,
+        mock_fallback: MagicMock,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        """Sysroot is downgraded when dep 404s and fallback finds older version."""
+        latest_sysroot = _make_release(
+            tag="v0.12.337", commitish="aaa111", release_id=100
+        )
+        downgraded_sysroot = _make_release(
+            tag="v0.12.291", commitish="bbb222", release_id=101
+        )
+        zlib_release = _make_release(
+            tag="v1.3.1-nanvix-0.12.291",
+            commitish="ccc333",
+            release_id=200,
+            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+        )
+        # resolve_release: (1) sysroot@latest, (2) sysroot@0.12.291, (3) zlib
+        mock_resolve.side_effect = [latest_sysroot, downgraded_sysroot, zlib_release]
+        # Fallback probe: zlib 404 → fallback to 0.12.291
+        mock_fallback.return_value = (zlib_release, "0.12.291")
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+                )
+            ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
+        )
+
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        # Sysroot should be downgraded to 0.12.291
+        sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
+        self.assertEqual(sysroot_pkg.resolved_tag, "v0.12.291")
+        # zlib should use the downgraded suffix
+        zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
+        self.assertEqual(zlib_pkg.ref.value, "1.3.1-nanvix-0.12.291")
+
+    def test_fallback_uses_minimum_across_deps(
+        self,
+        mock_fallback: MagicMock,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        """When multiple deps fall back, sysroot uses the minimum version."""
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "latest"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+            'sqlite = "3.49.0"\n'
+        )
+        latest_sysroot = _make_release(
+            tag="v0.12.337", commitish="aaa111", release_id=100
+        )
+        downgraded_sysroot = _make_release(
+            tag="v0.12.291", commitish="bbb222", release_id=101
+        )
+        zlib_release = _make_release(
+            tag="v1.3.1-nanvix-0.12.291",
+            commitish="ccc333",
+            release_id=200,
+        )
+        sqlite_release = _make_release(
+            tag="v3.49.0-nanvix-0.12.291",
+            commitish="ddd444",
+            release_id=300,
+        )
+        # resolve_release: (1) sysroot@latest, (2) sysroot@0.12.291,
+        # (3) zlib, (4) sqlite
+        mock_resolve.side_effect = [
+            latest_sysroot,
+            downgraded_sysroot,
+            zlib_release,
+            sqlite_release,
+        ]
+        # Fallback probe: zlib → 0.12.291, sqlite → 0.12.320
+        mock_fallback.side_effect = [
+            (zlib_release, "0.12.291"),
+            (sqlite_release, "0.12.320"),
+        ]
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+                ),
+                Dependency(
+                    name="sqlite",
+                    repo="nanvix/sqlite",
+                    ref=Ref(kind=RefKind.VERSION, value="3.49.0"),
+                ),
+            ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
+        )
+
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        # Sysroot should use the minimum: 0.12.291
+        sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
+        self.assertEqual(sysroot_pkg.resolved_tag, "v0.12.291")
+
+    def test_no_fallback_when_all_deps_available(
+        self,
+        mock_fallback: MagicMock,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        """No warning when all deps resolve on first try."""
+        sysroot_release = _make_release(
+            tag="v0.12.337", commitish="aaa111", release_id=100
+        )
+        zlib_release = _make_release(
+            tag="v1.3.1-nanvix-0.12.337",
+            commitish="ccc333",
+            release_id=200,
+            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+        )
+        # resolve_release only called for sysroot — zlib served from
+        # probe cache.
+        mock_resolve.side_effect = [sysroot_release]
+        # Fallback probe: exact tag found, no fallback.
+        mock_fallback.return_value = (zlib_release, None)
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+                )
+            ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
+        )
+
+        lockfile = resolve(
+            manifest,
+            cache_dir=Path(self._tmpdir.name) / "cache",
+            manifest_path=self._manifest_path,
+        )
+
+        sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
+        self.assertEqual(sysroot_pkg.resolved_tag, "v0.12.337")
+
+
+@patch("nanvix_zutil.resolver.download_lockfile_asset")
+@patch("nanvix_zutil.resolver.github.resolve_release")
+class TestNoFallbackWhenPinned(unittest.TestCase):
+    """Pinned sysroot preserves hard-fail behavior."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
+        self._manifest_dir.mkdir(parents=True)
+        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path.write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.12.337"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+        )
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_no_fallback_when_pinned(
+        self,
+        mock_resolve: MagicMock,
+        mock_download: MagicMock,
+    ) -> None:
+        """Pinned version hard-fails on 404 (no fallback)."""
+        sysroot_release = _make_release(
+            tag="v0.12.337", commitish="aaa111", release_id=100
+        )
+        mock_resolve.side_effect = [sysroot_release, SystemExit(3)]
+        mock_download.return_value = None
+
+        manifest = _make_manifest(
+            deps=[
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(
+                        kind=RefKind.VERSION,
+                        value="1.3.1-nanvix-0.12.337",
+                    ),
+                )
+            ],
+            sysroot_ref=Ref(kind=RefKind.TAG, value="0.12.337"),
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            resolve(
+                manifest,
+                cache_dir=Path(self._tmpdir.name) / "cache",
+                manifest_path=self._manifest_path,
+            )
+        self.assertEqual(ctx.exception.code, 3)
 
 
 if __name__ == "__main__":

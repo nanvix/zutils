@@ -139,6 +139,59 @@ def suffix_dep(dep: Dependency, version: str) -> Dependency:
     return dep
 
 
+def extract_nanvix_version(suffixed_tag: str) -> str | None:
+    """Extract the nanvix version from a suffixed tag.
+
+    Given a tag like ``"1.3.1-nanvix-0.12.291"``, returns ``"0.12.291"``.
+    Returns ``None`` if the tag does not contain the ``-nanvix-`` infix.
+
+    Args:
+        suffixed_tag: A release tag that may contain ``-nanvix-{version}``.
+
+    Returns:
+        The nanvix version string, or ``None``.
+    """
+    marker = "-nanvix-"
+    idx = suffixed_tag.find(marker)
+    if idx == -1:
+        return None
+    return suffixed_tag[idx + len(marker) :]
+
+
+def extract_nanvix_version_base(suffixed_value: str) -> str | None:
+    """Extract the base package version from a suffixed ref value.
+
+    Given ``"1.3.1-nanvix-0.12.291"``, returns ``"1.3.1"``.
+    Returns ``None`` if the value does not contain ``-nanvix-``.
+
+    Args:
+        suffixed_value: A ref value that may contain ``-nanvix-{version}``.
+
+    Returns:
+        The base package version string, or ``None``.
+    """
+    marker = "-nanvix-"
+    idx = suffixed_value.find(marker)
+    if idx == -1:
+        return None
+    return suffixed_value[:idx]
+
+
+def parse_semver_tuple(version: str) -> tuple[int, ...]:
+    """Parse a semver string into a tuple of integers for comparison.
+
+    Args:
+        version: A dotted version string (e.g. ``"0.12.291"``).
+
+    Returns:
+        Tuple of integer parts (e.g. ``(0, 12, 291)``).
+
+    Raises:
+        ValueError: If any part is not an integer.
+    """
+    return tuple(int(p) for p in version.split("."))
+
+
 # ---------------------------------------------------------------------------
 # Buildroot
 # ---------------------------------------------------------------------------

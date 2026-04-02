@@ -26,11 +26,25 @@ Public re-exports:
 - :func:`~nanvix_zutil.docker.image_exists` — check local image availability
 - :class:`~nanvix_zutil.info.NanvixInfo` — resolved Nanvix release information
 - :func:`~nanvix_zutil.info.get_nanvix_info` — query Nanvix release info
-- ``BUILDROOT_CONTAINER_PATH``, ``SYSROOT_CONTAINER_PATH``, ``WORKSPACE_CONTAINER_PATH``, ``TOOLCHAIN_CONTAINER_PATH`` — well-known container paths
+- :func:`~nanvix_zutil.github.resolve_release` — resolve a release by version specifier
+- :func:`~nanvix_zutil.github.resolve_release_with_fallback` — resolve a release with fallback to best available
+- :func:`~nanvix_zutil.buildroot.suffix_dep` — suffix a dep's VERSION ref with a nanvix version
+- :func:`~nanvix_zutil.buildroot.extract_nanvix_version` — extract nanvix version from a suffixed tag
+- :func:`~nanvix_zutil.buildroot.extract_nanvix_version_base` — extract base version from a suffixed tag
+- :func:`~nanvix_zutil.buildroot.parse_semver_tuple` — parse semver string to tuple for comparison
 - :mod:`nanvix_zutil.log` — structured logging helpers
 """
 
-from nanvix_zutil.buildroot import Buildroot, Dependency, Ref, RefKind, suffix_dep
+from nanvix_zutil.buildroot import (
+    Buildroot,
+    Dependency,
+    Ref,
+    RefKind,
+    extract_nanvix_version,
+    extract_nanvix_version_base,
+    parse_semver_tuple,
+    suffix_dep,
+)
 from nanvix_zutil.config import (
     CFG_GH_TOKEN,
     CFG_SYSROOT,
@@ -57,7 +71,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
 )
-from nanvix_zutil.github import resolve_release
+from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -104,13 +118,17 @@ __all__ = [
     "Sysroot",
     "ZScript",
     "docker_available",
+    "extract_nanvix_version",
+    "extract_nanvix_version_base",
     "get_nanvix_info",
     "image_exists",
     "is_stale",
     "load_manifest",
+    "parse_semver_tuple",
     "read_lockfile",
     "resolve",
     "resolve_release",
+    "resolve_release_with_fallback",
     "suffix_dep",
     "write_lockfile",
 ]
