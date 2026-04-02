@@ -312,7 +312,10 @@ def _resolve_inner(
         )
 
         # --- Fallback probe (only when sysroot is "latest") ---
+        # Probe each VERSION dep once.  Cache the release dict so the
+        # BFS can reuse it instead of making a second API call.
         fallback_versions: list[str] = []
+        probe_cache: dict[str, dict[str, object]] = {}
         all_probe_deps = list(manifest.dependencies) + list(
             manifest.system_dependencies
         )
@@ -323,7 +326,7 @@ def _resolve_inner(
             base_ver = extract_nanvix_version_base(dep.ref.value)
             if base_ver is None:
                 continue
-            _, fallback_ver = github.resolve_release_with_fallback(
+            rel, fallback_ver = github.resolve_release_with_fallback(
                 dep.repo,
                 dep.ref.value,
                 base_ver,
@@ -331,8 +334,15 @@ def _resolve_inner(
             )
             if fallback_ver is not None:
                 fallback_versions.append(fallback_ver)
+            else:
+                # Exact tag matched — cache for BFS reuse.
+                probe_cache[dep.name] = rel
 
         if fallback_versions:
+            # Tags will change after re-suffix — cached releases are
+            # stale, so discard them.
+            probe_cache.clear()
+
             min_ver = min(fallback_versions, key=parse_semver_tuple)
             log.warning(
                 f"nanvix v{resolved_version} is latest but dependencies "
@@ -377,6 +387,26 @@ def _resolve_inner(
                     for d in _unsuffix_deps(original_sys_deps)
                 ],
             )
+
+        # Pre-populate resolved/releases from the probe cache so the
+        # BFS skips these deps instead of re-fetching them.
+        all_deps_after = list(manifest.dependencies) + list(
+            manifest.system_dependencies
+        )
+        for dep in all_deps_after:
+            if dep.name in probe_cache:
+                rel = probe_cache[dep.name]
+                d_tag, d_commitish, d_rel_id = _extract_release_fields(rel)
+                resolved[dep.name] = ResolvedPackage(
+                    name=dep.name,
+                    repo=dep.repo,
+                    kind="dependency",
+                    ref=dep.ref,
+                    resolved_tag=d_tag,
+                    resolved_commitish=d_commitish,
+                    release_id=d_rel_id,
+                )
+                releases[dep.name] = rel
 
     # 2. Seed queue with direct deps
     queue: deque[_QueueItem] = deque()

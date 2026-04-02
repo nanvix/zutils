@@ -571,7 +571,9 @@ class TestResolveLatestSysroot(unittest.TestCase):
             release_id=200,
             assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
-        mock_resolve.side_effect = [sysroot_release, zlib_release]
+        # resolve_release is only called for sysroot — zlib is served
+        # from the probe cache, eliminating a duplicate API call.
+        mock_resolve.side_effect = [sysroot_release]
         # Fallback probe: exact tag found, no fallback needed.
         mock_fallback.return_value = (zlib_release, None)
         mock_download.return_value = None
@@ -600,9 +602,16 @@ class TestResolveLatestSysroot(unittest.TestCase):
         # Verify dep was suffixed with resolved version
         zlib_pkg = next(p for p in lockfile.packages if p.name == "zlib")
         self.assertEqual(zlib_pkg.ref.value, "1.3.1-nanvix-0.12.277")
-        # Verify resolve_release was called with suffixed value
-        mock_resolve.assert_any_call(
-            "nanvix/zlib", "1.3.1-nanvix-0.12.277", gh_token=None
+        # zlib resolved via probe cache — resolve_release NOT called for it.
+        mock_resolve.assert_called_once_with(
+            "nanvix/nanvix", "latest", gh_token=None, semver=True
+        )
+        # Probe was called with the suffixed tag.
+        mock_fallback.assert_called_once_with(
+            "nanvix/zlib",
+            "1.3.1-nanvix-0.12.277",
+            "1.3.1",
+            gh_token=None,
         )
 
 
@@ -852,7 +861,9 @@ class TestResolveVersionFallback(unittest.TestCase):
             release_id=200,
             assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
-        mock_resolve.side_effect = [sysroot_release, zlib_release]
+        # resolve_release only called for sysroot — zlib served from
+        # probe cache.
+        mock_resolve.side_effect = [sysroot_release]
         # Fallback probe: exact tag found, no fallback.
         mock_fallback.return_value = (zlib_release, None)
         mock_download.return_value = None
