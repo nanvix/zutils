@@ -19,11 +19,12 @@ generate distribution archives::
 
 from __future__ import annotations
 
+import os
 import tarfile
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Literal, Sequence
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
@@ -81,15 +82,40 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
         *dest* after the tarball has been written.
     """
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
+    source_resolved = source.resolve()
+
     with tarfile.open(dest, mode) as tf:
-        for child in sorted(source.rglob("*")):
-            # Only include regular files and directories, reject symlinks and special files
-            if not child.is_symlink() and (child.is_file() or child.is_dir()):
-                tf.add(
-                    child,
-                    arcname=child.relative_to(source).as_posix(),
-                    recursive=False,
-                )
+        # Use os.walk with followlinks=False to prevent symlink directory traversal
+        for root, dirs, files in os.walk(source, followlinks=False):
+            root_path = Path(root)
+
+            # Security check: ensure we haven't escaped the source directory
+            try:
+                root_resolved = root_path.resolve()
+                root_resolved.relative_to(source_resolved)
+            except ValueError:
+                # Path has escaped source directory, skip it
+                continue
+
+            # Add regular files (exclude symlinks for security)
+            for file_name in files:
+                file_path = root_path / file_name
+                if not file_path.is_symlink() and file_path.is_file():
+                    tf.add(
+                        file_path,
+                        arcname=file_path.relative_to(source).as_posix(),
+                        recursive=False,
+                    )
+
+            # Add directories themselves (exclude symlinks for security)
+            for dir_name in dirs:
+                dir_path = root_path / dir_name
+                if not dir_path.is_symlink() and dir_path.is_dir():
+                    tf.add(
+                        dir_path,
+                        arcname=dir_path.relative_to(source).as_posix(),
+                        recursive=False,
+                    )
     return dest
 
 
@@ -106,11 +132,28 @@ def _build_zip(source: Path, dest: Path) -> Path:
     Returns:
         *dest* after the ZIP has been written.
     """
+    source_resolved = source.resolve()
+
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
-        for child in sorted(source.rglob("*")):
-            # Only include regular files, reject symlinks and special files for security
-            if child.is_file() and not child.is_symlink():
-                zf.write(child, arcname=child.relative_to(source).as_posix())
+        # Use os.walk with followlinks=False to prevent symlink directory traversal
+        for root, _dirs, files in os.walk(source, followlinks=False):
+            root_path = Path(root)
+
+            # Security check: ensure we haven't escaped the source directory
+            try:
+                root_resolved = root_path.resolve()
+                root_resolved.relative_to(source_resolved)
+            except ValueError:
+                # Path has escaped source directory, skip it
+                continue
+
+            # Add only regular files (exclude symlinks for security)
+            for file_name in files:
+                file_path = root_path / file_name
+                if not file_path.is_symlink() and file_path.is_file():
+                    zf.write(
+                        file_path, arcname=file_path.relative_to(source).as_posix()
+                    )
     return dest
 
 
@@ -123,7 +166,7 @@ def package(
     source: Path,
     dest: Path,
     name: str,
-    formats: Sequence[Any] = DEFAULT_FORMATS,  # Any needed for runtime validation
+    formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
 ) -> list[Path]:
     """Package *source* directory into release archives.
 
@@ -194,7 +237,7 @@ def package(
 
     for fmt in formats:
         # Runtime validation: users could pass invalid types despite type hints
-        if not isinstance(fmt, ArchiveFormat):
+        if not isinstance(fmt, ArchiveFormat):  # type: ignore[redundant-expr]
             log.fatal(
                 f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
                 code=EXIT_INVALID_ARGS,

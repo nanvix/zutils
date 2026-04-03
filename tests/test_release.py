@@ -361,6 +361,55 @@ class TestPackage(unittest.TestCase):
                 package(src, dest, "test", formats=(ArchiveFormat.ZIP, "bad_format"))  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
+    def test_symlinked_directory_not_traversed(self) -> None:
+        """Symlinked directories are not traversed to prevent directory escape attacks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+
+            # Create an external directory with sensitive content
+            external_dir = Path(tmp) / "external"
+            external_dir.mkdir()
+            sensitive_file = external_dir / "secret.txt"
+            sensitive_file.write_text("THIS SHOULD NOT BE IN ARCHIVES")
+
+            # Create a nested directory in external
+            nested_external = external_dir / "nested"
+            nested_external.mkdir()
+            nested_sensitive = nested_external / "nested_secret.txt"
+            nested_sensitive.write_text("NESTED SECRET DATA")
+
+            # Create a symlinked directory inside src pointing to the external directory
+            symlink_dir = src / "evil_link"
+            try:
+                symlink_dir.symlink_to(external_dir)
+            except (OSError, NotImplementedError):
+                # Skip test if symlinks not supported (e.g. Windows without dev mode)
+                self.skipTest("Symlinks not supported on this platform")
+
+            dest = Path(tmp) / "dist"
+            result = package(src, dest, "test")
+
+            # Verify external files are NOT included in either archive format
+            tar_path = [p for p in result if p.name.endswith(".tar.gz")][0]
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tar_names = set(tf.getnames())
+                # Should not contain any files from the symlinked directory
+                self.assertNotIn("evil_link/secret.txt", tar_names)
+                self.assertNotIn("evil_link/nested/nested_secret.txt", tar_names)
+                # Should not contain the symlinked directory itself
+                self.assertNotIn("evil_link", tar_names)
+
+            zip_path = [p for p in result if p.name.endswith(".zip")][0]
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zip_names = set(zf.namelist())
+                # Should not contain any files from the symlinked directory
+                self.assertNotIn("evil_link/secret.txt", zip_names)
+                self.assertNotIn("evil_link/nested/nested_secret.txt", zip_names)
+                # Should not contain the symlinked directory itself
+                self.assertNotIn("evil_link/", zip_names)
+                self.assertNotIn("evil_link", zip_names)
+
 
 if __name__ == "__main__":
     unittest.main()
