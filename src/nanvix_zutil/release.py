@@ -23,7 +23,7 @@ import tarfile
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
@@ -123,7 +123,7 @@ def package(
     source: Path,
     dest: Path,
     name: str,
-    formats: tuple[Any, ...] = DEFAULT_FORMATS,
+    formats: Sequence[Any] = DEFAULT_FORMATS,  # Any needed for runtime validation
 ) -> list[Path]:
     """Package *source* directory into release archives.
 
@@ -174,11 +174,26 @@ def package(
             hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
         )
 
-    dest.mkdir(parents=True, exist_ok=True)
+    # Create destination directory with proper error handling
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        # Verify it's actually a directory (not a file with the same name)
+        if not dest.is_dir():
+            log.fatal(
+                f"Destination path exists but is not a directory: {dest}",
+                code=EXIT_GENERAL_ERROR,
+                hint="Choose a different destination path or remove the conflicting file.",
+            )
+    except (OSError, PermissionError) as e:
+        log.fatal(
+            f"Cannot create destination directory '{dest}': {e}",
+            code=EXIT_GENERAL_ERROR,
+            hint="Check parent directory permissions and available disk space.",
+        )
     created: list[Path] = []
 
     for fmt in formats:
-        # Validate format is a proper ArchiveFormat enum value
+        # Runtime validation: users could pass invalid types despite type hints
         if not isinstance(fmt, ArchiveFormat):
             log.fatal(
                 f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
