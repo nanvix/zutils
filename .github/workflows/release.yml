@@ -122,7 +122,9 @@ jobs:
         run: uv build
 
       - name: Package templates
-        run: tar czf "templates.tar.gz" -C templates .
+        run: |
+          tar czf "templates.tar.gz" -C templates .
+          (cd templates && zip -r ../templates.zip .)
 
       - name: Create and push release tag
         run: |
@@ -136,6 +138,7 @@ jobs:
           gh release create "v${{ steps.version.outputs.value }}" \
             dist/*.whl dist/*.tar.gz \
             "templates.tar.gz" \
+            "templates.zip" \
             --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
             --generate-notes
         env:

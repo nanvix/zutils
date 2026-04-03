@@ -33,6 +33,9 @@ Public re-exports:
 - :func:`~nanvix_zutil.buildroot.extract_nanvix_version_base` — extract base version from a suffixed tag
 - :func:`~nanvix_zutil.buildroot.parse_semver_tuple` — parse semver string to tuple for comparison
 - :mod:`nanvix_zutil.log` — structured logging helpers
+- :class:`~nanvix_zutil.release.ArchiveFormat` — supported archive formats
+- :data:`~nanvix_zutil.release.DEFAULT_FORMATS` — default archive formats
+- :func:`~nanvix_zutil.release.package` — create release archives
 """
 
 from nanvix_zutil.buildroot import (
@@ -82,11 +85,13 @@ from nanvix_zutil.lockfile import (
     write_lockfile,
 )
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.release import DEFAULT_FORMATS, ArchiveFormat, package
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
 
 __all__ = [
+    "ArchiveFormat",
     "Buildroot",
     "BUILDROOT_CONTAINER_PATH",
     "CFG_GH_TOKEN",
@@ -94,6 +99,7 @@ __all__ = [
     "CFG_TOOLCHAIN",
     "Config",
     "DEFAULT_DOCKER_IMAGE",
+    "DEFAULT_FORMATS",
     "Dependency",
     "DockerConfig",
     "EXIT_BUILD_FAILURE",
@@ -124,6 +130,7 @@ __all__ = [
     "image_exists",
     "is_stale",
     "load_manifest",
+    "package",
     "parse_semver_tuple",
     "read_lockfile",
     "resolve",
