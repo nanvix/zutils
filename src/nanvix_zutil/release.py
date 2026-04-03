@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Literal
 
 from nanvix_zutil import log
-from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
+from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
 
 # ---------------------------------------------------------------------------
 # Archive format enum
@@ -83,11 +83,13 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
     with tarfile.open(dest, mode) as tf:
         for child in sorted(source.rglob("*")):
-            tf.add(
-                child,
-                arcname=child.relative_to(source).as_posix(),
-                recursive=False,
-            )
+            # Only include regular files and directories, reject symlinks and special files
+            if not child.is_symlink() and (child.is_file() or child.is_dir()):
+                tf.add(
+                    child,
+                    arcname=child.relative_to(source).as_posix(),
+                    recursive=False,
+                )
     return dest
 
 
@@ -106,7 +108,8 @@ def _build_zip(source: Path, dest: Path) -> Path:
     """
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for child in sorted(source.rglob("*")):
-            if child.is_file():
+            # Only include regular files, reject symlinks and special files for security
+            if child.is_file() and not child.is_symlink():
                 zf.write(child, arcname=child.relative_to(source).as_posix())
     return dest
 
@@ -142,8 +145,10 @@ def package(
 
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
-            if *source* does not exist or is not a directory, or if *name*
-            contains path separators or parent directory traversal.
+            if *source* does not exist or is not a directory, or if archive
+            creation fails. With :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS`
+            if *name* is empty, whitespace-only, or contains path separators
+            or parent directory traversal, or if an unknown format is encountered.
     """
     if not source.is_dir():
         log.fatal(
@@ -153,11 +158,19 @@ def package(
             " expected directory before calling 'release'.",
         )
 
-    # Validate name is a safe filename (no path separators or parent traversal)
+    # Validate name is a safe, non-empty filename
+    if not name or not name.strip():
+        log.fatal(
+            f"Invalid archive name '{name}': must be a non-empty filename",
+            code=EXIT_INVALID_ARGS,
+            hint="Provide a proper basename like 'mylib-v1.0'.",
+        )
+
+    # Validate name has no path separators or parent traversal
     if "/" in name or "\\" in name or ".." in name:
         log.fatal(
             f"Invalid archive name '{name}': must be a plain filename without path separators or '..'",
-            code=EXIT_GENERAL_ERROR,
+            code=EXIT_INVALID_ARGS,
             hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
         )
 
@@ -173,6 +186,21 @@ def package(
             _build_tarball(source, out, "bz2")
         elif fmt is ArchiveFormat.ZIP:
             _build_zip(source, out)
+        else:
+            # This should never happen with a proper ArchiveFormat enum value
+            log.fatal(
+                f"Unknown archive format: {fmt}",
+                code=EXIT_INVALID_ARGS,
+                hint="Use one of the supported ArchiveFormat enum values.",
+            )
+
+        # Verify the archive was actually created before logging success
+        if not out.exists():
+            log.fatal(
+                f"Failed to create archive: {out}",
+                code=EXIT_GENERAL_ERROR,
+                hint="Check disk space and permissions.",
+            )
 
         log.info(f"Created {out}")
         created.append(out.resolve())

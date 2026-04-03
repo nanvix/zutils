@@ -9,7 +9,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
+from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
 from nanvix_zutil.release import (
     DEFAULT_FORMATS,
     ArchiveFormat,
@@ -267,7 +267,7 @@ class TestPackage(unittest.TestCase):
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
                 package(src, dest, "bad/name")
-            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_name_with_backslash_exits(self) -> None:
         """package() with name containing backslash exits with error."""
@@ -277,7 +277,7 @@ class TestPackage(unittest.TestCase):
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
                 package(src, dest, "bad\\name")
-            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_name_with_parent_traversal_exits(self) -> None:
         """package() with name containing '..' exits with error."""
@@ -287,7 +287,57 @@ class TestPackage(unittest.TestCase):
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
                 package(src, dest, "../evil")
-            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_empty_name_exits(self) -> None:
+        """package() with empty name exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "")
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_whitespace_only_name_exits(self) -> None:
+        """package() with whitespace-only name exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "   ")
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_symlinks_excluded_from_archives(self) -> None:
+        """Symlinks are excluded from both tar and zip archives for security."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+
+            # Create a symlink to a file outside the source tree (security risk)
+            external_file = Path(tmp) / "external.txt"
+            external_file.write_text("sensitive data")
+            symlink_path = src / "dangerous_link"
+            try:
+                symlink_path.symlink_to(external_file)
+            except (OSError, NotImplementedError):
+                # Skip test if symlinks not supported (e.g. Windows without dev mode)
+                self.skipTest("Symlinks not supported on this platform")
+
+            dest = Path(tmp) / "dist"
+            result = package(src, dest, "test")
+
+            # Check that symlinks are not included in either archive
+            tar_path = [p for p in result if p.name.endswith(".tar.gz")][0]
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tar_names = set(tf.getnames())
+                self.assertNotIn("dangerous_link", tar_names)
+
+            zip_path = [p for p in result if p.name.endswith(".zip")][0]
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zip_names = set(zf.namelist())
+                self.assertNotIn("dangerous_link", zip_names)
 
 
 if __name__ == "__main__":
