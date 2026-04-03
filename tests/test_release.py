@@ -259,6 +259,36 @@ class TestPackage(unittest.TestCase):
             self.assertEqual(result[1].name, "order.tar.bz2")
             self.assertEqual(result[2].name, "order.tar.gz")
 
+    def test_name_with_slash_exits(self) -> None:
+        """package() with name containing forward slash exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "bad/name")
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
+    def test_name_with_backslash_exits(self) -> None:
+        """package() with name containing backslash exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "bad\\name")
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
+    def test_name_with_parent_traversal_exits(self) -> None:
+        """package() with name containing '..' exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "../evil")
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
 
 if __name__ == "__main__":
     unittest.main()

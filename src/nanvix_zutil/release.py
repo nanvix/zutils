@@ -83,7 +83,11 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
     with tarfile.open(dest, mode) as tf:
         for child in sorted(source.rglob("*")):
-            tf.add(child, arcname=child.relative_to(source))
+            tf.add(
+                child,
+                arcname=child.relative_to(source).as_posix(),
+                recursive=False,
+            )
     return dest
 
 
@@ -103,7 +107,7 @@ def _build_zip(source: Path, dest: Path) -> Path:
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for child in sorted(source.rglob("*")):
             if child.is_file():
-                zf.write(child, arcname=child.relative_to(source))
+                zf.write(child, arcname=child.relative_to(source).as_posix())
     return dest
 
 
@@ -127,7 +131,8 @@ def package(
     Args:
         source: Directory to archive.  Must exist and be a directory.
         dest: Output directory for archives.  Created if it does not exist.
-        name: Base name for the archives (without extension).
+        name: Base name for the archives (without extension). Must be a plain
+            filename without path separators or parent directory traversal.
         formats: Archive formats to produce.  Defaults to
             :data:`DEFAULT_FORMATS` (tar.gz + zip).
 
@@ -137,7 +142,8 @@ def package(
 
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
-            if *source* does not exist or is not a directory.
+            if *source* does not exist or is not a directory, or if *name*
+            contains path separators or parent directory traversal.
     """
     if not source.is_dir():
         log.fatal(
@@ -145,6 +151,14 @@ def package(
             code=EXIT_GENERAL_ERROR,
             hint="Ensure the build step has run and produced output in the"
             " expected directory before calling 'release'.",
+        )
+
+    # Validate name is a safe filename (no path separators or parent traversal)
+    if "/" in name or "\\" in name or ".." in name:
+        log.fatal(
+            f"Invalid archive name '{name}': must be a plain filename without path separators or '..'",
+            code=EXIT_GENERAL_ERROR,
+            hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
         )
 
     dest.mkdir(parents=True, exist_ok=True)
