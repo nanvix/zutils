@@ -14,8 +14,8 @@ on:
         type: string
 
 permissions:
-  contents: write  # create tags and GitHub releases
-  id-token: write  # OIDC trusted publishing to PyPI
+  contents: write # create tags and GitHub releases
+  id-token: write # OIDC trusted publishing to PyPI
 
 jobs:
   lint-and-typecheck:
@@ -74,6 +74,8 @@ jobs:
     needs: [lint-and-typecheck, test]
     runs-on: ubuntu-latest
     environment: release
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,3 +149,12 @@ jobs:
       # TODO: PyPI repo not yet set up
       # - name: Publish to PyPI
       #   run: uv publish
+
+  update-consumers:
+    name: Update consumer repos
+    needs: [release]
+    uses: nanvix/workflows/.github/workflows/nanvix-update-zutils.yml@main
+    with:
+      tag: v${{ needs.release.outputs.version }}
+    secrets:
+      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
