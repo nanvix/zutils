@@ -339,6 +339,28 @@ class TestPackage(unittest.TestCase):
                 zip_names = set(zf.namelist())
                 self.assertNotIn("dangerous_link", zip_names)
 
+    def test_invalid_format_type_exits(self) -> None:
+        """package() with non-ArchiveFormat in formats exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            # Use a string instead of ArchiveFormat enum
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "test", formats=("invalid_format",))  # type: ignore
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_invalid_format_mixed_tuple_exits(self) -> None:
+        """package() with mixed valid/invalid formats exits on first invalid."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            # Mix valid ArchiveFormat with invalid type
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "test", formats=(ArchiveFormat.ZIP, "bad_format"))  # type: ignore
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
 
 if __name__ == "__main__":
     unittest.main()

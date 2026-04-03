@@ -23,7 +23,7 @@ import tarfile
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
@@ -123,7 +123,7 @@ def package(
     source: Path,
     dest: Path,
     name: str,
-    formats: tuple[ArchiveFormat, ...] = DEFAULT_FORMATS,
+    formats: tuple[Any, ...] = DEFAULT_FORMATS,
 ) -> list[Path]:
     """Package *source* directory into release archives.
 
@@ -178,20 +178,35 @@ def package(
     created: list[Path] = []
 
     for fmt in formats:
+        # Validate format is a proper ArchiveFormat enum value
+        if not isinstance(fmt, ArchiveFormat):
+            log.fatal(
+                f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
+                code=EXIT_INVALID_ARGS,
+                hint="Use one of the supported ArchiveFormat enum values (TAR_GZ, TAR_BZ2, ZIP).",
+            )
+
         out = dest / f"{name}{fmt.extension}"
 
-        if fmt is ArchiveFormat.TAR_GZ:
-            _build_tarball(source, out, "gz")
-        elif fmt is ArchiveFormat.TAR_BZ2:
-            _build_tarball(source, out, "bz2")
-        elif fmt is ArchiveFormat.ZIP:
-            _build_zip(source, out)
-        else:
-            # This should never happen with a proper ArchiveFormat enum value
+        try:
+            if fmt is ArchiveFormat.TAR_GZ:
+                _build_tarball(source, out, "gz")
+            elif fmt is ArchiveFormat.TAR_BZ2:
+                _build_tarball(source, out, "bz2")
+            elif fmt is ArchiveFormat.ZIP:
+                _build_zip(source, out)
+            else:
+                # This should never happen with a proper ArchiveFormat enum value
+                log.fatal(
+                    f"Unknown archive format: {fmt}",
+                    code=EXIT_INVALID_ARGS,
+                    hint="Use one of the supported ArchiveFormat enum values.",
+                )
+        except Exception as e:
             log.fatal(
-                f"Unknown archive format: {fmt}",
-                code=EXIT_INVALID_ARGS,
-                hint="Use one of the supported ArchiveFormat enum values.",
+                f"Failed to create {fmt.name} archive: {e}",
+                code=EXIT_GENERAL_ERROR,
+                hint="Check source directory access, disk space, and file permissions.",
             )
 
         # Verify the archive was actually created before logging success
