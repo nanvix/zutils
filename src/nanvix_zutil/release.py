@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import tarfile
 import zipfile
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
 from typing import Literal, Sequence
@@ -215,6 +216,26 @@ def package(
             f"Invalid archive name '{name}': must be a plain filename without path separators or '..'",
             code=EXIT_INVALID_ARGS,
             hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
+        )
+
+    # Validate formats is a proper iterable (not None, str, or bytes)
+    if formats is None:  # type: ignore[redundant-expr]
+        log.fatal(
+            "Invalid formats parameter: cannot be None",
+            code=EXIT_INVALID_ARGS,
+            hint="Provide a sequence of ArchiveFormat values, e.g., (ArchiveFormat.TAR_GZ, ArchiveFormat.ZIP).",
+        )
+    if isinstance(formats, (str, bytes)):
+        log.fatal(
+            f"Invalid formats parameter: {type(formats).__name__!r} is not a valid sequence",
+            code=EXIT_INVALID_ARGS,
+            hint="Provide a sequence of ArchiveFormat values, not a string or bytes object.",
+        )
+    if not isinstance(formats, Iterable):  # type: ignore[redundant-expr]
+        log.fatal(
+            f"Invalid formats parameter: {type(formats).__name__!r} is not iterable",
+            code=EXIT_INVALID_ARGS,
+            hint="Provide a sequence of ArchiveFormat values, e.g., (ArchiveFormat.TAR_GZ, ArchiveFormat.ZIP).",
         )
 
     # Create destination directory with proper error handling

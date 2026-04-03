@@ -410,6 +410,36 @@ class TestPackage(unittest.TestCase):
                 self.assertNotIn("evil_link/", zip_names)
                 self.assertNotIn("evil_link", zip_names)
 
+    def test_formats_none_exits(self) -> None:
+        """package() with None formats parameter exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "test", formats=None)  # type: ignore
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_formats_string_exits(self) -> None:
+        """package() with string formats parameter exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "test", formats="invalid")  # type: ignore
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
+    def test_formats_non_iterable_exits(self) -> None:
+        """package() with non-iterable formats parameter exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package(src, dest, "test", formats=42)  # type: ignore
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
 
 if __name__ == "__main__":
     unittest.main()
