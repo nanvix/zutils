@@ -13,7 +13,7 @@ generate distribution archives::
     archives = package(
         source=Path("build/output"),
         dest=Path("dist"),
-        name="mylib-hyperlight-multi-process-128mb",
+        name="mylib-microvm-standalone-256mb",
     )
 """
 

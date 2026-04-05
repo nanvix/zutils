@@ -46,9 +46,9 @@ container where the toolchain is pre-installed at `/opt/nanvix`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NANVIX_MACHINE` | `hyperlight` | Target platform (`hyperlight`, `microvm`) |
-| `NANVIX_DEPLOYMENT_MODE` | `multi-process` | Deployment mode |
-| `NANVIX_MEMORY_SIZE` | `128mb` | Memory configuration |
+| `NANVIX_MACHINE` | `microvm` | Target platform (`hyperlight`, `microvm`) |
+| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
+| `NANVIX_MEMORY_SIZE` | `256mb` | Memory configuration |
 | `NANVIX_TOOLCHAIN` | `/opt/nanvix` | Path to cross-compiler toolchain |
 | `GH_TOKEN` | *(none)* | GitHub token (avoids API rate limits) |
 

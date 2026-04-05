@@ -73,10 +73,10 @@ class Sysroot:
         If the sysroot directory already exists the download is skipped.
 
         Args:
-            machine: Target machine identifier (e.g. ``"hyperlight"``).
+            machine: Target machine identifier (e.g. ``"microvm"``).
             deployment_mode: Deployment mode string (e.g.
-                ``"multi-process"``).
-            memory_size: Memory size string (e.g. ``"128mb"``).
+                ``"standalone"``).
+            memory_size: Memory size string (e.g. ``"256mb"``).
             tag: GitHub release tag to fetch (e.g. ``"v1.2.3"``).
             gh_token: Optional GitHub personal access token.
             dest: Directory where the sysroot will be extracted.  Defaults

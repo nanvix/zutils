@@ -19,9 +19,9 @@ from nanvix_zutil.info import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_MACHINE = "hyperlight"
-_MODE = "multi-process"
-_MEMORY = "128mb"
+_MACHINE = "microvm"
+_MODE = "standalone"
+_MEMORY = "256mb"
 _SHA = "fa06b88"
 _TAG = "v0.4.1"
 _VERSION = "0.4.1"
@@ -129,10 +129,10 @@ class TestGetNanvixInfo(unittest.TestCase):
     def test_asset_prefix_mismatch_wrong_machine_exits(
         self, mock_resolve: MagicMock
     ) -> None:
-        # Release has hyperlight assets but caller asks for microvm — should fail.
+        # Release has microvm assets but caller asks for hyperlight — should fail.
         mock_resolve.return_value = _make_release(machine=_MACHINE)
         with self.assertRaises(SystemExit) as ctx:
-            get_nanvix_info(machine="microvm")
+            get_nanvix_info(machine="hyperlight")
         self.assertEqual(ctx.exception.code, 3)  # EXIT_MISSING_DEP
 
     @patch("nanvix_zutil.info.resolve_release")

@@ -72,9 +72,9 @@ nanvix/<project>/
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NANVIX_MACHINE` | `hyperlight` | Target machine |
-| `NANVIX_DEPLOYMENT_MODE` | `multi-process` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
-| `NANVIX_MEMORY_SIZE` | `128mb` | Memory size for artifact naming |
+| `NANVIX_MACHINE` | `microvm` | Target machine |
+| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
+| `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
 | `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
 | `NANVIX_BUILDROOT` | *(set by setup)* | Path to build-time root |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |

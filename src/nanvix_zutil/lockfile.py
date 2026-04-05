@@ -47,7 +47,7 @@ class ResolvedAsset:
 
     Attributes:
         name: File name of the asset
-            (e.g. ``"zlib-hyperlight-multi-process-128mb.tar.bz2"``).
+            (e.g. ``"zlib-microvm-standalone-256mb.tar.bz2"``).
         url: Full ``browser_download_url`` from the GitHub API.
     """
 

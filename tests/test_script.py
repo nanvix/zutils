@@ -51,7 +51,7 @@ class TestZScriptInit(unittest.TestCase):
     def test_config_accessible(self) -> None:
         repo_root = Path(self._tmpdir.name)
         script = ZScript(repo_root)
-        self.assertEqual(script.config.machine, "hyperlight")
+        self.assertEqual(script.config.machine, "microvm")
 
     def test_manifest_loaded(self) -> None:
         repo_root = Path(self._tmpdir.name)
@@ -466,12 +466,12 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
             self.assertIn("bin/kernel.elf", files, f"missing in {mode}")
             self.assertIn("bin/mkramfs.elf", files, f"missing in {mode}")
 
-    def test_default_deployment_mode_is_multi_process(self) -> None:
-        """Default (no env override) should be multi-process."""
+    def test_default_deployment_mode_is_standalone(self) -> None:
+        """Default (no env override) should be standalone."""
         script = ZScript(Path(self._tmpdir.name))
         files = script.sysroot_required_files()
-        self.assertIn("bin/linuxd.elf", files)
-        self.assertIn("bin/uservm.elf", files)
+        self.assertNotIn("bin/linuxd.elf", files)
+        self.assertNotIn("bin/uservm.elf", files)
 
 
 class TestZScriptDockerIntegration(unittest.TestCase):

@@ -89,8 +89,8 @@ marked with `transitive = true` and `required-by = ["libfoo"]`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NANVIX_MACHINE` | `hyperlight` | Target machine |
-| `NANVIX_DEPLOYMENT_MODE` | `multi-process` | Deployment mode |
-| `NANVIX_MEMORY_SIZE` | `128mb` | Memory size |
+| `NANVIX_MACHINE` | `microvm` | Target machine |
+| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
+| `NANVIX_MEMORY_SIZE` | `256mb` | Memory size |
 | `NANVIX_TOOLCHAIN` | `/opt/nanvix` | Toolchain path |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |

@@ -213,9 +213,9 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def test_config_defaults_accessible(self) -> None:
         """Config is accessible from the script and has expected defaults."""
         instance = self._run_main("setup")
-        self.assertEqual(instance.config.machine, "hyperlight")
-        self.assertEqual(instance.config.deployment_mode, "multi-process")
-        self.assertEqual(instance.config.memory_size, "128mb")
+        self.assertEqual(instance.config.machine, "microvm")
+        self.assertEqual(instance.config.deployment_mode, "standalone")
+        self.assertEqual(instance.config.memory_size, "256mb")
 
     def test_targets_empty_by_default(self) -> None:
         """Without --, targets should be an empty list."""
