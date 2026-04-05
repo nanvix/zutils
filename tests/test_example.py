@@ -27,6 +27,7 @@ import sys
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-world"
@@ -86,6 +87,13 @@ class TestHelloWorldBash(unittest.TestCase):
     @unittest.skipUnless(_HAS_KVM, _SKIP_NO_KVM)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean and verify each step."""
+        # nanvixd does not yet support standalone deployment at runtime,
+        # so override to multi-process for the full lifecycle.
+        with patch.dict(os.environ, {"NANVIX_DEPLOYMENT_MODE": "multi-process"}):
+            self._run_lifecycle()
+
+    def _run_lifecycle(self) -> None:
+        """Execute the full setup → build → test → clean lifecycle."""
         # setup
         r = self._run_z("setup")
         self.assertEqual(r.returncode, 0, r.stderr)

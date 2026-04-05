@@ -16,6 +16,11 @@ from enum import Enum
 from pathlib import Path
 
 from nanvix_zutil import github, log
+from nanvix_zutil.config import (
+    DEFAULT_DEPLOYMENT_MODE,
+    DEFAULT_MACHINE,
+    DEFAULT_MEMORY_SIZE,
+)
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 # ---------------------------------------------------------------------------
@@ -242,9 +247,9 @@ class Buildroot:
     def install_dep(
         self,
         dep: Dependency,
-        machine: str = "hyperlight",
-        deployment_mode: str = "multi-process",
-        memory_size: str = "128mb",
+        machine: str = DEFAULT_MACHINE,
+        deployment_mode: str = DEFAULT_DEPLOYMENT_MODE,
+        memory_size: str = DEFAULT_MEMORY_SIZE,
         gh_token: str | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.

@@ -53,6 +53,9 @@ from nanvix_zutil.config import (
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
     Config,
+    DEFAULT_DEPLOYMENT_MODE,
+    DEFAULT_MACHINE,
+    DEFAULT_MEMORY_SIZE,
 )
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -98,8 +101,11 @@ __all__ = [
     "CFG_SYSROOT",
     "CFG_TOOLCHAIN",
     "Config",
+    "DEFAULT_DEPLOYMENT_MODE",
     "DEFAULT_DOCKER_IMAGE",
     "DEFAULT_FORMATS",
+    "DEFAULT_MACHINE",
+    "DEFAULT_MEMORY_SIZE",
     "Dependency",
     "DockerConfig",
     "EXIT_BUILD_FAILURE",

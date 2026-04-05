@@ -12,7 +12,7 @@ JSON object (``--json``).
 Example usage::
 
     nanvix-info
-    nanvix-info --version latest --machine hyperlight --mode multi-process
+    nanvix-info --version latest --machine microvm --mode standalone
     nanvix-info --json
 """
 
@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from typing import cast
 
 from nanvix_zutil import log
+from nanvix_zutil.config import (
+    DEFAULT_DEPLOYMENT_MODE,
+    DEFAULT_MACHINE,
+    DEFAULT_MEMORY_SIZE,
+)
 from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
@@ -42,9 +47,6 @@ from nanvix_zutil.utils import SEMVER_RE
 
 _DEFAULT_REPO = "nanvix/nanvix"
 _DEFAULT_VERSION = "latest"
-_DEFAULT_MACHINE = "hyperlight"
-_DEFAULT_MODE = "multi-process"
-_DEFAULT_MEMORY = "128mb"
 
 # Sysroot asset prefix pattern: nanvix-{machine}-{mode}-release-{mem}-{sha}.tar.bz2
 _ASSET_RE = re.compile(
@@ -101,9 +103,9 @@ def _extract_sha(
 
     Args:
         assets: List of asset dictionaries from the GitHub API.
-        machine: Target machine identifier (e.g. ``"hyperlight"``).
-        mode: Deployment mode (e.g. ``"multi-process"``).
-        memory: Memory size string (e.g. ``"128mb"``).
+        machine: Target machine identifier (e.g. ``"microvm"``).
+        mode: Deployment mode (e.g. ``"standalone"``).
+        memory: Memory size string (e.g. ``"256mb"``).
 
     Returns:
         The short commit SHA (e.g. ``"fa06b88"``) or ``None`` if no matching
@@ -148,9 +150,9 @@ def _extract_version(release_name: object) -> str | None:
 def get_nanvix_info(
     repo: str = _DEFAULT_REPO,
     version: str = _DEFAULT_VERSION,
-    machine: str = _DEFAULT_MACHINE,
-    mode: str = _DEFAULT_MODE,
-    memory: str = _DEFAULT_MEMORY,
+    machine: str = DEFAULT_MACHINE,
+    mode: str = DEFAULT_DEPLOYMENT_MODE,
+    memory: str = DEFAULT_MEMORY_SIZE,
     gh_token: str | None = None,
 ) -> NanvixInfo:
     """Resolve Nanvix release information.
@@ -163,9 +165,9 @@ def get_nanvix_info(
         repo: Repository in ``owner/name`` format (default: ``"nanvix/nanvix"``).
         version: Release tag, ``"latest"``, semver, or commit hash
             (default: ``"latest"``).
-        machine: Target machine identifier (default: ``"hyperlight"``).
-        mode: Deployment mode (default: ``"multi-process"``).
-        memory: Memory size string (default: ``"128mb"``).
+        machine: Target machine identifier (default: ``"microvm"``).
+        mode: Deployment mode (default: ``"standalone"``).
+        memory: Memory size string (default: ``"256mb"``).
         gh_token: Optional GitHub personal access token.
 
     Returns:
@@ -250,21 +252,21 @@ def _build_parser(prog: str = "nanvix-info") -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--machine",
-        default=_DEFAULT_MACHINE,
+        default=DEFAULT_MACHINE,
         metavar="MACH",
-        help=f"Target machine identifier (default: {_DEFAULT_MACHINE})",
+        help=f"Target machine identifier (default: {DEFAULT_MACHINE})",
     )
     parser.add_argument(
         "--mode",
-        default=_DEFAULT_MODE,
+        default=DEFAULT_DEPLOYMENT_MODE,
         metavar="MODE",
-        help=f"Deployment mode (default: {_DEFAULT_MODE})",
+        help=f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE})",
     )
     parser.add_argument(
         "--memory",
-        default=_DEFAULT_MEMORY,
+        default=DEFAULT_MEMORY_SIZE,
         metavar="MEM",
-        help=f"Memory size string used in asset names (default: {_DEFAULT_MEMORY})",
+        help=f"Memory size string used in asset names (default: {DEFAULT_MEMORY_SIZE})",
     )
     parser.add_argument(
         "--json",

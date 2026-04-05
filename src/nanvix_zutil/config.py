@@ -23,10 +23,19 @@ from typing import cast
 # ---------------------------------------------------------------------------
 
 _DEFAULTS: dict[str, str] = {
-    "NANVIX_MACHINE": "hyperlight",
-    "NANVIX_DEPLOYMENT_MODE": "multi-process",
-    "NANVIX_MEMORY_SIZE": "128mb",
+    "NANVIX_MACHINE": "microvm",
+    "NANVIX_DEPLOYMENT_MODE": "standalone",
+    "NANVIX_MEMORY_SIZE": "256mb",
 }
+
+DEFAULT_MACHINE: str = _DEFAULTS["NANVIX_MACHINE"]
+"""Default target machine identifier."""
+
+DEFAULT_DEPLOYMENT_MODE: str = _DEFAULTS["NANVIX_DEPLOYMENT_MODE"]
+"""Default deployment mode."""
+
+DEFAULT_MEMORY_SIZE: str = _DEFAULTS["NANVIX_MEMORY_SIZE"]
+"""Default memory size string for artifact naming."""
 
 # ---------------------------------------------------------------------------
 # Standard config key names
@@ -65,11 +74,11 @@ class Config:
     3. Built-in defaults
 
     Attributes:
-        machine: Target machine identifier (e.g. ``"hyperlight"``).
+        machine: Target machine identifier (e.g. ``"microvm"``).
         deployment_mode: Deployment mode (``"single-process"``,
             ``"multi-process"``, or ``"standalone"``).
         memory_size: Memory size string used in artifact names
-            (e.g. ``"128mb"``).
+            (e.g. ``"256mb"``).
     """
 
     def __init__(self, nanvix_dir: Path) -> None:

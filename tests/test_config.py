@@ -30,15 +30,15 @@ class TestConfigDefaults(unittest.TestCase):
 
     def test_default_machine(self) -> None:
         cfg = self._make_config()
-        self.assertEqual(cfg.machine, "hyperlight")
+        self.assertEqual(cfg.machine, "microvm")
 
     def test_default_deployment_mode(self) -> None:
         cfg = self._make_config()
-        self.assertEqual(cfg.deployment_mode, "multi-process")
+        self.assertEqual(cfg.deployment_mode, "standalone")
 
     def test_default_memory_size(self) -> None:
         cfg = self._make_config()
-        self.assertEqual(cfg.memory_size, "128mb")
+        self.assertEqual(cfg.memory_size, "256mb")
 
 
 class TestConfigEnvOverride(unittest.TestCase):
@@ -89,7 +89,7 @@ class TestConfigPersistence(unittest.TestCase):
         (self._nanvix_dir / "env.json").write_text("not json", encoding="utf-8")
         # Should not raise.
         cfg = Config(self._nanvix_dir)
-        self.assertEqual(cfg.machine, "hyperlight")
+        self.assertEqual(cfg.machine, "microvm")
 
     def test_load_ignores_non_dict_json(self) -> None:
         self._nanvix_dir.mkdir(parents=True, exist_ok=True)
@@ -97,7 +97,7 @@ class TestConfigPersistence(unittest.TestCase):
             json.dumps([1, 2, 3]), encoding="utf-8"
         )
         cfg = Config(self._nanvix_dir)
-        self.assertEqual(cfg.machine, "hyperlight")
+        self.assertEqual(cfg.machine, "microvm")
 
 
 class TestConfigGetSet(unittest.TestCase):
