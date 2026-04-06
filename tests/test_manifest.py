@@ -12,6 +12,7 @@ from unittest.mock import patch
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.manifest import load_manifest
+from tests.testutils import MANIFEST_WITH_BUILDS
 
 
 class TestLoadManifestFileNotFound(unittest.TestCase):
@@ -54,6 +55,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = { commitish = "b7a6a3c" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -77,6 +84,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'nanvix-version = "1.2.3"\n'
             "[dependencies]\n"
             'zlib = "4.5.6"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -95,6 +108,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'nanvix-version = "1.2.3"\n'
             "[dependencies]\n"
             'zlib = { version = "4.5.6" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -111,6 +130,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = { tag = "675d8f2-nanvix-e63706b" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -127,6 +152,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             "zlib = { id = 12345678 }\n"
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -144,6 +175,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             "[dependencies]\n"
             'zlib = { commitish = "aaa" }\n'
             'openssl = "2.0.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -162,6 +199,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'name = "myapp"\n'
             'version = "1.0.0"\n'
             'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -177,6 +220,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'version = "1.0.0"\n'
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -191,6 +240,12 @@ class TestLoadManifestBasic(unittest.TestCase):
             'version = "1.0.0"\n'
             'nanvix-version = "0.12.257"\n'
             "[system-dependencies]\n"
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -212,10 +267,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
     def test_empty_string_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = ""\n'
+            '[package]\nname = "myapp"\nversion = "1.0.0"\nnanvix-version = ""\n'
         )
 
         with self.assertRaises(SystemExit) as ctx:
@@ -240,10 +292,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
     def test_non_semver_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "abc123"\n'
+            '[package]\nname = "myapp"\nversion = "1.0.0"\nnanvix-version = "abc123"\n'
         )
 
         with self.assertRaises(SystemExit) as ctx:
@@ -258,6 +307,12 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
             'name = "myapp"\n'
             'version = "1.0.0"\n'
             'nanvix-version = "latest"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -274,6 +329,12 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
             'nanvix-version = "latest"\n'
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -291,6 +352,12 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
             'nanvix-version = "latest"\n'
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch.dict("os.environ", {"NANVIX_VERSION": "0.12.258"}):
@@ -430,6 +497,12 @@ class TestLoadManifestLatestWarning(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "latest"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch("nanvix_zutil.manifest.log") as mock_log:
@@ -461,9 +534,7 @@ class TestLoadManifestPackageValidation(unittest.TestCase):
 
     def test_missing_name_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n" 'version = "1.0.0"\n' 'nanvix-version = "0.12.257"\n'
-        )
+        path.write_text('[package]\nversion = "1.0.0"\nnanvix-version = "0.12.257"\n')
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -472,9 +543,7 @@ class TestLoadManifestPackageValidation(unittest.TestCase):
 
     def test_missing_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n" 'name = "myapp"\n' 'nanvix-version = "0.12.257"\n'
-        )
+        path.write_text('[package]\nname = "myapp"\nnanvix-version = "0.12.257"\n')
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -483,7 +552,7 @@ class TestLoadManifestPackageValidation(unittest.TestCase):
 
     def test_missing_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text("[package]\n" 'name = "myapp"\n' 'version = "1.0.0"\n')
+        path.write_text('[package]\nname = "myapp"\nversion = "1.0.0"\n')
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -541,6 +610,12 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "1.0.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch.dict(os.environ, {"NANVIX_VERSION": "override_sha"}):
@@ -559,6 +634,12 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
             'nanvix-version = "latest"\n'
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch.dict(os.environ, {"NANVIX_VERSION": "v0.12.291"}):
@@ -576,6 +657,12 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "1.0.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "env_sha"}):
@@ -593,6 +680,12 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "1.0.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         with patch.dict(
@@ -625,6 +718,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "1.0.0"\n'
             "[dependencies]\n"
             'zlib = "4.5.6"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -641,6 +740,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "1.0.0"\n'
             "[dependencies]\n"
             'zlib = { version = "4.5.6" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -657,6 +762,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = { commitish = "b7a6a3c" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -673,6 +784,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = { tag = "v1.0.0-nanvix-abc" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -689,6 +806,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             "zlib = { id = 99999 }\n"
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -705,6 +828,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "b7a6a3c-nanvix-fa06b88"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         log_mod.set_json_mode(True)
@@ -724,6 +853,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             "[dependencies]\n"
             'zlib = "1.2.3"\n'
             'openssl = "2.0.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -740,6 +875,12 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[system-dependencies]\n"
             'foobar = "1.2.3"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -770,6 +911,12 @@ class TestLoadManifestSystemDependencies(unittest.TestCase):
             "[system-dependencies]\n"
             'foobar = "1.2.3"\n'
             'bazqux = { commitish = "deadbeef" }\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -794,6 +941,12 @@ class TestLoadManifestSystemDependencies(unittest.TestCase):
             'zlib = { commitish = "aaa" }\n'
             "[system-dependencies]\n"
             'foobar = "1.2.3"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         m = load_manifest(path)
@@ -868,6 +1021,162 @@ class TestLoadManifestTypeValidation(unittest.TestCase):
             'name = "myapp"\n'
             'version = "1.0.0"\n'
             'nanvix-version = "0.12.257"\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestLoadManifestBuildsSection(unittest.TestCase):
+    """Tests for the required [builds] section in nanvix.toml."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_builds_section_parsed(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(MANIFEST_WITH_BUILDS)
+
+        m = load_manifest(path)
+
+        self.assertEqual(m.builds.dimensions["platforms"], ["hyperlight", "microvm"])
+        self.assertEqual(m.builds.dimensions["modes"], ["multi-process", "standalone"])
+        self.assertEqual(m.builds.dimensions["memory"], ["128mb"])
+        self.assertEqual(len(m.builds.exclude), 1)
+        self.assertEqual(m.builds.exclude[0]["platform"], "hyperlight")
+        self.assertEqual(m.builds.exclude[0]["mode"], "standalone")
+
+    def test_no_builds_section_exits_2(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_matrix_required(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds]\n"
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_invalid_dimension_type_exits_2(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = "not-a-list"\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_exclude_references_unknown_key_exits_2(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+            "\n"
+            "[[builds.exclude]]\n"
+            'unknown_dim = "value"\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_empty_dimension_exits_2(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            "platforms = []\n"
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_missing_required_dimension_exits_2(self) -> None:
+        """Missing 'modes' dimension in [builds.matrix] causes exit."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_empty_exclude_entry_exits_2(self) -> None:
+        """An empty [[builds.exclude]] table causes exit."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+            "\n"
+            "[[builds.exclude]]\n"
         )
 
         with self.assertRaises(SystemExit) as ctx:

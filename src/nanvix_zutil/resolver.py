@@ -534,7 +534,9 @@ def _resolve_inner(
         nanvix_zutil_version=get_zutil_version(),
     )
 
-    return Lockfile(metadata=metadata, packages=list(resolved.values()))
+    return Lockfile(
+        metadata=metadata, builds=manifest.builds, packages=list(resolved.values())
+    )
 
 
 def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:

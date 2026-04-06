@@ -1,4 +1,10 @@
 [package]
 name = "hello-world"
 version = "0.1.0"
-nanvix-version = "latest"
+nanvix-version = "0.12.365"
+
+[builds]
+[builds.matrix]
+platforms = ["hyperlight", "microvm"]
+modes = ["standalone", "single-process", "multi-process"]
+memory = ["128mb"]

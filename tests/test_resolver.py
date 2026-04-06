@@ -17,7 +17,7 @@ from nanvix_zutil.lockfile import (
     LockfileMetadata,
     ResolvedPackage,
 )
-from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.manifest import BuildMatrix, Manifest
 from nanvix_zutil.resolver import _unsuffix_deps, is_stale, resolve
 
 
@@ -48,6 +48,14 @@ def _make_manifest(
         name="test",
         version="0.1.0",
         sysroot_ref=sysroot_ref or Ref(kind=RefKind.TAG, value="0.1.0"),
+        builds=BuildMatrix(
+            dimensions={
+                "platforms": ["hyperlight"],
+                "modes": ["multi-process"],
+                "memory": ["128mb"],
+            },
+            exclude=[],
+        ),
         dependencies=deps or [],
         system_dependencies=sys_deps or [],
     )
@@ -235,6 +243,14 @@ class TestResolveTransitive(unittest.TestCase):
                 manifest_hash="sha256:inner",
                 nanvix_zutil_version="0.2.2",
             ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
             packages=[
                 ResolvedPackage(
                     name="zlib",
@@ -369,6 +385,14 @@ class TestCycleDetection(unittest.TestCase):
             metadata=LockfileMetadata(
                 manifest_hash="sha256:a", nanvix_zutil_version="0.2.2"
             ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
             packages=[
                 ResolvedPackage(
                     name="libb",
@@ -385,6 +409,14 @@ class TestCycleDetection(unittest.TestCase):
         libb_lockfile = Lockfile(
             metadata=LockfileMetadata(
                 manifest_hash="sha256:b", nanvix_zutil_version="0.2.2"
+            ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
             ),
             packages=[
                 ResolvedPackage(
@@ -462,6 +494,14 @@ class TestVersionConflict(unittest.TestCase):
             metadata=LockfileMetadata(
                 manifest_hash="sha256:inner", nanvix_zutil_version="0.2.2"
             ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
             packages=[
                 ResolvedPackage(
                     name="zlib",
@@ -518,6 +558,14 @@ class TestIsStale(unittest.TestCase):
         h = compute_manifest_hash(path)
         lockfile = Lockfile(
             metadata=LockfileMetadata(manifest_hash=h, nanvix_zutil_version="0.2.2"),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
         )
         self.assertFalse(is_stale(lockfile, path))
 
@@ -528,6 +576,14 @@ class TestIsStale(unittest.TestCase):
         lockfile = Lockfile(
             metadata=LockfileMetadata(
                 manifest_hash="sha256:old", nanvix_zutil_version="0.2.2"
+            ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
             ),
         )
         self.assertTrue(is_stale(lockfile, path))

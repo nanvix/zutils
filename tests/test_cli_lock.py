@@ -21,6 +21,7 @@ from nanvix_zutil.lockfile import (
     ResolvedPackage,
     write_lockfile,
 )
+from nanvix_zutil.manifest import BuildMatrix
 from nanvix_zutil.script import ZScript
 from tests.testutils import write_manifest
 
@@ -33,6 +34,14 @@ def _make_mock_lockfile(manifest_path: Path) -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash=compute_manifest_hash(manifest_path),
             nanvix_zutil_version="0.2.2",
+        ),
+        builds=BuildMatrix(
+            dimensions={
+                "platforms": ["hyperlight"],
+                "modes": ["multi-process"],
+                "memory": ["128mb"],
+            },
+            exclude=[],
         ),
         packages=[
             ResolvedPackage(
@@ -164,6 +173,12 @@ class TestLockCheck(unittest.TestCase):
             'name = "test"\n'
             'version = "0.2.0"\n'
             'nanvix-version = "0.2.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         script = ZScript(repo_root)
