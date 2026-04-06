@@ -1,6 +1,8 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# pyright: reportPrivateUsage=false
+
 """Lockfile data model, serialization, and release-asset download.
 
 Defines the ``Lockfile`` dataclass that captures the fully resolved
@@ -27,6 +29,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.manifest import BuildMatrix, _parse_builds_section
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -108,10 +111,12 @@ class Lockfile:
 
     Attributes:
         metadata: Lockfile header metadata.
+        builds: Build matrix from the ``[builds]`` section.
         packages: Ordered list of resolved packages.
     """
 
     metadata: LockfileMetadata
+    builds: BuildMatrix
     packages: list[ResolvedPackage] = field(default_factory=list)
 
 
@@ -159,6 +164,14 @@ def write_lockfile(lockfile: Lockfile, path: Path) -> None:
         "nanvix-zutil-version": lockfile.metadata.nanvix_zutil_version,
     }
     lines.append(tomli_w.dumps({"metadata": meta_dict}).rstrip())
+    lines.append("")
+
+    # [builds]
+    builds_dict: dict[str, object] = {
+        "matrix": lockfile.builds.dimensions,
+        "exclude": lockfile.builds.exclude,
+    }
+    lines.append(tomli_w.dumps({"builds": builds_dict}).rstrip())
     lines.append("")
 
     # [[package]] blocks
@@ -263,6 +276,15 @@ def read_lockfile(path: Path) -> Lockfile:
         nanvix_zutil_version=zutil_version,
     )
 
+    # Parse [builds] (required)
+    raw_builds: object = data.get("builds")
+    if not isinstance(raw_builds, dict):
+        log.fatal(
+            f"Lockfile {path}: missing or invalid [builds] section",
+            code=EXIT_INVALID_ARGS,
+        )
+    builds = _parse_builds_section(cast("dict[str, object]", raw_builds), path)
+
     # Parse packages
     raw_packages: object = data.get("package", [])
     if not isinstance(raw_packages, list):
@@ -281,7 +303,7 @@ def read_lockfile(path: Path) -> Lockfile:
         pkg_data = cast("dict[str, object]", raw_pkg_item)
         packages.append(_parse_package(pkg_data, path))
 
-    return Lockfile(metadata=metadata, packages=packages)
+    return Lockfile(metadata=metadata, builds=builds, packages=packages)
 
 
 def _parse_package(data: dict[str, object], path: Path) -> ResolvedPackage:

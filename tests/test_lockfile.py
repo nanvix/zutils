@@ -20,6 +20,16 @@ from nanvix_zutil.lockfile import (
     read_lockfile,
     write_lockfile,
 )
+from nanvix_zutil.manifest import BuildMatrix
+
+_DEFAULT_BUILDS = BuildMatrix(
+    dimensions={
+        "platforms": ["hyperlight"],
+        "modes": ["multi-process"],
+        "memory": ["128mb"],
+    },
+    exclude=[],
+)
 
 
 def _make_sample_lockfile() -> Lockfile:
@@ -29,6 +39,7 @@ def _make_sample_lockfile() -> Lockfile:
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.2.2",
         ),
+        builds=_DEFAULT_BUILDS,
         packages=[
             ResolvedPackage(
                 name="nanvix",
@@ -123,6 +134,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
                 manifest_hash="sha256:def456",
                 nanvix_zutil_version="0.2.2",
             ),
+            builds=_DEFAULT_BUILDS,
             packages=[
                 ResolvedPackage(
                     name="nanvix",
@@ -161,6 +173,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
                 manifest_hash="sha256:id_test",
                 nanvix_zutil_version="0.2.2",
             ),
+            builds=_DEFAULT_BUILDS,
             packages=[
                 ResolvedPackage(
                     name="nanvix",
@@ -279,6 +292,12 @@ class TestDownloadLockfileAsset(unittest.TestCase):
             "[metadata]\n"
             'manifest-hash = "sha256:abc"\n'
             'nanvix-zutil-version = "0.2.2"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
             "\n"
             "[[package]]\n"
             'name = "nanvix"\n'

@@ -51,6 +51,14 @@ def _make_lockfile() -> Lockfile:
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
         ),
+        builds=BuildMatrix(
+            dimensions={
+                "platforms": ["hyperlight"],
+                "modes": ["multi-process"],
+                "memory": ["128mb"],
+            },
+            exclude=[],
+        ),
         packages=[
             ResolvedPackage(
                 name="nanvix",
@@ -71,6 +79,14 @@ def _make_lockfile_no_sysroot() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
+        ),
+        builds=BuildMatrix(
+            dimensions={
+                "platforms": ["hyperlight"],
+                "modes": ["multi-process"],
+                "memory": ["128mb"],
+            },
+            exclude=[],
         ),
         packages=[],
     )

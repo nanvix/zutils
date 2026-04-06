@@ -148,6 +148,14 @@ class TestTransitiveResolution(unittest.TestCase):
                 manifest_hash="sha256:libfoo_inner",
                 nanvix_zutil_version="0.2.2",
             ),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
             packages=[
                 ResolvedPackage(
                     name="zlib",
