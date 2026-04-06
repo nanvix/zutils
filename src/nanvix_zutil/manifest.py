@@ -274,6 +274,15 @@ def parse_builds_section(
             code=EXIT_INVALID_ARGS,
         )
 
+    _required_dimensions = ("platforms", "modes", "memory")
+    missing_dims = [d for d in _required_dimensions if d not in matrix]
+    if missing_dims:
+        log.fatal(
+            f"{path}: [builds.matrix] is missing required dimension(s):"
+            f" {', '.join(missing_dims)}",
+            code=EXIT_INVALID_ARGS,
+        )
+
     dimensions: dict[str, list[str]] = {}
     for dim_name, dim_val in matrix.items():
         if not isinstance(dim_val, list):
@@ -313,6 +322,12 @@ def parse_builds_section(
                     code=EXIT_INVALID_ARGS,
                 )
             exc_dict = cast("dict[str, object]", exc_item)
+            if not exc_dict:
+                log.fatal(
+                    f"{path}: [[builds.exclude]] entry must not be empty"
+                    " — an empty table would exclude every combination",
+                    code=EXIT_INVALID_ARGS,
+                )
             str_exc: dict[str, str] = {}
             for k, v in exc_dict.items():
                 if k not in _valid_combo_fields:

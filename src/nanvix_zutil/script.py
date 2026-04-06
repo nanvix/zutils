@@ -484,11 +484,11 @@ class ZScript:
         else:
             cmd = list(args)
             working_dir = cwd if cwd is not None else self.repo_root
-            # When combo_env is set (--all-builds mode) and no explicit env
-            # was passed, merge combo env into a copy of os.environ so that
-            # subprocesses see the correct NANVIX_* values for this combo.
+            # When combo_env is set (--all-builds mode), merge it into the
+            # subprocess env so subprocesses see the correct NANVIX_* values
+            # for this combo.  This mirrors the Docker branch behaviour.
             if env is not None:
-                subprocess_env = env
+                subprocess_env = {**(self.combo_env or {}), **env}
             elif self.combo_env:
                 subprocess_env = {**os.environ, **self.combo_env}
             else:
@@ -646,7 +646,7 @@ class ZScript:
             subcommand_name: str | None = args.subcommand
             if subcommand_name is None:
                 log.fatal(
-                    "--all-builds requires a subcommand (e.g. ./z test --all-builds)",
+                    "--all-builds requires a subcommand (e.g. ./z --all-builds test)",
                     code=EXIT_INVALID_ARGS,
                 )
 

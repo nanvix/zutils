@@ -1143,6 +1143,47 @@ class TestLoadManifestBuildsSection(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 2)
 
+    def test_builds_missing_required_dimension_exits_2(self) -> None:
+        """Missing 'modes' dimension in [builds.matrix] causes exit."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_builds_empty_exclude_entry_exits_2(self) -> None:
+        """An empty [[builds.exclude]] table causes exit."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+            "\n"
+            "[[builds.exclude]]\n"
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

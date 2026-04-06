@@ -279,10 +279,12 @@ def run_all_builds(
 
 
 def print_summary(results: dict[BuildCombo, BuildResult]) -> None:
-    """Print a tabular summary of build results to stderr.
+    """Print a tabular summary of build results.
 
-    In plain-text mode an ASCII table is printed via :func:`~nanvix_zutil.log.info`.
-    In JSON mode one JSON object per result is emitted instead.
+    In plain-text mode an ASCII table is printed to *stderr* via
+    :func:`~nanvix_zutil.log.info`.  In JSON mode one JSON object per
+    result is emitted to *stdout* (bypassing the log envelope to avoid
+    double-encoding).
 
     Args:
         results: Mapping from :class:`BuildCombo` to :class:`BuildResult` as
