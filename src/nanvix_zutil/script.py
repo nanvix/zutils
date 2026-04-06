@@ -154,6 +154,7 @@ class ZScript:
         self.sysroot: Sysroot | None = None
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
+        self.combo_env: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -469,8 +470,10 @@ class ZScript:
         """
         if self.docker is not None and docker:
             cfg = self.docker
-            if env:
-                merged = {**cfg.extra_env, **env}
+            # Merge combo env into Docker extra_env when in --all-builds mode.
+            combo_and_explicit = {**(self.combo_env or {}), **(env or {})}
+            if combo_and_explicit:
+                merged = {**cfg.extra_env, **combo_and_explicit}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
             if kvm:
                 cmd = cfg.build_kvm_run_cmd(*args)
@@ -481,7 +484,15 @@ class ZScript:
         else:
             cmd = list(args)
             working_dir = cwd if cwd is not None else self.repo_root
-            subprocess_env = env
+            # When combo_env is set (--all-builds mode) and no explicit env
+            # was passed, merge combo env into a copy of os.environ so that
+            # subprocesses see the correct NANVIX_* values for this combo.
+            if env is not None:
+                subprocess_env = env
+            elif self.combo_env:
+                subprocess_env = {**os.environ, **self.combo_env}
+            else:
+                subprocess_env = None
 
         log.info(f"$ {' '.join(cmd)}")
         try:
@@ -661,9 +672,14 @@ class ZScript:
 
             failed = sum(1 for r in results.values() if not r.success)
             if failed:
+                failure_code = (
+                    EXIT_TEST_FAILURE
+                    if subcommand_name in {"test", "benchmark"}
+                    else EXIT_BUILD_FAILURE
+                )
                 log.fatal(
                     f"{failed}/{len(results)} build(s) failed",
-                    code=EXIT_TEST_FAILURE,
+                    code=failure_code,
                 )
             log.success(f"All {len(results)} build(s) passed")
             return

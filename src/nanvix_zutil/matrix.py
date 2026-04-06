@@ -169,6 +169,9 @@ def run_all_builds(
     # Determine which hooks to run in sequence for this subcommand.
     hook_chain: tuple[str, ...] = _HOOK_CHAIN.get(hook, (hook,))
 
+    if not combos:
+        return {}
+
     max_workers = min(len(combos), os.cpu_count() or 4)
 
     def _run_combo(combo: BuildCombo) -> BuildResult:
@@ -202,6 +205,15 @@ def run_all_builds(
                             os.environ[key] = original
 
             instance.targets = targets
+
+            # Store combo env on the instance so ZScript.run() can pass
+            # the correct NANVIX_* values to subprocesses (the global
+            # os.environ is restored immediately after instantiation).
+            instance.combo_env = {
+                _DIMENSION_ENV_MAP["platform"]: combo.platform,
+                _DIMENSION_ENV_MAP["mode"]: combo.mode,
+                _DIMENSION_ENV_MAP["memory"]: combo.memory,
+            }
 
             # Docker setup — mirror the logic in ZScript.main().
             if docker_image is not None:
@@ -277,7 +289,11 @@ def print_summary(results: dict[BuildCombo, BuildResult]) -> None:
             returned by :func:`run_all_builds`.
     """
     if log.is_json_mode():
-        for result in results.values():
+        sorted_results = sorted(
+            results.values(),
+            key=lambda r: (r.combo.platform, r.combo.mode, r.combo.memory),
+        )
+        for result in sorted_results:
             obj: dict[str, object] = {
                 "platform": result.combo.platform,
                 "mode": result.combo.mode,
@@ -287,7 +303,9 @@ def print_summary(results: dict[BuildCombo, BuildResult]) -> None:
             }
             if result.error is not None:
                 obj["error"] = result.error
-            log.info(json.dumps(obj))
+            # Print directly to avoid double-encoding (log.info would
+            # wrap this in another JSON envelope in JSON mode).
+            print(json.dumps(obj))
         return
 
     # --- ASCII table ---------------------------------------------------------
@@ -304,7 +322,11 @@ def print_summary(results: dict[BuildCombo, BuildResult]) -> None:
         return f"{secs}s"
 
     rows: list[tuple[str, str, str, str, str]] = []
-    for result in results.values():
+    sorted_results = sorted(
+        results.values(),
+        key=lambda r: (r.combo.platform, r.combo.mode, r.combo.memory),
+    )
+    for result in sorted_results:
         status = "PASS" if result.success else "FAIL"
         rows.append(
             (

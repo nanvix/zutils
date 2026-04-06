@@ -1,8 +1,6 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-# pyright: reportPrivateUsage=false
-
 """Lockfile data model, serialization, and release-asset download.
 
 Defines the ``Lockfile`` dataclass that captures the fully resolved
@@ -29,7 +27,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
-from nanvix_zutil.manifest import BuildMatrix, _parse_builds_section
+from nanvix_zutil.manifest import BuildMatrix, parse_builds_section
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -283,7 +281,7 @@ def read_lockfile(path: Path) -> Lockfile:
             f"Lockfile {path}: missing or invalid [builds] section",
             code=EXIT_INVALID_ARGS,
         )
-    builds = _parse_builds_section(cast("dict[str, object]", raw_builds), path)
+    builds = parse_builds_section(cast("dict[str, object]", raw_builds), path)
 
     # Parse packages
     raw_packages: object = data.get("package", [])

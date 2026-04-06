@@ -47,7 +47,8 @@ class BuildMatrix:
         dimensions: Mapping of dimension names to allowed values.
             Keys are ``"platforms"``, ``"modes"``, ``"memory"``.
         exclude: List of partial-match dicts. Each dict maps
-            dimension names to values; matching combos are removed.
+            combo field names (singular: ``"platform"``, ``"mode"``,
+            ``"memory"``) to values; matching combos are removed.
     """
 
     dimensions: dict[str, list[str]]
@@ -239,7 +240,7 @@ def _parse_version_field(raw: object, context: str, path: Path) -> Ref:
     )
 
 
-def _parse_builds_section(
+def parse_builds_section(
     raw: dict[str, object],
     path: Path,
 ) -> BuildMatrix:
@@ -262,6 +263,16 @@ def _parse_builds_section(
             code=EXIT_INVALID_ARGS,
         )
     matrix = cast("dict[str, object]", matrix_raw)
+
+    _valid_dimensions = frozenset({"platforms", "modes", "memory"})
+    unknown_dims = set(matrix.keys()) - _valid_dimensions
+    if unknown_dims:
+        log.fatal(
+            f"{path}: [builds.matrix] has unknown dimension(s):"
+            f" {', '.join(sorted(unknown_dims))}"
+            f" (valid: {', '.join(sorted(_valid_dimensions))})",
+            code=EXIT_INVALID_ARGS,
+        )
 
     dimensions: dict[str, list[str]] = {}
     for dim_name, dim_val in matrix.items():
@@ -478,7 +489,7 @@ def load_manifest(path: Path) -> Manifest:
             f"{path}: [builds] must be a TOML table",
             code=EXIT_INVALID_ARGS,
         )
-    builds = _parse_builds_section(cast("dict[str, object]", builds_raw), path)
+    builds = parse_builds_section(cast("dict[str, object]", builds_raw), path)
 
     # Auto-suffix VERSION refs with the nanvix sysroot version.
     # When the sysroot is "latest", suffixing is deferred to the resolver
