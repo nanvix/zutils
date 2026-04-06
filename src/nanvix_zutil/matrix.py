@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nanvix_zutil.manifest import BuildMatrix
+    from nanvix_zutil.script import ZScript
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS
@@ -142,7 +143,7 @@ _env_lock: threading.Lock = threading.Lock()
 
 
 def run_all_builds(
-    script_cls: type,
+    script_cls: type[ZScript],
     combos: list[BuildCombo],
     hook: str,
     targets: list[str],
@@ -182,22 +183,24 @@ def run_all_builds(
         try:
             # --- Lock-guarded: set env → instantiate → restore env ----------
             with _env_lock:
-                os.environ[_DIMENSION_ENV_MAP["platform"]] = combo.platform
-                os.environ[_DIMENSION_ENV_MAP["mode"]] = combo.mode
-                os.environ[_DIMENSION_ENV_MAP["memory"]] = combo.memory
+                try:
+                    os.environ[_DIMENSION_ENV_MAP["platform"]] = combo.platform
+                    os.environ[_DIMENSION_ENV_MAP["mode"]] = combo.mode
+                    os.environ[_DIMENSION_ENV_MAP["memory"]] = combo.memory
 
-                # Instantiation reads env vars via Config.__init__; the
-                # captured Config object retains its values after restore.
-                instance = script_cls(repo_root)
+                    # Instantiation reads env vars via Config.__init__; the
+                    # captured Config object retains its values after restore.
+                    instance = script_cls(repo_root)
+                finally:
+                    # Always restore env vars so other threads are not affected,
+                    # even if instantiation fails.
+                    for key, original in saved.items():
+                        if original is None:
+                            os.environ.pop(key, None)
+                        else:
+                            os.environ[key] = original
 
             instance.targets = targets
-
-            # Restore env vars so other threads are not affected.
-            for key, original in saved.items():
-                if original is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = original
 
             # Docker setup — mirror the logic in ZScript.main().
             if docker_image is not None:
@@ -242,14 +245,6 @@ def run_all_builds(
                 duration_seconds=elapsed,
                 error=str(exc),
             )
-        else:
-            # Restore env vars in case of early return paths that bypass
-            # the restore above (defensive).
-            for key, original in saved.items():
-                if original is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = original
 
         return BuildResult(
             combo=combo,
@@ -295,6 +290,10 @@ def print_summary(results: dict[BuildCombo, BuildResult]) -> None:
         return
 
     # --- ASCII table ---------------------------------------------------------
+    if not results:
+        log.info("No build results to display.")
+        return
+
     def _fmt_duration(seconds: float) -> str:
         """Format a duration as Xm Ys or Xs."""
         total = int(seconds)
