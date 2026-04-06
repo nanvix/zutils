@@ -17,7 +17,7 @@ from nanvix_zutil.lockfile import (
     LockfileMetadata,
     ResolvedPackage,
 )
-from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.manifest import BuildMatrix, Manifest
 from nanvix_zutil.resolver import _unsuffix_deps, is_stale, resolve
 
 
@@ -48,6 +48,14 @@ def _make_manifest(
         name="test",
         version="0.1.0",
         sysroot_ref=sysroot_ref or Ref(kind=RefKind.TAG, value="0.1.0"),
+        builds=BuildMatrix(
+            dimensions={
+                "platforms": ["hyperlight"],
+                "modes": ["multi-process"],
+                "memory": ["128mb"],
+            },
+            exclude=[],
+        ),
         dependencies=deps or [],
         system_dependencies=sys_deps or [],
     )

@@ -34,7 +34,7 @@ from nanvix_zutil.lockfile import (
     read_lockfile,
     write_lockfile,
 )
-from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.manifest import BuildMatrix, Manifest
 from nanvix_zutil.resolver import resolve
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -166,6 +166,14 @@ class TestTransitiveResolution(unittest.TestCase):
             name="hello-transitive",
             version="0.1.0",
             sysroot_ref=Ref(kind=RefKind.TAG, value="0.12.267"),
+            builds=BuildMatrix(
+                dimensions={
+                    "platforms": ["hyperlight"],
+                    "modes": ["multi-process"],
+                    "memory": ["128mb"],
+                },
+                exclude=[],
+            ),
             dependencies=[
                 Dependency(
                     name="libfoo",

@@ -164,6 +164,12 @@ class TestLockCheck(unittest.TestCase):
             'name = "test"\n'
             'version = "0.2.0"\n'
             'nanvix-version = "0.2.0"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
         )
 
         script = ZScript(repo_root)

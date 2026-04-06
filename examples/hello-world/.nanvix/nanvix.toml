@@ -2,3 +2,9 @@
 name = "hello-world"
 version = "0.1.0"
 nanvix-version = "latest"
+
+[builds]
+[builds.matrix]
+platforms = ["hyperlight"]
+modes = ["multi-process"]
+memory = ["128mb"]

@@ -3,6 +3,12 @@ name = "hello-transitive"
 version = "0.1.0"
 nanvix-version = "0.12.267"
 
+[builds]
+[builds.matrix]
+platforms = ["hyperlight"]
+modes = ["multi-process"]
+memory = ["128mb"]
+
 [dependencies]
 libfoo = { commitish = "abc1234" }
 
