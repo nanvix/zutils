@@ -125,5 +125,43 @@ class TestDockerFlags(unittest.TestCase):
         self.assertEqual(args.subcommand, "test")
 
 
+class TestAllBuildsFlags(unittest.TestCase):
+    """Tests for --all-builds and --mode CLI flags."""
+
+    def test_all_builds_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["--all-builds", "build"])
+        self.assertTrue(args.all_builds)
+
+    def test_all_builds_default_false(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["build"])
+        self.assertFalse(args.all_builds)
+
+    def test_mode_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["--mode", "multi-process", "build"])
+        self.assertEqual(args.mode, "multi-process")
+
+    def test_mode_default_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["build"])
+        self.assertIsNone(args.mode)
+
+    def test_all_builds_with_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["--all-builds", "--mode", "standalone", "test"])
+        self.assertTrue(args.all_builds)
+        self.assertEqual(args.mode, "standalone")
+        self.assertEqual(args.subcommand, "test")
+
+    def test_all_builds_with_docker(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["--all-builds", "--with-docker", "build"])
+        self.assertTrue(args.all_builds)
+        self.assertTrue(args.with_docker)
+        self.assertEqual(args.subcommand, "build")
+
+
 if __name__ == "__main__":
     unittest.main()
