@@ -274,14 +274,12 @@ def read_lockfile(path: Path) -> Lockfile:
         nanvix_zutil_version=zutil_version,
     )
 
-    # Parse [builds] (required)
+    # Parse [builds] (optional — older lockfiles from dependencies may lack it)
     raw_builds: object = data.get("builds")
-    if not isinstance(raw_builds, dict):
-        log.fatal(
-            f"Lockfile {path}: missing or invalid [builds] section",
-            code=EXIT_INVALID_ARGS,
-        )
-    builds = parse_builds_section(cast("dict[str, object]", raw_builds), path)
+    if isinstance(raw_builds, dict):
+        builds = parse_builds_section(cast("dict[str, object]", raw_builds), path)
+    else:
+        builds = BuildMatrix(dimensions={}, exclude=[])
 
     # Parse packages
     raw_packages: object = data.get("package", [])

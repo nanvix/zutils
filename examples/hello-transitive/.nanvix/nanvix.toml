@@ -1,12 +1,12 @@
 [package]
 name = "hello-transitive"
 version = "0.1.0"
-nanvix-version = "0.12.267"
+nanvix-version = "0.12.365"
 
 [builds]
 [builds.matrix]
-platforms = ["hyperlight"]
-modes = ["multi-process"]
+platforms = ["hyperlight", "microvm"]
+modes = ["standalone", "single-process", "multi-process"]
 memory = ["128mb"]
 
 [dependencies]
