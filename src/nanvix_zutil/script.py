@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import shutil
 import subprocess
 import sys
@@ -49,9 +50,16 @@ from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
+    EXIT_TEST_FAILURE,
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.matrix import (
+    expand_matrix,
+    filter_matrix,
+    print_summary,
+    run_all_builds,
+)
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -524,12 +532,18 @@ class ZScript:
         # Pre-parse --json and --version before creating the instance so
         # that JSON mode is active for any errors raised during __init__,
         # and --version can exit cleanly without requiring a valid manifest.
+        # Also pre-parse --mode / --all-builds so that --mode can override
+        # NANVIX_DEPLOYMENT_MODE before Config.__init__ runs.
         pre_parser = argparse.ArgumentParser(add_help=False)
         pre_parser.add_argument("--json", action="store_true", default=False)
         pre_parser.add_argument(
             "--version",
             action="version",
             version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
+        )
+        pre_parser.add_argument("--mode", default=None, dest="mode")
+        pre_parser.add_argument(
+            "--all-builds", action="store_true", default=False, dest="all_builds"
         )
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
 
@@ -560,6 +574,14 @@ class ZScript:
                 repo_root = script_path.parent.parent
             else:
                 repo_root = script_path.parent
+
+        # ------------------------------------------------------------------
+        # Handle --mode without --all-builds: override NANVIX_DEPLOYMENT_MODE
+        # before Config.__init__ reads it during instance construction.
+        # ------------------------------------------------------------------
+        cli_mode = getattr(pre_args, "mode", None)
+        if cli_mode is not None and not getattr(pre_args, "all_builds", False):
+            os.environ["NANVIX_DEPLOYMENT_MODE"] = cli_mode
 
         instance = cls(repo_root)
         instance.targets = targets
@@ -594,6 +616,47 @@ class ZScript:
                     code=EXIT_MISSING_DEP,
                 )
             instance.docker = instance.docker_config(docker_image)
+
+        # ------------------------------------------------------------------
+        # Multi-build mode (--all-builds)
+        # ------------------------------------------------------------------
+        if getattr(args, "all_builds", False):
+            combos = expand_matrix(instance.manifest.builds)
+            mode_filter = getattr(args, "mode", None)
+            combos = filter_matrix(combos, mode=mode_filter)
+
+            if not combos:
+                log.fatal(
+                    "No build combinations remain after filtering"
+                    + (f" (--mode={mode_filter})" if mode_filter else ""),
+                    code=EXIT_INVALID_ARGS,
+                )
+
+            subcommand_name: str | None = args.subcommand
+            if subcommand_name is None:
+                log.fatal(
+                    "--all-builds requires a subcommand (e.g. ./z test --all-builds)",
+                    code=EXIT_INVALID_ARGS,
+                )
+
+            results = run_all_builds(
+                script_cls=cls,
+                combos=combos,
+                hook=subcommand_name,
+                targets=targets,
+                docker_image=docker_image,
+                repo_root=repo_root,
+            )
+            print_summary(results)
+
+            failed = sum(1 for r in results.values() if not r.success)
+            if failed:
+                log.fatal(
+                    f"{failed}/{len(results)} build(s) failed",
+                    code=EXIT_TEST_FAILURE,
+                )
+            log.success(f"All {len(results)} build(s) passed")
+            return
 
         subcommand: str | None = args.subcommand
 
