@@ -174,16 +174,17 @@ def run_all_builds(
     def _run_combo(combo: BuildCombo) -> BuildResult:
         """Worker: set env, instantiate script, run hook chain."""
         start = time.monotonic()
-
-        # Capture the original values of the env vars we are about to set
-        # so they can be restored after instantiation.
         env_keys = list(_DIMENSION_ENV_MAP.values())
-        saved: dict[str, str | None] = {k: os.environ.get(k) for k in env_keys}
+        saved: dict[str, str | None] = {}
 
         try:
             # --- Lock-guarded: set env → instantiate → restore env ----------
             with _env_lock:
                 try:
+                    # Snapshot INSIDE the lock to avoid TOCTOU race where
+                    # another thread's dirty values get captured.
+                    saved = {k: os.environ.get(k) for k in env_keys}
+
                     os.environ[_DIMENSION_ENV_MAP["platform"]] = combo.platform
                     os.environ[_DIMENSION_ENV_MAP["mode"]] = combo.mode
                     os.environ[_DIMENSION_ENV_MAP["memory"]] = combo.memory

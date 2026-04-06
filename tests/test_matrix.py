@@ -4,6 +4,7 @@
 """Tests for nanvix_zutil.matrix."""
 
 import unittest
+from pathlib import Path
 
 from nanvix_zutil.manifest import BuildMatrix
 from nanvix_zutil.matrix import (
@@ -198,6 +199,190 @@ class TestBuildResult(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.error, "build failed")
         self.assertEqual(result.duration_seconds, 0.3)
+
+
+class TestRunAllBuilds(unittest.TestCase):
+    """Tests for :func:`run_all_builds`."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from nanvix_zutil.script import ZScript
+
+        from tests.testutils import write_manifest
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._repo_root = Path(self._tmpdir)
+        write_manifest(self._repo_root)
+
+        # A minimal ZScript subclass whose hooks just record they were called.
+        class _Stub(ZScript):
+            hook_log: list[str] = []
+
+            def build(self) -> None:
+                _Stub.hook_log.append("build")
+
+            def test(self) -> None:
+                _Stub.hook_log.append("test")
+
+            def clean(self) -> None:
+                _Stub.hook_log.append("clean")
+
+            def setup(self) -> None:
+                _Stub.hook_log.append("setup")
+
+        self._stub_cls = _Stub
+        _Stub.hook_log = []
+
+    def tearDown(self) -> None:
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_all_combos_succeed(self) -> None:
+        """run_all_builds returns a success result for every combo."""
+        from nanvix_zutil.matrix import run_all_builds
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+            BuildCombo(platform="microvm", mode="multi-process", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=self._stub_cls,
+            combos=combos,
+            hook="clean",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        self.assertEqual(len(results), 2)
+        for combo, result in results.items():
+            self.assertTrue(result.success, f"{combo} should succeed")
+            self.assertIsNone(result.error)
+            self.assertGreater(result.duration_seconds, 0.0)
+
+    def test_hook_chain_runs_prerequisites(self) -> None:
+        """'build' runs setup then build via _HOOK_CHAIN."""
+        from nanvix_zutil.matrix import run_all_builds
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+        self._stub_cls.hook_log = []
+
+        run_all_builds(
+            script_cls=self._stub_cls,
+            combos=combos,
+            hook="build",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        # _HOOK_CHAIN["build"] == ("setup", "build").
+        self.assertEqual(self._stub_cls.hook_log, ["setup", "build"])
+
+    def test_failing_hook_captured(self) -> None:
+        """A SystemExit from a hook produces a failed BuildResult."""
+        from nanvix_zutil.matrix import run_all_builds
+        from nanvix_zutil.script import ZScript
+
+        class _Failing(ZScript):
+            def setup(self) -> None:
+                pass
+
+            def build(self) -> None:
+                raise SystemExit(5)
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=_Failing,
+            combos=combos,
+            hook="build",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        result = results[combos[0]]
+        self.assertFalse(result.success)
+        self.assertIn("5", result.error or "")
+
+    def test_env_vars_restored_after_run(self) -> None:
+        """Environment variables are restored to their original values."""
+        import os
+
+        from nanvix_zutil.matrix import run_all_builds
+
+        # Set known values before run.
+        os.environ["NANVIX_MACHINE"] = "original_machine"
+        os.environ["NANVIX_DEPLOYMENT_MODE"] = "original_mode"
+        os.environ["NANVIX_MEMORY_SIZE"] = "original_mem"
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        run_all_builds(
+            script_cls=self._stub_cls,
+            combos=combos,
+            hook="clean",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        self.assertEqual(os.environ.get("NANVIX_MACHINE"), "original_machine")
+        self.assertEqual(os.environ.get("NANVIX_DEPLOYMENT_MODE"), "original_mode")
+        self.assertEqual(os.environ.get("NANVIX_MEMORY_SIZE"), "original_mem")
+
+        # Clean up.
+        os.environ.pop("NANVIX_MACHINE", None)
+        os.environ.pop("NANVIX_DEPLOYMENT_MODE", None)
+        os.environ.pop("NANVIX_MEMORY_SIZE", None)
+
+
+class TestUnsupportedAllBuilds(unittest.TestCase):
+    """Tests for the --all-builds hook allowlist guard in ZScript.main()."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from tests.testutils import MANIFEST_WITH_BUILDS, write_manifest
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._repo_root = Path(self._tmpdir)
+        write_manifest(self._repo_root, content=MANIFEST_WITH_BUILDS)
+
+    def tearDown(self) -> None:
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_lock_rejected_with_all_builds(self) -> None:
+        """lock --all-builds exits with an error."""
+        import sys
+
+        from nanvix_zutil.script import ZScript
+
+        sys.argv = ["z.py", "lock", "--all-builds"]
+        with self.assertRaises(SystemExit):
+            ZScript.main(repo_root=self._repo_root)
+
+    def test_distclean_rejected_with_all_builds(self) -> None:
+        """distclean --all-builds exits with an error."""
+        import sys
+
+        from nanvix_zutil.script import ZScript
+
+        sys.argv = ["z.py", "distclean", "--all-builds"]
+        with self.assertRaises(SystemExit):
+            ZScript.main(repo_root=self._repo_root)
 
 
 if __name__ == "__main__":

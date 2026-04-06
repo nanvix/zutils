@@ -639,9 +639,11 @@ class ZScript:
                     code=EXIT_INVALID_ARGS,
                 )
 
-            # Reject subcommands that don't support parallel execution.
-            _UNSUPPORTED_ALL_BUILDS = ("lock", "help")
-            if subcommand_name in _UNSUPPORTED_ALL_BUILDS:
+            # Only lifecycle hooks that are meaningful per-combo are allowed.
+            _SUPPORTED_ALL_BUILDS = frozenset(
+                {"setup", "build", "test", "benchmark", "release", "clean"}
+            )
+            if subcommand_name not in _SUPPORTED_ALL_BUILDS:
                 log.fatal(
                     f"--all-builds is not supported with '{subcommand_name}'",
                     code=EXIT_INVALID_ARGS,
