@@ -39,6 +39,15 @@ def set_json_mode(enabled: bool) -> None:
     _json_mode = enabled
 
 
+def is_json_mode() -> bool:
+    """Return whether JSON output mode is currently enabled.
+
+    Returns:
+        ``True`` if JSON mode is active, ``False`` otherwise.
+    """
+    return _json_mode
+
+
 def info(msg: str) -> None:
     """Emit an informational message.
 
