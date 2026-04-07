@@ -62,3 +62,24 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+  test-windows:
+    name: Tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and dev dependencies
+        run: uv sync
+
+      - name: Verify import succeeds
+        run: uv run python -c "import nanvix_zutil; print('import OK')"
+
+      - name: Run unit tests
+        run: uv run pytest tests/ -v -k "not test_full_lifecycle"

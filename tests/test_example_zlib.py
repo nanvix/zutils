@@ -50,7 +50,9 @@ def _has_nanvix_toolchain() -> bool:
 
 
 def _has_kvm() -> bool:
-    """Return True if /dev/kvm is accessible."""
+    """Return True if /dev/kvm is accessible (Linux only)."""
+    if sys.platform != "linux":
+        return False
     return os.access("/dev/kvm", os.R_OK | os.W_OK)
 
 

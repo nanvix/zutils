@@ -94,14 +94,21 @@ class HelloZlib(ZScript):
         self.run(cc, *cflags, *ldflags, "-o", "hello-zlib.elf", "hello-zlib.o", *libs)
 
     def test(self) -> None:
-        """Run the test suite (smoke + integration + functional)."""
+        """Run the test suite (smoke + integration + functional).
+
+        Note:
+            The functional test phase uses ``timeout --foreground`` (GNU
+            coreutils) and KVM. This is Linux-only by design — functional
+            tests require ``/dev/kvm`` inside a Docker container.
+        """
         binary = self.repo_root / "hello-zlib.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
         log.info("=== hello-zlib smoke tests ===")
         if not binary.exists():
             log.fatal(
-                f"{binary} not found — run 'nanvix-zutil build' first.", code=EXIT_TEST_FAILURE
+                f"{binary} not found — run 'nanvix-zutil build' first.",
+                code=EXIT_TEST_FAILURE,
             )
         size = binary.stat().st_size
         if size < 1000:
@@ -133,7 +140,10 @@ class HelloZlib(ZScript):
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        self.run("rm", "-f", "hello-zlib.o", "hello-zlib.elf", docker=False)
+        for name in ("hello-zlib.o", "hello-zlib.elf"):
+            artifact = self.repo_root / name
+            if artifact.exists():
+                artifact.unlink()
 
 
 if __name__ == "__main__":

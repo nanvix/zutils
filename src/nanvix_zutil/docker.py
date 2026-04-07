@@ -21,28 +21,45 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
+import warnings
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # ---------------------------------------------------------------------------
 # Well-known container paths
 # ---------------------------------------------------------------------------
 
 #: Container path for the consumer repository root.
-WORKSPACE_CONTAINER_PATH: Path = Path("/mnt/workspace")
+WORKSPACE_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/workspace")
 
 #: Container path for the Nanvix sysroot.
-SYSROOT_CONTAINER_PATH: Path = Path("/mnt/sysroot")
+SYSROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/sysroot")
 
 #: Container path for the build-time dependency root (buildroot).
-BUILDROOT_CONTAINER_PATH: Path = Path("/mnt/buildroot")
+BUILDROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/buildroot")
 
 #: Container path for the Nanvix cross-compilation toolchain.
-TOOLCHAIN_CONTAINER_PATH: Path = Path("/opt/nanvix")
+TOOLCHAIN_CONTAINER_PATH: PurePosixPath = PurePosixPath("/opt/nanvix")
 
 #: Default Docker image used when ``--with-docker`` or
 #: ``--with-minimal-docker`` is requested.
 DEFAULT_DOCKER_IMAGE: str = "nanvix/toolchain:latest-minimal"
+
+
+# ---------------------------------------------------------------------------
+# Platform helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_uid() -> int:
+    """Return the current user ID, or ``0`` on platforms without ``os.getuid``."""
+    return os.getuid() if hasattr(os, "getuid") else 0
+
+
+def _get_gid() -> int:
+    """Return the current group ID, or ``0`` on platforms without ``os.getgid``."""
+    return os.getgid() if hasattr(os, "getgid") else 0
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +80,7 @@ class Mount:
     host_path: Path
     """Absolute host-side path to mount."""
 
-    container_path: Path
+    container_path: PurePosixPath
     """Mount point inside the container."""
 
     readonly: bool = False
@@ -82,8 +99,10 @@ class DockerConfig:
     Attributes:
         image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
         mounts: Ordered list of volume mounts.
-        uid: User ID passed to ``--user``.  Defaults to the current process UID.
-        gid: Group ID passed to ``--user``.  Defaults to the current process GID.
+        uid: User ID passed to ``--user``.  Defaults to the current process UID,
+            or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
+        gid: Group ID passed to ``--user``.  Defaults to the current process GID,
+            or ``0`` on platforms where ``os.getgid`` is unavailable (e.g. Windows).
         workdir: Container working directory for standard (non-KVM) runs.
             Defaults to :data:`WORKSPACE_CONTAINER_PATH`.
         extra_env: Additional ``-e KEY=VALUE`` pairs forwarded to the container.
@@ -95,13 +114,13 @@ class DockerConfig:
     mounts: list[Mount] = field(default_factory=list)
     """Ordered list of volume mounts."""
 
-    uid: int = field(default_factory=os.getuid)
-    """User ID passed to ``--user`` (defaults to current process UID)."""
+    uid: int = field(default_factory=_get_uid)
+    """User ID passed to ``--user`` (defaults to current process UID, or 0 on Windows)."""
 
-    gid: int = field(default_factory=os.getgid)
-    """Group ID passed to ``--user`` (defaults to current process GID)."""
+    gid: int = field(default_factory=_get_gid)
+    """Group ID passed to ``--user`` (defaults to current process GID, or 0 on Windows)."""
 
-    workdir: Path = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
+    workdir: PurePosixPath = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
     """Container working directory for standard runs."""
 
     extra_env: dict[str, str] = field(default_factory=dict)
@@ -111,7 +130,7 @@ class DockerConfig:
     # Path translation
     # ------------------------------------------------------------------
 
-    def translate_path(self, host_path: Path) -> Path:
+    def translate_path(self, host_path: Path) -> PurePosixPath | Path:
         """Translate a host path to its container equivalent.
 
         Scans :attr:`mounts` and returns the container-side path for the
@@ -122,8 +141,8 @@ class DockerConfig:
             host_path: An absolute host path to translate.
 
         Returns:
-            Container-side :class:`~pathlib.Path`, or *host_path* if no
-            mount matches.
+            Container-side :class:`~pathlib.PurePosixPath`, or *host_path*
+            if no mount matches.
         """
         resolved = host_path.resolve()
         best_mount: Mount | None = None
@@ -143,7 +162,7 @@ class DockerConfig:
                 best_rel = rel
 
         if best_mount is not None:
-            return best_mount.container_path / best_rel
+            return best_mount.container_path / PurePosixPath(*best_rel.parts)
         return host_path
 
     # ------------------------------------------------------------------
@@ -190,8 +209,8 @@ class DockerConfig:
         * Adds ``--device /dev/kvm`` and ``--group-add <kvm-gid>``.
         * Sets ``--workdir`` to :data:`SYSROOT_CONTAINER_PATH` so that
           ``nanvixd.elf`` can resolve relative paths correctly.
-        * Mounts the sysroot volume as writable (``nanvixd.elf`` needs write
-          access).
+        * Forces the sysroot mount to be writable (``nanvixd.elf`` needs
+          write access); other mounts respect :attr:`Mount.readonly`.
         * Adds ``USER`` to the container environment.
 
         Args:
@@ -201,6 +220,13 @@ class DockerConfig:
             Full ``docker run …`` argument list.
         """
         docker_cmd: list[str] = ["docker", "run", "--rm", "--device", "/dev/kvm"]
+        if sys.platform != "linux":
+            warnings.warn(
+                "KVM is only available on Linux. The generated Docker command "
+                "will include --device /dev/kvm which is not supported on "
+                f"{sys.platform}.",
+                stacklevel=2,
+            )
         docker_cmd += ["--user", f"{self.uid}:{self.gid}"]
 
         kvm_gid = _get_kvm_gid()
@@ -208,13 +234,17 @@ class DockerConfig:
             docker_cmd += ["--group-add", kvm_gid]
 
         for mount in self.mounts:
-            # Sysroot must be writable for functional tests.
+            # Sysroot must be writable for functional tests; other mounts
+            # respect the readonly flag just like build_run_cmd().
             vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            if mount.readonly and mount.container_path != SYSROOT_CONTAINER_PATH:
+                vol += ":ro"
             docker_cmd += ["-v", vol]
 
         docker_cmd += ["-w", str(SYSROOT_CONTAINER_PATH)]
         docker_cmd += ["-e", "HOME=/tmp"]
-        docker_cmd += ["-e", f"USER={os.environ.get('USER', 'nanvix')}"]
+        user = os.environ.get("USER") or os.environ.get("USERNAME") or "nanvix"
+        docker_cmd += ["-e", f"USER={user}"]
 
         for key, val in self.extra_env.items():
             docker_cmd += ["-e", f"{key}={val}"]

@@ -30,7 +30,7 @@ def _make_source_tree(root: Path) -> None:
                 data.bin
     """
     root.mkdir(parents=True, exist_ok=True)
-    (root / "hello.txt").write_text("hello world\n")
+    (root / "hello.txt").write_bytes(b"hello world\n")
     sub = root / "sub"
     sub.mkdir()
     (sub / "data.bin").write_bytes(b"\x00\x01\x02\x03")
