@@ -133,6 +133,7 @@ class HelloZlib(ZScript):
 
     def clean(self) -> None:
         """Remove build artifacts."""
+        super().clean()
         self.run("rm", "-f", "hello-zlib.o", "hello-zlib.elf", docker=False)
 
 

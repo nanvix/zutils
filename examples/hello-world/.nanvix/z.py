@@ -112,6 +112,7 @@ class HelloWorld(ZScript):
 
     def clean(self) -> None:
         """Remove build artifacts."""
+        super().clean()
         self.run("rm", "-f", "hello.o", "hello.elf", docker=False)
 
 

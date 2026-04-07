@@ -114,7 +114,7 @@ class ZScript:
 
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
-    AUTO_HOOKS: tuple[str, ...] = ("setup", "distclean", "lock", "help")
+    AUTO_HOOKS: tuple[str, ...] = ("setup", "distclean", "clean", "lock", "help")
 
     #: Consumer-defined hooks that appear in the CLI only when the
     #: subclass overrides the corresponding method.
@@ -123,7 +123,6 @@ class ZScript:
         "test",
         "benchmark",
         "release",
-        "clean",
     )
 
     def sysroot_required_files(self) -> list[str]:
@@ -330,15 +329,22 @@ class ZScript:
 
         self.config.save()
 
-    def distclean(self) -> None:
-        """Remove all transient ``.nanvix/`` artifacts.
+    def _remove_nanvix_artifacts(self) -> None:
+        """Remove transient ``.nanvix/`` artifacts.
 
-        Deletes the ``sysroot``, ``buildroot``, and ``cache`` directories
-        inside ``.nanvix/``.  The manifest (``nanvix.toml``), saved config
-        (``env.json``), and Python virtual environment (``venv/``) are
+        Deletes the ``sysroot``, ``buildroot``, ``cache``, ``env.json``,
+        ``__pycache__``, and ``venv`` entries inside ``.nanvix/``.  The
+        manifest (``nanvix.toml``) and lockfile (``nanvix.lock``) are
         preserved.
         """
-        for artifact in ("sysroot", "buildroot", "cache"):
+        for artifact in (
+            "sysroot",
+            "buildroot",
+            "cache",
+            "env.json",
+            "__pycache__",
+            "venv",
+        ):
             path = self.nanvix_dir / artifact
             if not path.exists():
                 continue
@@ -348,6 +354,16 @@ class ZScript:
             elif path.is_dir():
                 shutil.rmtree(path)
                 log.info(f"Removed {path}")
+
+    def distclean(self) -> None:
+        """Remove all transient ``.nanvix/`` artifacts.
+
+        Deletes the ``sysroot``, ``buildroot``, ``cache``, ``env.json``,
+        ``__pycache__``, and ``venv`` entries inside ``.nanvix/``.  The
+        manifest (``nanvix.toml``) and lockfile (``nanvix.lock``) are
+        preserved.
+        """
+        self._remove_nanvix_artifacts()
 
     def lock(self, *, shallow: bool = False) -> None:
         """Resolve the dependency graph and write ``nanvix.lock``.
@@ -421,10 +437,13 @@ class ZScript:
         """
 
     def clean(self) -> None:
-        """Remove build artifacts.
+        """Remove build artifacts and transient ``.nanvix/`` files.
 
-        Override to clean generated files.
+        The base implementation removes the same artifacts as
+        :meth:`distclean`.  Override in a subclass and call
+        ``super().clean()`` to also remove project-specific files.
         """
+        self._remove_nanvix_artifacts()
 
     # ------------------------------------------------------------------
     # Subprocess helper

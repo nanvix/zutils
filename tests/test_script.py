@@ -256,7 +256,8 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
     def test_release_noop(self) -> None:
         self._make_script().release()
 
-    def test_clean_noop(self) -> None:
+    def test_clean_auto_implemented(self) -> None:
+        """Base clean() runs without error (auto-implemented)."""
         self._make_script().clean()
 
 
@@ -300,11 +301,26 @@ class TestZScriptDistclean(unittest.TestCase):
         self._make_script().distclean()
         self.assertTrue(manifest.exists())
 
-    def test_distclean_preserves_config(self) -> None:
+    def test_distclean_removes_config(self) -> None:
         config_file = self._nanvix() / "env.json"
         config_file.write_text("{}")
         self._make_script().distclean()
-        self.assertTrue(config_file.exists())
+        self.assertFalse(config_file.exists())
+
+    def test_distclean_removes_pycache(self) -> None:
+        """distclean() removes __pycache__ inside .nanvix/."""
+        pycache = self._nanvix() / "__pycache__"
+        pycache.mkdir()
+        (pycache / "mod.cpython-312.pyc").write_bytes(b"")
+        self._make_script().distclean()
+        self.assertFalse(pycache.exists())
+
+    def test_distclean_removes_venv(self) -> None:
+        """distclean() removes the venv directory inside .nanvix/."""
+        venv_dir = self._nanvix() / "venv"
+        venv_dir.mkdir()
+        self._make_script().distclean()
+        self.assertFalse(venv_dir.exists())
 
     def test_distclean_noop_when_nothing_exists(self) -> None:
         """distclean() does not raise when artifact dirs are absent."""
@@ -325,6 +341,70 @@ class TestZScriptDistclean(unittest.TestCase):
         link.symlink_to(target)
         self._make_script().distclean()
         self.assertFalse(link.exists())
+
+
+class TestZScriptClean(unittest.TestCase):
+    """clean() removes transient .nanvix/ artifacts."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        return ZScript(Path(self._tmpdir.name))
+
+    def _nanvix(self) -> Path:
+        return Path(self._tmpdir.name) / ".nanvix"
+
+    def test_clean_removes_sysroot(self) -> None:
+        sysroot_dir = self._nanvix() / "sysroot"
+        sysroot_dir.mkdir()
+        self._make_script().clean()
+        self.assertFalse(sysroot_dir.exists())
+
+    def test_clean_removes_buildroot(self) -> None:
+        buildroot_dir = self._nanvix() / "buildroot"
+        buildroot_dir.mkdir()
+        self._make_script().clean()
+        self.assertFalse(buildroot_dir.exists())
+
+    def test_clean_removes_cache(self) -> None:
+        cache_dir = self._nanvix() / "cache"
+        cache_dir.mkdir()
+        self._make_script().clean()
+        self.assertFalse(cache_dir.exists())
+
+    def test_clean_removes_config(self) -> None:
+        config_file = self._nanvix() / "env.json"
+        config_file.write_text("{}")
+        self._make_script().clean()
+        self.assertFalse(config_file.exists())
+
+    def test_clean_removes_pycache(self) -> None:
+        pycache = self._nanvix() / "__pycache__"
+        pycache.mkdir()
+        (pycache / "mod.cpython-312.pyc").write_bytes(b"")
+        self._make_script().clean()
+        self.assertFalse(pycache.exists())
+
+    def test_clean_removes_venv(self) -> None:
+        venv_dir = self._nanvix() / "venv"
+        venv_dir.mkdir()
+        self._make_script().clean()
+        self.assertFalse(venv_dir.exists())
+
+    def test_clean_preserves_manifest(self) -> None:
+        manifest = self._nanvix() / "nanvix.toml"
+        self.assertTrue(manifest.exists())
+        self._make_script().clean()
+        self.assertTrue(manifest.exists())
+
+    def test_clean_noop_when_nothing_exists(self) -> None:
+        """clean() does not raise when artifact dirs are absent."""
+        self._make_script().clean()
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
@@ -367,7 +447,6 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
 
         script = _Sub(Path(self._tmpdir.name))
         available = script.available_subcommands()
-        self.assertNotIn("clean", available)
         self.assertNotIn("benchmark", available)
 
     def test_all_hooks_overridden(self) -> None:
@@ -382,9 +461,6 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
                 pass
 
             def release(self) -> None:
-                pass
-
-            def clean(self) -> None:
                 pass
 
         script = _FullSub(Path(self._tmpdir.name))
