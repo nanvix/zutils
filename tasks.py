@@ -316,24 +316,10 @@ def yaml_lint() -> int:
 VERSION_REFS: list[tuple[str, str, str, int]] = [
     # (filepath, pattern, replacement_template, re_flags)
     # pattern must have a group so replacement can anchor to context
-    (
-        "templates/z.sh",
-        r"(NANVIX_ZUTIL_VERSION:-)[^}]+",
-        r"\g<1>{new}",
-        0,
-    ),
-    (
-        "templates/z.ps1",
-        r'(?<=^    ")[\d][^"]*',
-        r"{new}",
-        re.MULTILINE,
-    ),
-    (
-        "templates/nanvix-ci.yml",
-        r'(zutil-version:\s*"v)[^"]+',
-        r"\g<1>{new}",
-        0,
-    ),
+    #
+    # Note: templates/z.sh, templates/z.ps1, and templates/nanvix-ci.yml
+    # use a {{ZUTIL_VERSION}} placeholder that is stamped by the release
+    # workflow — they are NOT bumped here.
 ]
 
 

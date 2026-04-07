@@ -14,8 +14,8 @@ on:
         type: string
 
 permissions:
-  contents: write # create tags and GitHub releases
-  id-token: write # OIDC trusted publishing to PyPI
+  contents: write  # create tags and GitHub releases
+  id-token: write  # OIDC trusted publishing to PyPI
 
 jobs:
   lint-and-typecheck:
@@ -123,6 +123,32 @@ jobs:
       - name: Build wheel and sdist
         run: uv build
 
+      - name: Patch template versions
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          # Replace {{ZUTIL_VERSION}} placeholder with the release version
+          sed -i "s/{{ZUTIL_VERSION}}/${VERSION}/g" \
+            templates/z.sh \
+            templates/z.ps1 \
+            templates/nanvix-ci.yml
+
+          # Verify patches applied correctly
+          grep -qF "${VERSION}" templates/z.sh \
+            || { echo "::error::Failed to patch z.sh"; exit 1; }
+          grep -qF "${VERSION}" templates/z.ps1 \
+            || { echo "::error::Failed to patch z.ps1"; exit 1; }
+          grep -qF "v${VERSION}" templates/nanvix-ci.yml \
+            || { echo "::error::Failed to patch nanvix-ci.yml"; exit 1; }
+          if grep -rq '{{ZUTIL_VERSION}}' templates/; then
+            echo "::error::Unreplaced {{ZUTIL_VERSION}} placeholder found"; exit 1
+          fi
+
+          echo "Patched template versions to ${VERSION}:"
+          grep "PINNED_VERSION" templates/z.sh
+          grep -F "$VERSION" templates/z.ps1
+          grep "zutil-version" templates/nanvix-ci.yml
+
       - name: Package templates
         run: |
           tar czf "templates.tar.gz" -C templates .
@@ -146,9 +172,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      # TODO: PyPI repo not yet set up
-      # - name: Publish to PyPI
-      #   run: uv publish
+  # TODO: PyPI repo not yet set up
+  # - name: Publish to PyPI
+  #   run: uv publish
 
   update-consumers:
     name: Update consumer repos
