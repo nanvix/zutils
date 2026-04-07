@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: nanvix/workflows/.github/workflows/nanvix-ci.yml@v1.2.0
+    uses: nanvix/workflows/.github/workflows/nanvix-ci.yml@v1.5.0
     with:
       zutil-version: "v{{ZUTIL_VERSION}}"
       caller-event-name: ${{ github.event_name }}
