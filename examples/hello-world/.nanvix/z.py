@@ -72,7 +72,13 @@ class HelloWorld(ZScript):
         self.run(cc, *cflags, *ldflags, "-o", "hello.elf", "hello.o", *libs)
 
     def test(self) -> None:
-        """Run the test suite (smoke + integration + functional)."""
+        """Run the test suite (smoke + integration + functional).
+
+        Note:
+            The functional test phase uses ``timeout --foreground`` (GNU
+            coreutils) and KVM. This is Linux-only by design — functional
+            tests require ``/dev/kvm`` inside a Docker container.
+        """
         binary = self.repo_root / "hello.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
@@ -112,9 +118,11 @@ class HelloWorld(ZScript):
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        self.run("rm", "-f", "hello.o", "hello.elf", docker=False)
+        for name in ("hello.o", "hello.elf"):
+            artifact = self.repo_root / name
+            if artifact.exists():
+                artifact.unlink()
 
 
 if __name__ == "__main__":
     HelloWorld.main()
-

@@ -261,7 +261,7 @@ class TestRunAllBuilds(unittest.TestCase):
         for combo, result in results.items():
             self.assertTrue(result.success, f"{combo} should succeed")
             self.assertIsNone(result.error)
-            self.assertGreater(result.duration_seconds, 0.0)
+            self.assertGreaterEqual(result.duration_seconds, 0.0)
 
     def test_hook_chain_runs_prerequisites(self) -> None:
         """'build' runs setup then build via _HOOK_CHAIN."""

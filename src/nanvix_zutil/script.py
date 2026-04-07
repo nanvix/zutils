@@ -30,7 +30,7 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import log
 from nanvix_zutil.buildroot import Buildroot, Dependency, suffix_dep
@@ -249,7 +249,7 @@ class ZScript:
     # Path translation helper
     # ------------------------------------------------------------------
 
-    def translate_path(self, host_path: Path) -> Path:
+    def translate_path(self, host_path: Path) -> PurePosixPath | Path:
         """Translate *host_path* to its container equivalent if Docker is active.
 
         When Docker mode is not active, returns *host_path* unchanged.
@@ -258,7 +258,7 @@ class ZScript:
             host_path: An absolute host-side path.
 
         Returns:
-            Container-side :class:`~pathlib.Path` when Docker is active,
+            Container-side :class:`~pathlib.PurePosixPath` when Docker is active,
             otherwise *host_path*.
         """
         if self.docker is not None:

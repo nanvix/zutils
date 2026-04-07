@@ -168,5 +168,18 @@ class TestFatal(unittest.TestCase):
         self.assertEqual(obj["hint"], "check logs")
 
 
+class TestAnsiWindowsEnablement(unittest.TestCase):
+    """Tests for Windows ANSI VT processing enablement."""
+
+    def test_no_crash_on_any_platform(self) -> None:
+        """_enable_ansi_on_windows should never raise."""
+        from nanvix_zutil.log import (
+            _enable_ansi_on_windows,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        # Should be a no-op on Linux, no crash on Windows.
+        _enable_ansi_on_windows()
+
+
 if __name__ == "__main__":
     unittest.main()

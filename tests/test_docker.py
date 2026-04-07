@@ -5,10 +5,11 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
 from nanvix_zutil.docker import (
@@ -28,21 +29,26 @@ class TestMount(unittest.TestCase):
     """Tests for the Mount dataclass."""
 
     def test_default_not_readonly(self) -> None:
-        m = Mount(host_path=Path("/host/path"), container_path=Path("/container/path"))
+        m = Mount(
+            host_path=Path("/host/path"),
+            container_path=PurePosixPath("/container/path"),
+        )
         self.assertFalse(m.readonly)
 
     def test_readonly_flag(self) -> None:
         m = Mount(
             host_path=Path("/host/path"),
-            container_path=Path("/container/path"),
+            container_path=PurePosixPath("/container/path"),
             readonly=True,
         )
         self.assertTrue(m.readonly)
 
     def test_fields_stored(self) -> None:
-        m = Mount(host_path=Path("/a"), container_path=Path("/b"), readonly=True)
+        m = Mount(
+            host_path=Path("/a"), container_path=PurePosixPath("/b"), readonly=True
+        )
         self.assertEqual(m.host_path, Path("/a"))
-        self.assertEqual(m.container_path, Path("/b"))
+        self.assertEqual(m.container_path, PurePosixPath("/b"))
 
 
 class TestDockerConfigTranslatePath(unittest.TestCase):
@@ -242,11 +248,72 @@ class TestDockerConfigBuildKvmRunCmd(unittest.TestCase):
         sysroot_ro = f"{self._sysroot.resolve()}:{SYSROOT_CONTAINER_PATH}:ro"
         self.assertNotIn(sysroot_ro, cmd)
 
+    def test_non_sysroot_readonly_mount_preserved(self) -> None:
+        """Non-sysroot readonly mounts keep :ro in KVM mode."""
+        buildroot = self._workspace / "buildroot"
+        buildroot.mkdir()
+        cfg = DockerConfig(
+            image="test-image",
+            mounts=[
+                Mount(
+                    host_path=self._workspace,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                    readonly=False,
+                ),
+                Mount(
+                    host_path=self._sysroot,
+                    container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+                Mount(
+                    host_path=buildroot,
+                    container_path=BUILDROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+            ],
+            uid=1000,
+            gid=1000,
+        )
+        cmd = cfg.build_kvm_run_cmd("echo")
+        cmd_str = " ".join(cmd)
+        # Buildroot readonly mount should have :ro
+        self.assertIn(f"{buildroot.resolve()}:{BUILDROOT_CONTAINER_PATH}:ro", cmd_str)
+        # Sysroot readonly mount should NOT have :ro (forced writable)
+        self.assertNotIn(
+            f"{self._sysroot.resolve()}:{SYSROOT_CONTAINER_PATH}:ro", cmd_str
+        )
+        # Workspace (non-readonly) should not have :ro
+        self.assertNotIn(
+            f"{self._workspace.resolve()}:{WORKSPACE_CONTAINER_PATH}:ro", cmd_str
+        )
+
     def test_user_env_set(self) -> None:
         cfg = self._make_config()
         cmd = cfg.build_kvm_run_cmd("echo")
         user_entries = [e for e in cmd if e.startswith("USER=")]
         self.assertTrue(user_entries, "USER env var should be present in KVM run")
+
+    def test_user_env_falls_back_to_username(self) -> None:
+        """On Windows, USER is absent; USERNAME should be used."""
+        cfg = self._make_config()
+        env = os.environ.copy()
+        env.pop("USER", None)
+        env["USERNAME"] = "winuser"
+        with patch.dict(os.environ, env, clear=True):
+            cmd = cfg.build_kvm_run_cmd("echo")
+        user_entries = [e for e in cmd if e.startswith("USER=")]
+        self.assertTrue(any("winuser" in e for e in user_entries))
+
+    def test_user_env_defaults_to_nanvix(self) -> None:
+        """When neither USER nor USERNAME is set, falls back to 'nanvix'."""
+        cfg = self._make_config()
+        env = os.environ.copy()
+        env.pop("USER", None)
+        env.pop("USERNAME", None)
+        with patch.dict(os.environ, env, clear=True):
+            cmd = cfg.build_kvm_run_cmd("echo")
+        user_entries = [e for e in cmd if e.startswith("USER=")]
+        self.assertTrue(any("nanvix" in e for e in user_entries))
 
     def test_inner_command_appended(self) -> None:
         cfg = self._make_config()
@@ -337,23 +404,105 @@ class TestKvmGidInKvmRunCmd(unittest.TestCase):
         self.assertEqual(cmd[gid_idx + 1], "42")
 
 
+class TestKvmPlatformWarning(unittest.TestCase):
+    """Tests for KVM platform warning in build_kvm_run_cmd."""
+
+    def test_warns_on_non_linux(self) -> None:
+        """build_kvm_run_cmd warns when not running on Linux."""
+        cfg = DockerConfig(image="test-image", mounts=[], uid=0, gid=0)
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "win32"
+            with self.assertWarns(UserWarning) as ctx:
+                cfg.build_kvm_run_cmd("echo")
+            self.assertIn("KVM is only available on Linux", str(ctx.warning))
+
+    def test_no_warning_on_linux(self) -> None:
+        """build_kvm_run_cmd does not warn on Linux."""
+        import warnings as _warnings
+
+        cfg = DockerConfig(image="test-image", mounts=[], uid=0, gid=0)
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            with _warnings.catch_warnings(record=True) as w:
+                _warnings.simplefilter("always")
+                cfg.build_kvm_run_cmd("echo")
+            kvm_warnings = [x for x in w if "KVM" in str(x.message)]
+            self.assertEqual(len(kvm_warnings), 0)
+
+
 class TestWellKnownPaths(unittest.TestCase):
     """Verify the well-known container path constants."""
 
     def test_workspace_path(self) -> None:
-        self.assertEqual(WORKSPACE_CONTAINER_PATH, Path("/mnt/workspace"))
+        self.assertEqual(WORKSPACE_CONTAINER_PATH, PurePosixPath("/mnt/workspace"))
 
     def test_sysroot_path(self) -> None:
-        self.assertEqual(SYSROOT_CONTAINER_PATH, Path("/mnt/sysroot"))
+        self.assertEqual(SYSROOT_CONTAINER_PATH, PurePosixPath("/mnt/sysroot"))
 
     def test_buildroot_path(self) -> None:
-        self.assertEqual(BUILDROOT_CONTAINER_PATH, Path("/mnt/buildroot"))
+        self.assertEqual(BUILDROOT_CONTAINER_PATH, PurePosixPath("/mnt/buildroot"))
 
     def test_toolchain_path(self) -> None:
-        self.assertEqual(TOOLCHAIN_CONTAINER_PATH, Path("/opt/nanvix"))
+        self.assertEqual(TOOLCHAIN_CONTAINER_PATH, PurePosixPath("/opt/nanvix"))
 
     def test_default_image(self) -> None:
         self.assertEqual(DEFAULT_DOCKER_IMAGE, "nanvix/toolchain:latest-minimal")
+
+
+class TestPlatformUidGid(unittest.TestCase):
+    """Tests for platform-aware UID/GID helpers."""
+
+    def test_get_uid_returns_int(self) -> None:
+        """_get_uid() always returns an int matching os.getuid on Linux."""
+        from nanvix_zutil.docker import _get_uid  # pyright: ignore[reportPrivateUsage]
+
+        result = _get_uid()
+        self.assertIsInstance(result, int)
+        if hasattr(os, "getuid"):
+            self.assertEqual(result, os.getuid())
+
+    def test_get_gid_returns_int(self) -> None:
+        """_get_gid() always returns an int matching os.getgid on Linux."""
+        from nanvix_zutil.docker import _get_gid  # pyright: ignore[reportPrivateUsage]
+
+        result = _get_gid()
+        self.assertIsInstance(result, int)
+        if hasattr(os, "getgid"):
+            self.assertEqual(result, os.getgid())
+
+    def test_get_uid_fallback_when_no_getuid(self) -> None:
+        """_get_uid() returns 0 when os.getuid is absent (Windows simulation)."""
+        from nanvix_zutil.docker import _get_uid  # pyright: ignore[reportPrivateUsage]
+
+        saved = getattr(os, "getuid", None)
+        try:
+            if saved is not None:
+                delattr(os, "getuid")
+            self.assertEqual(_get_uid(), 0)
+        finally:
+            if saved is not None:
+                os.getuid = saved  # type: ignore[attr-defined]
+
+    def test_get_gid_fallback_when_no_getgid(self) -> None:
+        """_get_gid() returns 0 when os.getgid is absent (Windows simulation)."""
+        from nanvix_zutil.docker import _get_gid  # pyright: ignore[reportPrivateUsage]
+
+        saved = getattr(os, "getgid", None)
+        try:
+            if saved is not None:
+                delattr(os, "getgid")
+            self.assertEqual(_get_gid(), 0)
+        finally:
+            if saved is not None:
+                os.getgid = saved  # type: ignore[attr-defined]
+
+    def test_docker_config_default_uid_gid(self) -> None:
+        """DockerConfig without explicit uid/gid uses _get_uid/_get_gid."""
+        cfg = DockerConfig(image="test-image")
+        if hasattr(os, "getuid"):
+            self.assertEqual(cfg.uid, os.getuid())
+        if hasattr(os, "getgid"):
+            self.assertEqual(cfg.gid, os.getgid())
 
 
 if __name__ == "__main__":

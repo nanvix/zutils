@@ -322,7 +322,10 @@ class TestZScriptDistclean(unittest.TestCase):
         target = self._nanvix() / "real_sysroot"
         target.mkdir()
         link = self._nanvix() / "sysroot"
-        link.symlink_to(target)
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlinks not supported on this platform")
         self._make_script().distclean()
         self.assertFalse(link.exists())
 
