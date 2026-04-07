@@ -7,7 +7,8 @@
 
 set -euo pipefail
 
-ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-0.7.1}"
+PINNED_VERSION="{{ZUTIL_VERSION}}"
+ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-$PINNED_VERSION}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 VENV="$REPO_ROOT/.nanvix/venv"
 
@@ -53,6 +54,11 @@ if [ ! -d "$VENV" ] && [ -z "$ZUTIL_GLOBAL_VERSION" ]; then
     bootstrap
     BIN="$VENV_BIN"
 elif [ -x "$VENV_BIN" ]; then
+    VENV_VERSION="$("$VENV_BIN" --version 2>/dev/null || true)"
+    if [ "$VENV_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
+        echo "Warning: venv nanvix-zutil version mismatch. Expected ${ZUTIL_VERSION}, found ${VENV_VERSION}. Re-bootstrapping..." >&2
+        bootstrap
+    fi
     BIN="$VENV_BIN"
 elif [ -d "$VENV" ] && ! command -v nanvix-zutil &>/dev/null; then
     echo "Warning: incomplete venv detected (binary missing). Re-running bootstrap..." >&2
