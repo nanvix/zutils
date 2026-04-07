@@ -398,6 +398,20 @@ class TestPlatformUidGid(unittest.TestCase):
             if saved is not None:
                 os.getgid = saved  # type: ignore[attr-defined]
 
+    def test_uid_defaults_to_process_uid_on_unix(self) -> None:
+        """On Unix, DockerConfig.uid defaults to os.getuid()."""
+        if not hasattr(os, "getuid"):
+            self.skipTest("os.getuid not available on this platform")
+        cfg = DockerConfig(image="test-image")
+        self.assertEqual(cfg.uid, os.getuid())
+
+    def test_gid_defaults_to_process_gid_on_unix(self) -> None:
+        """On Unix, DockerConfig.gid defaults to os.getgid()."""
+        if not hasattr(os, "getgid"):
+            self.skipTest("os.getgid not available on this platform")
+        cfg = DockerConfig(image="test-image")
+        self.assertEqual(cfg.gid, os.getgid())
+
 
 if __name__ == "__main__":
     unittest.main()
