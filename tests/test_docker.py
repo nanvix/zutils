@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
@@ -354,6 +355,48 @@ class TestWellKnownPaths(unittest.TestCase):
 
     def test_default_image(self) -> None:
         self.assertEqual(DEFAULT_DOCKER_IMAGE, "nanvix/toolchain:latest-minimal")
+
+
+class TestPlatformUidGid(unittest.TestCase):
+    """Tests for platform-aware UID/GID helpers."""
+
+    def test_get_uid_returns_int(self) -> None:
+        """_get_uid() always returns an int."""
+        from nanvix_zutil.docker import _get_uid  # pyright: ignore[reportPrivateUsage]
+
+        self.assertIsInstance(_get_uid(), int)
+
+    def test_get_gid_returns_int(self) -> None:
+        """_get_gid() always returns an int."""
+        from nanvix_zutil.docker import _get_gid  # pyright: ignore[reportPrivateUsage]
+
+        self.assertIsInstance(_get_gid(), int)
+
+    def test_get_uid_fallback_when_no_getuid(self) -> None:
+        """_get_uid() returns 0 when os.getuid is absent (Windows simulation)."""
+        from nanvix_zutil.docker import _get_uid  # pyright: ignore[reportPrivateUsage]
+
+        saved = getattr(os, "getuid", None)
+        try:
+            if saved is not None:
+                delattr(os, "getuid")
+            self.assertEqual(_get_uid(), 0)
+        finally:
+            if saved is not None:
+                os.getuid = saved  # type: ignore[attr-defined]
+
+    def test_get_gid_fallback_when_no_getgid(self) -> None:
+        """_get_gid() returns 0 when os.getgid is absent (Windows simulation)."""
+        from nanvix_zutil.docker import _get_gid  # pyright: ignore[reportPrivateUsage]
+
+        saved = getattr(os, "getgid", None)
+        try:
+            if saved is not None:
+                delattr(os, "getgid")
+            self.assertEqual(_get_gid(), 0)
+        finally:
+            if saved is not None:
+                os.getgid = saved  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

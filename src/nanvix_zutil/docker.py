@@ -46,6 +46,21 @@ DEFAULT_DOCKER_IMAGE: str = "nanvix/toolchain:latest-minimal"
 
 
 # ---------------------------------------------------------------------------
+# Platform helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_uid() -> int:
+    """Return the current user ID, or ``0`` on platforms without ``os.getuid``."""
+    return os.getuid() if hasattr(os, "getuid") else 0
+
+
+def _get_gid() -> int:
+    """Return the current group ID, or ``0`` on platforms without ``os.getgid``."""
+    return os.getgid() if hasattr(os, "getgid") else 0
+
+
+# ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
@@ -82,8 +97,10 @@ class DockerConfig:
     Attributes:
         image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
         mounts: Ordered list of volume mounts.
-        uid: User ID passed to ``--user``.  Defaults to the current process UID.
-        gid: Group ID passed to ``--user``.  Defaults to the current process GID.
+        uid: User ID passed to ``--user``.  Defaults to the current process UID,
+            or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
+        gid: Group ID passed to ``--user``.  Defaults to the current process GID,
+            or ``0`` on platforms where ``os.getgid`` is unavailable (e.g. Windows).
         workdir: Container working directory for standard (non-KVM) runs.
             Defaults to :data:`WORKSPACE_CONTAINER_PATH`.
         extra_env: Additional ``-e KEY=VALUE`` pairs forwarded to the container.
@@ -95,11 +112,11 @@ class DockerConfig:
     mounts: list[Mount] = field(default_factory=list)
     """Ordered list of volume mounts."""
 
-    uid: int = field(default_factory=os.getuid)
-    """User ID passed to ``--user`` (defaults to current process UID)."""
+    uid: int = field(default_factory=_get_uid)
+    """User ID passed to ``--user`` (defaults to current process UID, or 0 on Windows)."""
 
-    gid: int = field(default_factory=os.getgid)
-    """Group ID passed to ``--user`` (defaults to current process GID)."""
+    gid: int = field(default_factory=_get_gid)
+    """Group ID passed to ``--user`` (defaults to current process GID, or 0 on Windows)."""
 
     workdir: Path = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
     """Container working directory for standard runs."""
