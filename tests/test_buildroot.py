@@ -14,6 +14,7 @@ import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
+    KNOWN_DEPLOYMENT_MODES,
     Ref,
     RefKind,
     extract_nanvix_version,
@@ -406,6 +407,240 @@ class TestParseSemverTuple(unittest.TestCase):
 
     def test_ordering(self) -> None:
         self.assertLess(parse_semver_tuple("0.12.291"), parse_semver_tuple("0.12.337"))
+
+
+class TestKnownDeploymentModes(unittest.TestCase):
+    """Tests for the KNOWN_DEPLOYMENT_MODES constant."""
+
+    def test_is_tuple(self) -> None:
+        self.assertIsInstance(KNOWN_DEPLOYMENT_MODES, tuple)
+
+    def test_contains_expected_modes(self) -> None:
+        self.assertIn("standalone", KNOWN_DEPLOYMENT_MODES)
+        self.assertIn("single-process", KNOWN_DEPLOYMENT_MODES)
+        self.assertIn("multi-process", KNOWN_DEPLOYMENT_MODES)
+
+    def test_order_matches_schema(self) -> None:
+        self.assertEqual(
+            KNOWN_DEPLOYMENT_MODES,
+            ("standalone", "single-process", "multi-process"),
+        )
+
+
+class TestInstallDepFallbackModes(unittest.TestCase):
+    """Buildroot.install_dep with fallback_modes=True."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def _setup_buildroot(self) -> Buildroot:
+        dest = Path(self._tmpdir.name) / "br"
+        return Buildroot.create(dest=dest)
+
+    def _make_archive(self) -> bytes:
+        return _make_tar_bz2(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+
+    def test_fallback_to_alternate_mode(self) -> None:
+        """When primary mode asset is missing, try alternate modes."""
+        br = self._setup_buildroot()
+        archive = self._make_archive()
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        call_count = 0
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path | None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Primary fails.
+                return None
+            # First fallback succeeds.
+            return archive_path
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            br.install_dep(
+                dep,
+                deployment_mode="multi-process",
+                fallback_modes=True,
+            )
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        # 1 primary + 1 fallback = 2
+        self.assertEqual(call_count, 2)
+
+    def test_no_fallback_when_disabled(self) -> None:
+        """When fallback_modes=False (default), don't try alternates."""
+        br = self._setup_buildroot()
+        archive = self._make_archive()
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+
+    def test_fallback_skips_requested_mode(self) -> None:
+        """Don't retry the same mode that already failed."""
+        br = self._setup_buildroot()
+        archive = self._make_archive()
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        tried_modes: list[str] = []
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path | None:
+            # Extract mode from asset name pattern.
+            for mode in KNOWN_DEPLOYMENT_MODES:
+                if mode in asset_name:
+                    tried_modes.append(mode)
+                    break
+            if len(tried_modes) <= 1:
+                return None  # Primary fails.
+            return archive_path  # Fallback succeeds.
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            br.install_dep(
+                dep,
+                deployment_mode="standalone",
+                fallback_modes=True,
+            )
+
+        # "standalone" should appear only once (the primary attempt), not again.
+        self.assertEqual(tried_modes.count("standalone"), 1)
+
+    def test_fallback_fatal_when_all_modes_fail(self) -> None:
+        """Fatal error if no mode produces an asset."""
+        br = self._setup_buildroot()
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path | None:
+            return None  # All modes fail.
+
+        with (
+            patch(
+                "nanvix_zutil.buildroot.github.download_release_asset",
+                side_effect=fake_download,
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            br.install_dep(dep, fallback_modes=True)
+
+        self.assertEqual(ctx.exception.code, 3)
+
+    def test_pre_resolved_release_passed_through(self) -> None:
+        """When _release is provided, it's forwarded to download_release_asset."""
+        br = self._setup_buildroot()
+        archive = self._make_archive()
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        fake_release: dict[str, object] = {"id": 42, "tag_name": "v1.0.0"}
+        captured_releases: list[dict[str, object] | None] = []
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path:
+            captured_releases.append(_release)
+            return archive_path
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            br.install_dep(dep, _release=fake_release)
+
+        self.assertEqual(captured_releases[0], fake_release)
 
 
 if __name__ == "__main__":
