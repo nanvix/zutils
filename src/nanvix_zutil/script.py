@@ -49,9 +49,9 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
-    is_windows,
     docker_available,
     image_exists,
+    is_windows,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
@@ -387,6 +387,7 @@ class ZScript:
             "env.json",
             "venv",
             "__pycache__",
+            "_builds",
         ):
             path = self.nanvix_dir / artifact
             if not path.exists() and not path.is_symlink():
