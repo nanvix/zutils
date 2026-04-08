@@ -33,7 +33,13 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import log
-from nanvix_zutil.buildroot import Buildroot, Dependency, suffix_dep
+from nanvix_zutil.buildroot import (
+    Buildroot,
+    Dependency,
+    extract_nanvix_version,
+    extract_nanvix_version_base,
+    suffix_dep,
+)
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
@@ -52,6 +58,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_MISSING_DEP,
     EXIT_TEST_FAILURE,
 )
+from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.matrix import (
@@ -314,12 +321,42 @@ class ZScript:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
             for dep in deps:
                 try:
+                    # Resolve release with version fallback for nanvix-suffixed
+                    # deps, then pass the pre-resolved release to install_dep()
+                    # to avoid redundant GitHub API calls.
+                    release: dict[str, object] | None = None
+                    base_version = extract_nanvix_version_base(str(dep.ref.value))
+                    if base_version is not None:
+                        release, fb_ver = resolve_release_with_fallback(
+                            repo=dep.repo,
+                            version_specifier=str(dep.ref.value),
+                            base_version=base_version,
+                            gh_token=self.config.get(CFG_GH_TOKEN),
+                        )
+                        # Log when version fallback was used.
+                        # fb_ver is None when the exact tag was found;
+                        # non-None means a fallback release was used.
+                        if fb_ver is not None:
+                            requested_ver = extract_nanvix_version(str(dep.ref.value))
+                            log.info(
+                                f"Version fallback for {dep.name}: "
+                                f"requested nanvix-{requested_ver}, "
+                                f"resolved nanvix-{fb_ver}"
+                            )
+                    else:
+                        release = resolve_release(
+                            repo=dep.repo,
+                            version_specifier=dep.ref.value,
+                            gh_token=self.config.get(CFG_GH_TOKEN),
+                        )
+
                     self.buildroot.install_dep(
                         dep=dep,
                         machine=self.config.machine,
                         deployment_mode=self.config.deployment_mode,
                         memory_size=self.config.memory_size,
                         gh_token=self.config.get(CFG_GH_TOKEN),
+                        _release=release,
                     )
                 except SystemExit:
                     log.note(

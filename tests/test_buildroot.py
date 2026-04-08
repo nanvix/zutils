@@ -276,12 +276,18 @@ class TestBuildrootInstallDep(unittest.TestCase):
             asset_name: str,
             dest: Path,
             gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
         ) -> Path:
             captured.append(asset_name)
             return archive_path
 
         with patch(
-            "nanvix_zutil.github.download_release_asset", side_effect=fake_download
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
         ):
             br.install_dep(
                 dep,
@@ -406,6 +412,69 @@ class TestParseSemverTuple(unittest.TestCase):
 
     def test_ordering(self) -> None:
         self.assertLess(parse_semver_tuple("0.12.291"), parse_semver_tuple("0.12.337"))
+
+
+class TestInstallDepPreResolvedRelease(unittest.TestCase):
+    """Buildroot.install_dep with _release pre-resolved."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def _setup_buildroot(self) -> Buildroot:
+        dest = Path(self._tmpdir.name) / "br"
+        return Buildroot.create(dest=dest)
+
+    def _make_archive(self) -> bytes:
+        return _make_tar_bz2(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+
+    def test_pre_resolved_release_passed_through(self) -> None:
+        """When _release is provided, it's forwarded to download_release_asset."""
+        br = self._setup_buildroot()
+        archive = self._make_archive()
+        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+        fake_release: dict[str, object] = {"id": 42, "tag_name": "v1.0.0"}
+        captured_releases: list[dict[str, object] | None] = []
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path:
+            captured_releases.append(_release)
+            return archive_path
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            br.install_dep(dep, _release=fake_release)
+
+        self.assertEqual(captured_releases[0], fake_release)
 
 
 if __name__ == "__main__":
