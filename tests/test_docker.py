@@ -20,6 +20,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
+    is_windows,
     docker_available,
     image_exists,
 )
@@ -503,6 +504,146 @@ class TestPlatformUidGid(unittest.TestCase):
             self.assertEqual(cfg.uid, os.getuid())
         if hasattr(os, "getgid"):
             self.assertEqual(cfg.gid, os.getgid())
+
+
+class TestIsWindows(unittest.TestCase):
+    """Tests for is_windows() helper."""
+
+    def test_returns_bool(self) -> None:
+        self.assertIsInstance(is_windows(), bool)
+
+    def test_false_on_linux(self) -> None:
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            self.assertFalse(is_windows())
+
+    def test_true_on_win32(self) -> None:
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "win32"
+            self.assertTrue(is_windows())
+
+
+class TestDockerConfigWindowsFields(unittest.TestCase):
+    """DockerConfig Windows-specific field defaults."""
+
+    def test_crlf_files_default_empty(self) -> None:
+        cfg = DockerConfig(image="test-image")
+        self.assertEqual(cfg.crlf_files, [])
+
+    def test_output_files_default_empty(self) -> None:
+        cfg = DockerConfig(image="test-image")
+        self.assertEqual(cfg.output_files, [])
+
+    def test_tar_excludes_has_defaults(self) -> None:
+        cfg = DockerConfig(image="test-image")
+        self.assertIn(".git", cfg.tar_excludes)
+        self.assertIn(".nanvix/venv", cfg.tar_excludes)
+
+    def test_container_build_dir_default(self) -> None:
+        cfg = DockerConfig(image="test-image")
+        self.assertEqual(cfg.container_build_dir, "/tmp/build")
+
+
+class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
+    """Tests for DockerConfig.build_windows_run_cmd()."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._workspace = Path(self._tmpdir.name) / "workspace"
+        self._workspace.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_config(
+        self,
+        crlf_files: list[str] | None = None,
+        output_files: list[str] | None = None,
+    ) -> DockerConfig:
+        return DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=self._workspace,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                    readonly=False,
+                ),
+            ],
+            uid=1000,
+            gid=1000,
+            crlf_files=crlf_files or [],
+            output_files=output_files or [],
+        )
+
+    def test_tar_copy_command_structure(self) -> None:
+        """Windows run command uses tar instead of bind mounts."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
+        # Should use sh -c wrapping.
+        self.assertIn("sh", cmd)
+        self.assertIn("-c", cmd)
+
+    def test_contains_tar_in_shell_script(self) -> None:
+        """The shell script should include tar commands."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        shell_script = cmd[-1]  # Last arg after sh -c
+        self.assertIn("tar -cf", shell_script)
+        self.assertIn("tar -xf", shell_script)
+
+    def test_crlf_normalization_included(self) -> None:
+        """CRLF files are normalized in the shell script."""
+        cfg = self._make_config(crlf_files=["Makefile", "configure"])
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        shell_script = cmd[-1]
+        self.assertIn("Makefile", shell_script)
+        self.assertIn("configure", shell_script)
+        self.assertIn("sed", shell_script)
+
+    def test_output_files_copied_back(self) -> None:
+        """Output files are copied from container to host."""
+        cfg = self._make_config(output_files=["build/output.elf", "result.bin"])
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        shell_script = cmd[-1]
+        self.assertIn("build/output.elf", shell_script)
+        self.assertIn("result.bin", shell_script)
+        self.assertIn("cp -f", shell_script)
+        self.assertIn("mkdir -p", shell_script)
+
+    def test_inner_command_in_script(self) -> None:
+        """The inner command appears in the shell script."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("make", "-j4", "all")
+        shell_script = cmd[-1]
+        self.assertIn("make -j4 all", shell_script)
+
+    def test_workdir_is_build_dir(self) -> None:
+        """Working directory is set to container_build_dir."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("echo")
+        w_idx = cmd.index("-w")
+        self.assertEqual(cmd[w_idx + 1], "/tmp/build")
+
+    def test_tar_excludes_in_command(self) -> None:
+        """Tar excludes appear in the shell script."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("echo")
+        shell_script = cmd[-1]
+        self.assertIn("--exclude=.git", shell_script)
+
+    def test_no_user_flag(self) -> None:
+        """Windows run cmd does not include --user flag."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("echo")
+        self.assertNotIn("--user", cmd)
+
+    def test_extra_env_forwarded(self) -> None:
+        """Extra env vars are forwarded to the container."""
+        cfg = self._make_config()
+        cfg.extra_env["MY_VAR"] = "hello"
+        cmd = cfg.build_windows_run_cmd("echo")
+        self.assertIn("MY_VAR=hello", cmd)
 
 
 if __name__ == "__main__":

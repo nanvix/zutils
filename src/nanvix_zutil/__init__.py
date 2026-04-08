@@ -42,6 +42,7 @@ Public re-exports:
 - :func:`~nanvix_zutil.matrix.expand_matrix` — expand a build matrix to all combos
 - :func:`~nanvix_zutil.matrix.filter_matrix` — filter combos by mode
 - :func:`~nanvix_zutil.matrix.run_all_builds` — run a hook across all combos in parallel
+- :func:`~nanvix_zutil.docker.is_windows` — Windows platform detection helper
 """
 
 from nanvix_zutil.buildroot import (
@@ -71,6 +72,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
+    is_windows,
     docker_available,
     image_exists,
 )
@@ -145,6 +147,7 @@ __all__ = [
     "WORKSPACE_CONTAINER_PATH",
     "Sysroot",
     "ZScript",
+    "is_windows",
     "docker_available",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
