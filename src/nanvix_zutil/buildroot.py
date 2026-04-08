@@ -251,6 +251,8 @@ class Buildroot:
         deployment_mode: str = DEFAULT_DEPLOYMENT_MODE,
         memory_size: str = DEFAULT_MEMORY_SIZE,
         gh_token: str | None = None,
+        *,
+        _release: dict[str, object] | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.
 
@@ -264,6 +266,10 @@ class Buildroot:
             deployment_mode: Deployment mode string.
             memory_size: Memory size string.
             gh_token: Optional GitHub token.
+            _release: Pre-resolved release metadata dictionary.  When
+                provided, the release resolution step is skipped (avoids
+                redundant GitHub API calls when the caller has already
+                resolved the release).
         """
         asset_name = dep.artifact_pattern.format(
             name=dep.name,
@@ -280,6 +286,7 @@ class Buildroot:
             asset_name=asset_name,
             dest=cache_dir,
             gh_token=gh_token,
+            _release=_release,
         )
 
         log.info(f"Extracting {asset_name}...")

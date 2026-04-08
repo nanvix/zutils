@@ -130,12 +130,17 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.1.0"}
 
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch(
                 "nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot
             ) as mock_create,
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.1.0"),
+            ),
         ):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
@@ -195,10 +200,15 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
         fake_sysroot.tag = "v0.12.277"
 
         fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.3.1-nanvix-0.12.277"}
 
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.12.277"),
+            ),
         ):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
