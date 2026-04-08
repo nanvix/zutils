@@ -113,8 +113,8 @@ class DockerConfig:
             or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
         gid: Group ID passed to ``--user``.  Defaults to the current process GID,
             or ``0`` on platforms where ``os.getgid`` is unavailable (e.g. Windows).
-        workdir: Container working directory for standard (non-KVM) runs.
-            Defaults to :data:`WORKSPACE_CONTAINER_PATH`.
+        workdir: Container working directory (used by both standard and KVM
+            runs).  Defaults to :data:`WORKSPACE_CONTAINER_PATH`.
         extra_env: Additional ``-e KEY=VALUE`` pairs forwarded to the container.
     """
 
@@ -131,7 +131,7 @@ class DockerConfig:
     """Group ID passed to ``--user`` (defaults to current process GID, or 0 on Windows)."""
 
     workdir: PurePosixPath = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
-    """Container working directory for standard runs."""
+    """Container working directory (used by both standard and KVM runs)."""
 
     extra_env: dict[str, str] = field(default_factory=dict)
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
@@ -237,8 +237,6 @@ class DockerConfig:
         Differences from :meth:`build_run_cmd`:
 
         * Adds ``--device /dev/kvm`` and ``--group-add <kvm-gid>``.
-        * Sets ``--workdir`` to :data:`SYSROOT_CONTAINER_PATH` so that
-          ``nanvixd.elf`` can resolve relative paths correctly.
         * Forces the sysroot mount to be writable (``nanvixd.elf`` needs
           write access); other mounts respect :attr:`Mount.readonly`.
         * Adds ``USER`` to the container environment.
@@ -271,7 +269,7 @@ class DockerConfig:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
 
-        docker_cmd += ["-w", str(SYSROOT_CONTAINER_PATH)]
+        docker_cmd += ["-w", str(self.workdir)]
         docker_cmd += ["-e", "HOME=/tmp"]
         user = os.environ.get("USER") or os.environ.get("USERNAME") or "nanvix"
         docker_cmd += ["-e", f"USER={user}"]
