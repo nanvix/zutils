@@ -56,6 +56,21 @@ class BuildMatrix:
 
 
 @dataclass
+class BuildMatrix:
+    """Parsed contents of the ``[builds]`` section.
+
+    Attributes:
+        dimensions: Mapping of dimension name to list of values
+            (e.g. ``{"platforms": ["hyperlight", "microvm"]}``.
+        exclude: List of dictionaries describing combinations to exclude
+            from the matrix.
+    """
+
+    dimensions: dict[str, list[str]] = field(default_factory=dict)
+    exclude: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass
 class Manifest:
     """Parsed contents of a ``nanvix.toml`` manifest file.
 
@@ -66,6 +81,7 @@ class Manifest:
         builds: Build matrix from the required ``[builds]`` section.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
+        builds: Build matrix configuration from the ``[builds]`` section.
     """
 
     name: str
@@ -74,6 +90,7 @@ class Manifest:
     builds: BuildMatrix
     dependencies: list[Dependency] = field(default_factory=list)
     system_dependencies: list[Dependency] = field(default_factory=list)
+    builds: BuildMatrix = field(default_factory=BuildMatrix)
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +401,68 @@ def _parse_dependencies(
     return deps
 
 
+def _parse_builds_section(
+    raw: dict[str, object],
+    path: Path,
+) -> BuildMatrix:
+    """Parse the ``[builds]`` section of a manifest.
+
+    Expects an optional ``[builds.matrix]`` table with string-list
+    dimensions (``platforms``, ``modes``, ``memory``) and an optional
+    ``[[builds.exclude]]`` array of tables.
+
+    Args:
+        raw: The raw TOML table for the ``[builds]`` section.
+        path: Manifest file path (for error messages).
+
+    Returns:
+        A :class:`BuildMatrix` instance.
+    """
+    matrix_raw: object = raw.get("matrix", {})
+    if not isinstance(matrix_raw, dict):
+        log.fatal(
+            f"{path}: [builds.matrix] must be a TOML table",
+            code=EXIT_INVALID_ARGS,
+        )
+
+    dimensions: dict[str, list[str]] = {}
+    for key, value in cast("dict[str, object]", matrix_raw).items():
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) for item in cast("list[object]", value)
+        ):
+            log.fatal(
+                f"{path}: [builds.matrix].{key} must be an array of strings",
+                code=EXIT_INVALID_ARGS,
+            )
+        dimensions[key] = cast("list[str]", value)
+
+    exclude_raw: object = raw.get("exclude", [])
+    if not isinstance(exclude_raw, list):
+        log.fatal(
+            f"{path}: [[builds.exclude]] must be an array of tables",
+            code=EXIT_INVALID_ARGS,
+        )
+
+    exclude: list[dict[str, str]] = []
+    for entry in cast("list[object]", exclude_raw):
+        if not isinstance(entry, dict):
+            log.fatal(
+                f"{path}: each [[builds.exclude]] entry must be a table"
+                " of string key-value pairs",
+                code=EXIT_INVALID_ARGS,
+            )
+        typed_entry = cast("dict[str, object]", entry)
+        if not all(isinstance(val, str) for val in typed_entry.values()):
+            log.fatal(
+                f"{path}: each [[builds.exclude]] entry must be a table"
+                " of string key-value pairs",
+                code=EXIT_INVALID_ARGS,
+            )
+        exclude.append(cast("dict[str, str]", entry))
+
+    return BuildMatrix(dimensions=dimensions, exclude=exclude)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -520,6 +599,15 @@ def load_manifest(path: Path) -> Manifest:
                     value=f"{dep.ref.value}-nanvix-{version_suffix}",
                 )
 
+    # --- [builds] (optional) ---
+    builds_raw: object = data.get("builds", {})
+    if not isinstance(builds_raw, dict):
+        log.fatal(
+            f"{path}: [builds] must be a TOML table",
+            code=EXIT_INVALID_ARGS,
+        )
+    builds = _parse_builds_section(cast("dict[str, object]", builds_raw), path)
+
     return Manifest(
         name=pkg_name,
         version=pkg_version,
@@ -527,4 +615,5 @@ def load_manifest(path: Path) -> Manifest:
         builds=builds,
         dependencies=dependencies,
         system_dependencies=system_dependencies,
+        builds=builds,
     )
