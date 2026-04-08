@@ -130,12 +130,17 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.1.0"}
 
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch(
                 "nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot
             ) as mock_create,
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.1.0"),
+            ),
         ):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
@@ -195,10 +200,15 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
         fake_sysroot.tag = "v0.12.277"
 
         fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.3.1-nanvix-0.12.277"}
 
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.12.277"),
+            ),
         ):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
@@ -421,7 +431,7 @@ class TestZScriptRun(unittest.TestCase):
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.docker._is_windows", return_value=True)
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_kvm_fatal_on_windows(self, _mock: object) -> None:
         """run() with kvm=True exits fatally on Windows."""
         script = ZScript(Path(self._tmpdir.name))
@@ -439,7 +449,7 @@ class TestZScriptRun(unittest.TestCase):
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.docker._is_windows", return_value=True)
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_uses_windows_cmd_when_configured(self, _mock: object) -> None:
         """run() delegates to build_windows_run_cmd on Windows with crlf/output files."""
         script = ZScript(Path(self._tmpdir.name))
@@ -721,7 +731,7 @@ class TestZScriptCleanWindows(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
 
-    @patch("nanvix_zutil.docker._is_windows", return_value=True)
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_removes_configured_artifact(self, _mock: object) -> None:
         """clean() removes .nanvix-configured on Windows."""
         script = ZScript(Path(self._tmpdir.name))
@@ -730,13 +740,13 @@ class TestZScriptCleanWindows(unittest.TestCase):
         script.clean()
         self.assertFalse(artifact.exists())
 
-    @patch("nanvix_zutil.docker._is_windows", return_value=True)
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_noop_when_no_artifacts(self, _mock: object) -> None:
         """clean() does not raise when no artifacts exist on Windows."""
         script = ZScript(Path(self._tmpdir.name))
         script.clean()  # Should not raise.
 
-    @patch("nanvix_zutil.docker._is_windows", return_value=False)
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
     def test_clean_noop_on_linux(self, _mock: object) -> None:
         """clean() is a no-op on Linux (base class)."""
         script = ZScript(Path(self._tmpdir.name))

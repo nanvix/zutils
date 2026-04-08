@@ -20,7 +20,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
-    _is_windows,
+    is_windows,
     docker_available,
     image_exists,
 )
@@ -507,20 +507,20 @@ class TestPlatformUidGid(unittest.TestCase):
 
 
 class TestIsWindows(unittest.TestCase):
-    """Tests for _is_windows() helper."""
+    """Tests for is_windows() helper."""
 
     def test_returns_bool(self) -> None:
-        self.assertIsInstance(_is_windows(), bool)
+        self.assertIsInstance(is_windows(), bool)
 
     def test_false_on_linux(self) -> None:
         with patch("nanvix_zutil.docker.sys") as mock_sys:
             mock_sys.platform = "linux"
-            self.assertFalse(_is_windows())
+            self.assertFalse(is_windows())
 
     def test_true_on_win32(self) -> None:
         with patch("nanvix_zutil.docker.sys") as mock_sys:
             mock_sys.platform = "win32"
-            self.assertTrue(_is_windows())
+            self.assertTrue(is_windows())
 
 
 class TestDockerConfigWindowsFields(unittest.TestCase):

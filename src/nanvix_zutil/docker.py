@@ -62,7 +62,7 @@ def _get_gid() -> int:
     return os.getgid() if hasattr(os, "getgid") else 0
 
 
-def _is_windows() -> bool:
+def is_windows() -> bool:
     """Return ``True`` when running on Windows.
 
     Extracted to a named function so tests can mock it without

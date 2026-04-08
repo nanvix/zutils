@@ -277,12 +277,18 @@ class TestBuildrootInstallDep(unittest.TestCase):
             asset_name: str,
             dest: Path,
             gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
         ) -> Path:
             captured.append(asset_name)
             return archive_path
 
         with patch(
-            "nanvix_zutil.github.download_release_asset", side_effect=fake_download
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
         ):
             br.install_dep(
                 dep,

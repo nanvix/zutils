@@ -48,7 +48,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
-    _is_windows,
+    is_windows,
     docker_available,
     image_exists,
 )
@@ -455,7 +455,7 @@ class ZScript:
         invoking the build system (which would require Docker).  Override
         to customise the files cleaned.
         """
-        if _is_windows():
+        if is_windows():
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.
             for name in (".nanvix-configured",):
@@ -514,14 +514,14 @@ class ZScript:
                 merged = {**cfg.extra_env, **combo_and_explicit}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
             if kvm:
-                if _is_windows():
+                if is_windows():
                     log.fatal(
                         "KVM mode is not available on Windows",
                         code=EXIT_BUILD_FAILURE,
                         hint="KVM requires a Linux host with /dev/kvm access.",
                     )
                 cmd = cfg.build_kvm_run_cmd(*args)
-            elif _is_windows() and (cfg.crlf_files or cfg.output_files):
+            elif is_windows() and (cfg.crlf_files or cfg.output_files):
                 cmd = cfg.build_windows_run_cmd(*args)
             else:
                 cmd = cfg.build_run_cmd(*args)
