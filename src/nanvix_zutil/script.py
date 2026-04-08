@@ -36,6 +36,7 @@ from nanvix_zutil import log
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
+    extract_nanvix_version,
     extract_nanvix_version_base,
     suffix_dep,
 )
@@ -327,12 +328,20 @@ class ZScript:
                     release: dict[str, object] | None = None
                     base_version = extract_nanvix_version_base(str(dep.ref.value))
                     if base_version is not None:
-                        release, _fb_ver = resolve_release_with_fallback(
+                        release, fb_ver = resolve_release_with_fallback(
                             repo=dep.repo,
                             version_specifier=str(dep.ref.value),
                             base_version=base_version,
                             gh_token=self.config.get(CFG_GH_TOKEN),
                         )
+                        # Log when version fallback was used.
+                        requested_ver = extract_nanvix_version(str(dep.ref.value))
+                        if fb_ver != requested_ver:
+                            log.info(
+                                f"Version fallback for {dep.name}: "
+                                f"requested nanvix-{requested_ver}, "
+                                f"resolved nanvix-{fb_ver}"
+                            )
                     else:
                         release = resolve_release(
                             repo=dep.repo,

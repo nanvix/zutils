@@ -19,6 +19,7 @@ Typical usage (via :class:`~nanvix_zutil.ZScript` — not used directly)::
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -285,14 +286,17 @@ class DockerConfig:
     def build_windows_run_cmd(self, *cmd: str) -> list[str]:
         """Build a ``docker run`` command using tar-based source copying.
 
-        Instead of bind-mounting the workspace (which suffers severe I/O
-        penalties on Windows Docker Desktop via VirtioFS/9p), this method:
+        Instead of building directly from the mounted workspace (which suffers
+        severe I/O penalties on Windows Docker Desktop via VirtioFS/9p), this
+        method:
 
-        1. Mounts the host workspace read-only at a staging path.
-        2. Copies sources via ``tar`` into a container-local build dir.
+        1. Uses the configured container mounts as provided, typically including
+           the host workspace at ``/mnt/workspace``.
+        2. Copies sources via ``tar`` from the mounted workspace into a
+           container-local build dir.
         3. Normalizes CRLF line endings in configured files.
-        4. Runs the inner command.
-        5. Copies output files back to the host workspace.
+        4. Runs the inner command from the container-local build dir.
+        5. Copies configured output files back to the mounted workspace.
 
         Args:
             *cmd: Inner command and arguments to wrap.
@@ -301,20 +305,21 @@ class DockerConfig:
             Full ``docker run …`` argument list ready for
             :func:`subprocess.run`.
         """
-        ws_mount = "/mnt/workspace"
+        ws_mount = str(WORKSPACE_CONTAINER_PATH)
         build_dir = self.container_build_dir
 
         # Build tar exclude args.
-        excludes = " ".join(f"--exclude={e}" for e in self.tar_excludes)
+        excludes = " ".join(f"--exclude={shlex.quote(e)}" for e in self.tar_excludes)
 
         # CRLF normalization script.
         crlf_script = ""
         if self.crlf_files:
             crlf_cmds: list[str] = []
             for f in self.crlf_files:
+                qf = shlex.quote(f)
                 crlf_cmds.append(
-                    f'[ -f "{f}" ] && sed "s/\\r$//" "{f}" > /tmp/_crlf.tmp '
-                    f'&& cat /tmp/_crlf.tmp > "{f}"'
+                    f'[ -f {qf} ] && sed "s/\\r$//" {qf} > /tmp/_crlf.tmp '
+                    f"&& cat /tmp/_crlf.tmp > {qf}"
                 )
             crlf_script = " && ".join(crlf_cmds) + " && "
 
@@ -322,12 +327,12 @@ class DockerConfig:
         output_script = ""
         if self.output_files:
             copy_cmds = [
-                f"[ -f {build_dir}/{f} ] && cp -f {build_dir}/{f} {ws_mount}/{f}"
+                f"[ -f {shlex.quote(f'{build_dir}/{f}')} ] && cp -f {shlex.quote(f'{build_dir}/{f}')} {shlex.quote(f'{ws_mount}/{f}')}"
                 for f in self.output_files
             ]
             output_script = "; " + "; ".join(copy_cmds)
 
-        inner_cmd = " ".join(cmd)
+        inner_cmd = " ".join(shlex.quote(c) for c in cmd)
         shell_script = (
             f"mkdir -p {build_dir} && "
             f"tar -cf - -C {ws_mount} {excludes} . "
