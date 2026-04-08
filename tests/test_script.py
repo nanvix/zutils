@@ -431,6 +431,58 @@ class TestZScriptRun(unittest.TestCase):
         finally:
             log_mod.set_json_mode(False)
 
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_run_kvm_fatal_on_windows(self, _mock: object) -> None:
+        """run() with kvm=True exits fatally on Windows."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="test-image",
+            mounts=[],
+            uid=0,
+            gid=0,
+        )
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                script.run("echo", kvm=True)
+            self.assertEqual(ctx.exception.code, 5)
+        finally:
+            log_mod.set_json_mode(False)
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_run_uses_windows_cmd_when_configured(self, _mock: object) -> None:
+        """run() delegates to build_windows_run_cmd on Windows with crlf/output files."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+            crlf_files=["Makefile"],
+            output_files=["output.elf"],
+        )
+        captured_cmds: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Should use sh -c (Windows tar-copy mode).
+        self.assertIn("sh", cmd)
+        self.assertIn("-c", cmd)
+
 
 class TestZScriptSysrootRequiredFiles(unittest.TestCase):
     """sysroot_required_files() varies by deployment mode."""
@@ -667,6 +719,38 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         # -e MY_VAR=hello must appear in the docker run command
         self.assertIn("-e", cmd)
         self.assertIn("MY_VAR=hello", cmd)
+
+
+class TestZScriptCleanWindows(unittest.TestCase):
+    """ZScript.clean() Windows behavior."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_clean_removes_configured_artifact(self, _mock: object) -> None:
+        """clean() removes .nanvix-configured on Windows."""
+        script = ZScript(Path(self._tmpdir.name))
+        artifact = script.repo_root / ".nanvix-configured"
+        artifact.write_text("marker")
+        script.clean()
+        self.assertFalse(artifact.exists())
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_clean_noop_when_no_artifacts(self, _mock: object) -> None:
+        """clean() does not raise when no artifacts exist on Windows."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.clean()  # Should not raise.
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_clean_noop_on_linux(self, _mock: object) -> None:
+        """clean() is a no-op on Linux (base class)."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.clean()  # Should not raise.
 
 
 if __name__ == "__main__":

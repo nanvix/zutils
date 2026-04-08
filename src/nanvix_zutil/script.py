@@ -49,6 +49,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
+    is_windows,
     docker_available,
     image_exists,
 )
@@ -322,8 +323,8 @@ class ZScript:
             for dep in deps:
                 try:
                     # Resolve release with version fallback for nanvix-suffixed
-                    # deps, then pass the pre-resolved release to install_dep()
-                    # to avoid redundant GitHub API calls.
+                    # deps, then pass the pre-resolved release and enable
+                    # cross-mode asset fallback in install_dep().
                     release: dict[str, object] | None = None
                     base_version = extract_nanvix_version_base(str(dep.ref.value))
                     if base_version is not None:
@@ -460,8 +461,18 @@ class ZScript:
     def clean(self) -> None:
         """Remove build artifacts.
 
-        Override to clean generated files.
+        On Windows, common build artifacts are removed directly without
+        invoking the build system (which would require Docker).  Override
+        to customise the files cleaned.
         """
+        if is_windows():
+            # Common artifacts that consumers may produce.
+            # Subclasses can override to add project-specific files.
+            for name in (".nanvix-configured",):
+                p = self.repo_root / name
+                if p.is_file():
+                    p.unlink()
+                    log.info(f"Removed {name}")
 
     # ------------------------------------------------------------------
     # Subprocess helper
@@ -513,7 +524,15 @@ class ZScript:
                 merged = {**cfg.extra_env, **combo_and_explicit}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
             if kvm:
+                if is_windows():
+                    log.fatal(
+                        "KVM mode is not available on Windows",
+                        code=EXIT_BUILD_FAILURE,
+                        hint="KVM requires a Linux host with /dev/kvm access.",
+                    )
                 cmd = cfg.build_kvm_run_cmd(*args)
+            elif is_windows() and (cfg.crlf_files or cfg.output_files):
+                cmd = cfg.build_windows_run_cmd(*args)
             else:
                 cmd = cfg.build_run_cmd(*args)
             working_dir = self.repo_root
