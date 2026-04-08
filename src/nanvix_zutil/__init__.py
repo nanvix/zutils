@@ -42,11 +42,14 @@ Public re-exports:
 - :func:`~nanvix_zutil.matrix.expand_matrix` — expand a build matrix to all combos
 - :func:`~nanvix_zutil.matrix.filter_matrix` — filter combos by mode
 - :func:`~nanvix_zutil.matrix.run_all_builds` — run a hook across all combos in parallel
+- :data:`~nanvix_zutil.buildroot.KNOWN_DEPLOYMENT_MODES` — canonical deployment modes for fallback
+- :func:`~nanvix_zutil.docker._is_windows` — Windows platform detection helper
 """
 
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
+    KNOWN_DEPLOYMENT_MODES,
     Ref,
     RefKind,
     extract_nanvix_version,
@@ -71,6 +74,7 @@ from nanvix_zutil.docker import (
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
+    _is_windows,
     docker_available,
     image_exists,
 )
@@ -131,6 +135,7 @@ __all__ = [
     "EXIT_NETWORK_ERROR",
     "EXIT_SUCCESS",
     "EXIT_TEST_FAILURE",
+    "KNOWN_DEPLOYMENT_MODES",
     "Lockfile",
     "LockfileMetadata",
     "Manifest",
@@ -145,6 +150,7 @@ __all__ = [
     "WORKSPACE_CONTAINER_PATH",
     "Sysroot",
     "ZScript",
+    "_is_windows",
     "docker_available",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
