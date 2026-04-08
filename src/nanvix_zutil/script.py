@@ -355,7 +355,6 @@ class ZScript:
                         deployment_mode=self.config.deployment_mode,
                         memory_size=self.config.memory_size,
                         gh_token=self.config.get(CFG_GH_TOKEN),
-                        fallback_modes=True,
                         _release=release,
                     )
                 except SystemExit:

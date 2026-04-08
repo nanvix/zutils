@@ -29,14 +29,6 @@ from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 _DEFAULT_BUILDROOT_DIR = Path(".nanvix") / "buildroot"
 
-#: Canonical deployment modes for cross-mode asset fallback.
-#: Order determines fallback priority when the exact mode is not found.
-KNOWN_DEPLOYMENT_MODES: tuple[str, ...] = (
-    "standalone",
-    "single-process",
-    "multi-process",
-)
-
 
 # ---------------------------------------------------------------------------
 # Tarball path helpers
@@ -260,7 +252,6 @@ class Buildroot:
         memory_size: str = DEFAULT_MEMORY_SIZE,
         gh_token: str | None = None,
         *,
-        fallback_modes: bool = False,
         _release: dict[str, object] | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.
@@ -269,18 +260,12 @@ class Buildroot:
         extracted.  Selected ``.a`` and ``.h`` files are copied into
         ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
-        When *fallback_modes* is ``True`` and the primary asset is not
-        found, alternate deployment modes from
-        :data:`KNOWN_DEPLOYMENT_MODES` are tried in order.
-
         Args:
             dep: The :class:`Dependency` descriptor.
             machine: Target machine identifier.
             deployment_mode: Deployment mode string.
             memory_size: Memory size string.
             gh_token: Optional GitHub token.
-            fallback_modes: When ``True``, try alternate deployment modes
-                if the primary asset is missing.
             _release: Pre-resolved release metadata dictionary.  When
                 provided, the release resolution step is skipped (avoids
                 redundant GitHub API calls when the caller has already
@@ -295,60 +280,14 @@ class Buildroot:
 
         cache_dir = self.path.parent / "cache"
 
-        asset_path: Path | None
-        if fallback_modes:
-            asset_path = github.download_release_asset(
-                repo=dep.repo,
-                version_specifier=dep.ref.value,
-                asset_name=asset_name,
-                dest=cache_dir,
-                gh_token=gh_token,
-                _release=_release,
-                allow_missing=True,
-            )
-            if asset_path is None:
-                for mode in KNOWN_DEPLOYMENT_MODES:
-                    if mode == deployment_mode:
-                        continue
-                    fallback_name = dep.artifact_pattern.format(
-                        name=dep.name,
-                        machine=machine,
-                        mode=mode,
-                        mem=memory_size,
-                    )
-                    asset_path = github.download_release_asset(
-                        repo=dep.repo,
-                        version_specifier=dep.ref.value,
-                        asset_name=fallback_name,
-                        dest=cache_dir,
-                        gh_token=gh_token,
-                        _release=_release,
-                        allow_missing=True,
-                    )
-                    if asset_path is not None:
-                        log.info(
-                            f"Using fallback asset {fallback_name} "
-                            f"(mode={mode}) for {dep.name}"
-                        )
-                        asset_name = fallback_name
-                        break
-
-            if asset_path is None:
-                log.fatal(
-                    f"Asset '{asset_name}' not found in release "
-                    f"{dep.repo}@{dep.ref.value} (tried all deployment modes)",
-                    code=EXIT_MISSING_DEP,
-                    hint="Check the release tag and asset name.",
-                )
-        else:
-            asset_path = github.download_release_asset(
-                repo=dep.repo,
-                version_specifier=dep.ref.value,
-                asset_name=asset_name,
-                dest=cache_dir,
-                gh_token=gh_token,
-                _release=_release,
-            )
+        asset_path = github.download_release_asset(
+            repo=dep.repo,
+            version_specifier=dep.ref.value,
+            asset_name=asset_name,
+            dest=cache_dir,
+            gh_token=gh_token,
+            _release=_release,
+        )
 
         log.info(f"Extracting {asset_name}...")
         with tarfile.open(asset_path, "r:bz2") as tf:
