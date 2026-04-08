@@ -44,16 +44,13 @@ def _matrix_to_json(manifest_path: Path) -> dict[str, object]:
         manifest_path: Path to the ``nanvix.toml`` file.
 
     Returns:
-        Dictionary with ``platforms``, ``modes``, ``memory``, and
-        optionally ``exclude`` keys.
+        Dictionary with all dimension keys from ``[builds.matrix]`` and
+        optionally an ``exclude`` key.
     """
     manifest = load_manifest(manifest_path)
     builds = manifest.builds
 
-    result: dict[str, object] = {}
-    result["platforms"] = builds.dimensions.get("platforms", [])
-    result["modes"] = builds.dimensions.get("modes", [])
-    result["memory"] = builds.dimensions.get("memory", [])
+    result: dict[str, object] = dict(builds.dimensions)
     if builds.exclude:
         result["exclude"] = builds.exclude
 
