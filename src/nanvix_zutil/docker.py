@@ -62,6 +62,15 @@ def _get_gid() -> int:
     return os.getgid() if hasattr(os, "getgid") else 0
 
 
+def _is_windows() -> bool:
+    """Return ``True`` when running on Windows.
+
+    Extracted to a named function so tests can mock it without
+    patching ``sys.platform`` globally.
+    """
+    return sys.platform == "win32"
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -125,6 +134,26 @@ class DockerConfig:
 
     extra_env: dict[str, str] = field(default_factory=dict)
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
+
+    crlf_files: list[str] = field(default_factory=list)
+    """Files requiring CRLF→LF normalization inside the container."""
+
+    output_files: list[str] = field(default_factory=list)
+    """Build output files to copy back from the container to the host."""
+
+    tar_excludes: list[str] = field(
+        default_factory=lambda: [
+            ".git",
+            ".nanvix/venv",
+            ".nanvix/cache",
+            ".nanvix/sysroot",
+            ".nanvix/buildroot",
+        ]
+    )
+    """Directories/files to exclude from tar-based source copy."""
+
+    container_build_dir: str = "/tmp/build"
+    """Working directory inside the container for Windows tar-copy mode."""
 
     # ------------------------------------------------------------------
     # Path translation
@@ -251,6 +280,79 @@ class DockerConfig:
 
         docker_cmd.append(self.image)
         docker_cmd.extend(cmd)
+        return docker_cmd
+
+    def build_windows_run_cmd(self, *cmd: str) -> list[str]:
+        """Build a ``docker run`` command using tar-based source copying.
+
+        Instead of bind-mounting the workspace (which suffers severe I/O
+        penalties on Windows Docker Desktop via VirtioFS/9p), this method:
+
+        1. Mounts the host workspace read-only at a staging path.
+        2. Copies sources via ``tar`` into a container-local build dir.
+        3. Normalizes CRLF line endings in configured files.
+        4. Runs the inner command.
+        5. Copies output files back to the host workspace.
+
+        Args:
+            *cmd: Inner command and arguments to wrap.
+
+        Returns:
+            Full ``docker run …`` argument list ready for
+            :func:`subprocess.run`.
+        """
+        ws_mount = "/mnt/workspace"
+        build_dir = self.container_build_dir
+
+        # Build tar exclude args.
+        excludes = " ".join(f"--exclude={e}" for e in self.tar_excludes)
+
+        # CRLF normalization script.
+        crlf_script = ""
+        if self.crlf_files:
+            crlf_cmds: list[str] = []
+            for f in self.crlf_files:
+                crlf_cmds.append(
+                    f'[ -f "{f}" ] && sed "s/\\r$//" "{f}" > /tmp/_crlf.tmp '
+                    f'&& cat /tmp/_crlf.tmp > "{f}"'
+                )
+            crlf_script = " && ".join(crlf_cmds) + " && "
+
+        # Output copy-back script.
+        output_script = ""
+        if self.output_files:
+            copy_cmds = [
+                f"[ -f {build_dir}/{f} ] && cp -f {build_dir}/{f} {ws_mount}/{f}"
+                for f in self.output_files
+            ]
+            output_script = "; " + "; ".join(copy_cmds)
+
+        inner_cmd = " ".join(cmd)
+        shell_script = (
+            f"mkdir -p {build_dir} && "
+            f"tar -cf - -C {ws_mount} {excludes} . "
+            f"| tar -xf - -C {build_dir} && "
+            f"cd {build_dir} && "
+            f"{crlf_script}"
+            f"{inner_cmd}; rc=$?{output_script}; exit $rc"
+        )
+
+        docker_cmd: list[str] = ["docker", "run", "--rm"]
+
+        for mount in self.mounts:
+            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            if mount.readonly:
+                vol += ":ro"
+            docker_cmd += ["-v", vol]
+
+        docker_cmd += ["-w", build_dir]
+        docker_cmd += ["-e", "HOME=/tmp"]
+
+        for key, val in self.extra_env.items():
+            docker_cmd += ["-e", f"{key}={val}"]
+
+        docker_cmd.append(self.image)
+        docker_cmd += ["sh", "-c", shell_script]
         return docker_cmd
 
 
