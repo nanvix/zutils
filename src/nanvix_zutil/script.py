@@ -33,7 +33,12 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import log
-from nanvix_zutil.buildroot import Buildroot, Dependency, suffix_dep
+from nanvix_zutil.buildroot import (
+    Buildroot,
+    Dependency,
+    extract_nanvix_version_base,
+    suffix_dep,
+)
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
@@ -52,6 +57,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_MISSING_DEP,
     EXIT_TEST_FAILURE,
 )
+from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.matrix import (
@@ -314,12 +320,33 @@ class ZScript:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
             for dep in deps:
                 try:
+                    # Resolve release with version fallback for nanvix-suffixed
+                    # deps, then pass the pre-resolved release and enable
+                    # cross-mode asset fallback in install_dep().
+                    release: dict[str, object] | None = None
+                    base_version = extract_nanvix_version_base(str(dep.ref.value))
+                    if base_version is not None:
+                        release, _fb_ver = resolve_release_with_fallback(
+                            repo=dep.repo,
+                            version_specifier=str(dep.ref.value),
+                            base_version=base_version,
+                            gh_token=self.config.get(CFG_GH_TOKEN),
+                        )
+                    else:
+                        release = resolve_release(
+                            repo=dep.repo,
+                            version_specifier=dep.ref.value,
+                            gh_token=self.config.get(CFG_GH_TOKEN),
+                        )
+
                     self.buildroot.install_dep(
                         dep=dep,
                         machine=self.config.machine,
                         deployment_mode=self.config.deployment_mode,
                         memory_size=self.config.memory_size,
                         gh_token=self.config.get(CFG_GH_TOKEN),
+                        fallback_modes=True,
+                        _release=release,
                     )
                 except SystemExit:
                     log.note(
