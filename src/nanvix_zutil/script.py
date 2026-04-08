@@ -335,8 +335,10 @@ class ZScript:
                             gh_token=self.config.get(CFG_GH_TOKEN),
                         )
                         # Log when version fallback was used.
-                        requested_ver = extract_nanvix_version(str(dep.ref.value))
-                        if fb_ver != requested_ver:
+                        # fb_ver is None when the exact tag was found;
+                        # non-None means a fallback release was used.
+                        if fb_ver is not None:
+                            requested_ver = extract_nanvix_version(str(dep.ref.value))
                             log.info(
                                 f"Version fallback for {dep.name}: "
                                 f"requested nanvix-{requested_ver}, "
