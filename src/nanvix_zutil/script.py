@@ -371,21 +371,36 @@ class ZScript:
     def distclean(self) -> None:
         """Remove all transient ``.nanvix/`` artifacts.
 
-        Deletes the ``sysroot``, ``buildroot``, and ``cache`` directories
-        inside ``.nanvix/``.  The manifest (``nanvix.toml``), saved config
-        (``env.json``), and Python virtual environment (``venv/``) are
-        preserved.
+        Deletes the ``sysroot``, ``buildroot``, ``cache``, ``venv``, and
+        ``__pycache__`` directories and the ``env.json`` config file inside
+        ``.nanvix/``.  Only the manifest (``nanvix.toml``) and lockfile
+        (``nanvix.lock``) are preserved.
+
+        Removal is best-effort: artifacts that cannot be deleted (e.g. a
+        locked venv on Windows) are skipped with a warning so the
+        remaining artifacts are still cleaned.
         """
-        for artifact in ("sysroot", "buildroot", "cache"):
+        for artifact in (
+            "sysroot",
+            "buildroot",
+            "cache",
+            "env.json",
+            "venv",
+            "__pycache__",
+        ):
             path = self.nanvix_dir / artifact
-            if not path.exists():
+            if not path.exists() and not path.is_symlink():
                 continue
-            if path.is_symlink() or path.is_file():
-                path.unlink()
+            try:
+                if path.is_symlink() or path.is_file():
+                    path.unlink()
+                elif path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    continue
                 log.info(f"Removed {path}")
-            elif path.is_dir():
-                shutil.rmtree(path)
-                log.info(f"Removed {path}")
+            except OSError as exc:
+                log.warning(f"Could not remove {path}: {exc}")
 
     def lock(self, *, shallow: bool = False) -> None:
         """Resolve the dependency graph and write ``nanvix.lock``.
