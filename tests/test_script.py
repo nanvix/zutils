@@ -310,11 +310,25 @@ class TestZScriptDistclean(unittest.TestCase):
         self._make_script().distclean()
         self.assertTrue(manifest.exists())
 
-    def test_distclean_preserves_config(self) -> None:
+    def test_distclean_removes_config(self) -> None:
         config_file = self._nanvix() / "env.json"
         config_file.write_text("{}")
         self._make_script().distclean()
-        self.assertTrue(config_file.exists())
+        self.assertFalse(config_file.exists())
+
+    def test_distclean_removes_venv(self) -> None:
+        venv_dir = self._nanvix() / "venv"
+        venv_dir.mkdir()
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin")
+        self._make_script().distclean()
+        self.assertFalse(venv_dir.exists())
+
+    def test_distclean_removes_pycache(self) -> None:
+        pycache_dir = self._nanvix() / "__pycache__"
+        pycache_dir.mkdir()
+        (pycache_dir / "z.cpython-312.pyc").write_bytes(b"\x00")
+        self._make_script().distclean()
+        self.assertFalse(pycache_dir.exists())
 
     def test_distclean_noop_when_nothing_exists(self) -> None:
         """distclean() does not raise when artifact dirs are absent."""
@@ -338,6 +352,39 @@ class TestZScriptDistclean(unittest.TestCase):
             self.skipTest("Symlinks not supported on this platform")
         self._make_script().distclean()
         self.assertFalse(link.exists())
+
+    def test_distclean_removes_broken_symlink(self) -> None:
+        """distclean() removes a symlink even when its target is gone."""
+        target = self._nanvix() / "real_sysroot"
+        target.mkdir()
+        link = self._nanvix() / "sysroot"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlinks not supported on this platform")
+        target.rmdir()
+        self._make_script().distclean()
+        self.assertFalse(link.is_symlink())
+
+    def test_distclean_continues_on_permission_error(self) -> None:
+        """distclean() warns and skips artifacts it cannot remove."""
+        venv_dir = self._nanvix() / "venv"
+        venv_dir.mkdir()
+        cache_dir = self._nanvix() / "cache"
+        cache_dir.mkdir()
+
+        original_rmtree = __import__("shutil").rmtree
+
+        def _rmtree_fail_on_venv(path: object, *args: object, **kwargs: object) -> None:
+            if Path(str(path)).name == "venv":
+                raise PermissionError("locked by running process")
+            original_rmtree(path, *args, **kwargs)  # type: ignore[arg-type]
+
+        with patch("shutil.rmtree", side_effect=_rmtree_fail_on_venv):
+            self._make_script().distclean()
+
+        self.assertTrue(venv_dir.exists())
+        self.assertFalse(cache_dir.exists())
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
