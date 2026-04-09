@@ -14,9 +14,15 @@ import tomllib
 
 
 def main() -> int:
-    result = subprocess.run(["uv", "version", "--bump", "patch"], check=False)
+    result = subprocess.run(
+        ["uv", "version", "--bump", "patch"], check=False, capture_output=True
+    )
     if result.returncode != 0:
         print("error: failed to bump version", file=sys.stderr)
+        if result.stdout:
+            sys.stderr.buffer.write(result.stdout)
+        if result.stderr:
+            sys.stderr.buffer.write(result.stderr)
         return 1
 
     with open("pyproject.toml", "rb") as f:
