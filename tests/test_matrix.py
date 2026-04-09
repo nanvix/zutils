@@ -346,6 +346,109 @@ class TestRunAllBuilds(unittest.TestCase):
         os.environ.pop("NANVIX_DEPLOYMENT_MODE", None)
         os.environ.pop("NANVIX_MEMORY_SIZE", None)
 
+    def test_parallel_combos_have_isolated_workspaces(self) -> None:
+        """Each combo gets its own workspace copy, not the shared repo root."""
+        from unittest.mock import patch
+
+        from nanvix_zutil.matrix import run_all_builds
+        from nanvix_zutil.script import ZScript
+
+        instantiated_roots: list[Path] = []
+        original_init = ZScript.__init__
+
+        def tracking_init(
+            self_inner: ZScript, repo_root: Path, *a: object, **kw: object
+        ) -> None:
+            instantiated_roots.append(repo_root)
+            original_init(self_inner, repo_root)
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+            BuildCombo(platform="microvm", mode="multi-process", memory="256mb"),
+        ]
+
+        with patch.object(ZScript, "__init__", tracking_init):
+            run_all_builds(
+                script_cls=self._stub_cls,
+                combos=combos,
+                hook="clean",
+                targets=[],
+                docker_image=None,
+                repo_root=self._repo_root,
+            )
+
+        # Each combo should have been instantiated with a DIFFERENT root.
+        self.assertEqual(len(instantiated_roots), 2)
+        self.assertNotEqual(instantiated_roots[0], instantiated_roots[1])
+        # Neither should be the original repo_root.
+        for root in instantiated_roots:
+            self.assertNotEqual(root, self._repo_root)
+
+    def test_workspace_cleanup_on_success(self) -> None:
+        """Per-combo workspaces are cleaned up after successful build."""
+        from nanvix_zutil.matrix import run_all_builds
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+            BuildCombo(platform="microvm", mode="multi-process", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=self._stub_cls,
+            combos=combos,
+            hook="clean",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        # All combos should succeed.
+        for result in results.values():
+            self.assertTrue(result.success)
+
+        # After run_all_builds completes, _builds/ should be empty or gone.
+        builds_dir = self._repo_root / ".nanvix" / "_builds"
+        self.assertFalse(
+            builds_dir.exists() and any(builds_dir.iterdir()),
+            "Per-combo workspaces should be cleaned up after success",
+        )
+
+    def test_workspace_cleanup_on_failure(self) -> None:
+        """Per-combo workspaces are cleaned up even when a combo fails."""
+        from nanvix_zutil.matrix import run_all_builds
+        from nanvix_zutil.script import ZScript
+
+        class _Failing(ZScript):
+            def setup(self) -> None:
+                pass
+
+            def build(self) -> None:
+                raise SystemExit(5)
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=_Failing,
+            combos=combos,
+            hook="build",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        # The combo should fail.
+        result = results[combos[0]]
+        self.assertFalse(result.success)
+
+        # But the workspace copy must still be cleaned up.
+        builds_dir = self._repo_root / ".nanvix" / "_builds"
+        self.assertFalse(
+            builds_dir.exists() and any(builds_dir.iterdir()),
+            "Per-combo workspaces should be cleaned up even on failure",
+        )
+
 
 class TestUnsupportedAllBuilds(unittest.TestCase):
     """Tests for the --all-builds hook allowlist guard in ZScript.main()."""

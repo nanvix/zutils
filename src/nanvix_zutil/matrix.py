@@ -9,6 +9,7 @@ import dataclasses
 import itertools
 import json
 import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -43,6 +44,9 @@ _HOOK_CHAIN: dict[str, tuple[str, ...]] = {
     "distclean": ("distclean",),
 }
 """Prerequisite hook chains for each lifecycle subcommand."""
+
+_BUILDS_DIR: str = "_builds"
+"""Subdirectory under ``.nanvix/`` for per-combo workspace copies."""
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -136,6 +140,59 @@ def filter_matrix(
 # Execution engine
 # ---------------------------------------------------------------------------
 
+
+def _copy_workspace(src: Path, dst: Path) -> None:
+    """Create a lightweight copy of the workspace for parallel isolation.
+
+    Hardlinks source-tree files (fast, near-zero disk) but *copies* files
+    under ``.nanvix/`` so that mutable state (``env.json``, etc.) is
+    write-isolated between combos.  If hardlinks are not supported (e.g.
+    cross-device mount, Windows) the per-file fallback transparently uses
+    ``shutil.copy2`` instead.
+
+    Excludes ``.nanvix/sysroot``, ``.nanvix/buildroot``,
+    ``.nanvix/_builds``, and ``.nanvix/venv`` from the copy — these are
+    large directories that are either recreated by ``setup()`` or are our
+    own build dirs / host-specific state.
+
+    Args:
+        src: Source workspace root.
+        dst: Destination directory (must not exist).
+    """
+    _nanvix = Path(".nanvix")
+    _exclude: set[Path] = {
+        _nanvix / "sysroot",
+        _nanvix / "buildroot",
+        _nanvix / _BUILDS_DIR,
+        _nanvix / "venv",
+    }
+
+    def _ignore(directory: str, contents: list[str]) -> set[str]:
+        rel = Path(directory).relative_to(src)
+        return {name for name in contents if (rel / name) in _exclude}
+
+    def _link_or_copy(src_file: str, dst_file: str) -> None:
+        """Hardlink source-tree files; copy mutable ``.nanvix/`` state."""
+        try:
+            rel = Path(src_file).relative_to(src)
+        except ValueError:
+            shutil.copy2(src_file, dst_file)
+            return
+        if rel.parts[:1] == (".nanvix",):
+            # Mutable state — always copy so combos are write-isolated.
+            shutil.copy2(src_file, dst_file)
+        else:
+            try:
+                os.link(src_file, dst_file)
+            except OSError:
+                # Hardlinks unsupported (cross-device, Windows, etc.).
+                shutil.copy2(src_file, dst_file)
+
+    shutil.copytree(
+        src, dst, ignore=_ignore, copy_function=_link_or_copy, dirs_exist_ok=False
+    )
+
+
 #: Lock used to guard the env-set → ZScript-instantiate → env-restore sequence
 #: in :func:`run_all_builds` workers so that concurrent threads do not clobber
 #: each other's ``os.environ`` values.
@@ -180,7 +237,17 @@ def run_all_builds(
         env_keys = list(_DIMENSION_ENV_MAP.values())
         saved: dict[str, str | None] = {}
 
+        # Build a deterministic slug for the per-combo workspace copy.
+        combo_slug = f"{combo.platform}-{combo.mode}-{combo.memory}"
+        builds_dir = repo_root / ".nanvix" / _BUILDS_DIR
+        builds_dir.mkdir(parents=True, exist_ok=True)
+        combo_workspace = builds_dir / combo_slug
+
         try:
+            # Create an isolated workspace copy so parallel Docker
+            # containers do not share /mnt/workspace.
+            _copy_workspace(repo_root, combo_workspace)
+
             # --- Lock-guarded: set env → instantiate → restore env ----------
             with _env_lock:
                 try:
@@ -194,7 +261,7 @@ def run_all_builds(
 
                     # Instantiation reads env vars via Config.__init__; the
                     # captured Config object retains its values after restore.
-                    instance = script_cls(repo_root)
+                    instance = script_cls(combo_workspace)
                 finally:
                     # Always restore env vars so other threads are not affected,
                     # even if instantiation fails.
@@ -258,6 +325,10 @@ def run_all_builds(
                 duration_seconds=elapsed,
                 error=str(exc),
             )
+        finally:
+            # Clean up the per-combo workspace copy.
+            if combo_workspace.exists():
+                shutil.rmtree(combo_workspace, ignore_errors=True)
 
         return BuildResult(
             combo=combo,
