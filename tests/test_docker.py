@@ -236,9 +236,20 @@ class TestDockerConfigBuildKvmRunCmd(unittest.TestCase):
         self.assertIn("--device", cmd)
         self.assertIn("/dev/kvm", cmd)
 
-    def test_workdir_is_sysroot(self) -> None:
+    def test_workdir_defaults_to_workspace(self) -> None:
+        """build_kvm_run_cmd uses self.workdir (WORKSPACE by default)."""
         cfg = self._make_config()
         cmd = cfg.build_kvm_run_cmd("echo")
+        self.assertIn("-w", cmd)
+        w_idx = cmd.index("-w")
+        self.assertEqual(cmd[w_idx + 1], str(WORKSPACE_CONTAINER_PATH))
+
+    def test_workdir_respects_custom_override(self) -> None:
+        """build_kvm_run_cmd honours a custom workdir override."""
+        cfg = self._make_config()
+        cfg.workdir = SYSROOT_CONTAINER_PATH
+        cmd = cfg.build_kvm_run_cmd("echo")
+        self.assertIn("-w", cmd)
         w_idx = cmd.index("-w")
         self.assertEqual(cmd[w_idx + 1], str(SYSROOT_CONTAINER_PATH))
 
