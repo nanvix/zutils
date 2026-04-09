@@ -5,7 +5,7 @@ name: Release
 
 on:
   push:
-    branches: ["release/v*"]
+    branches: ["dev"]
   workflow_dispatch:
     inputs:
       version:
@@ -21,10 +21,6 @@ jobs:
   lint-and-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release/v'))
     steps:
       - uses: actions/checkout@v4
 
@@ -51,10 +47,6 @@ jobs:
     env:
       NANVIX_TOOLCHAIN: /opt/nanvix
       USER: runner
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'create' && github.ref_type == 'branch' && startsWith(github.ref_name, 'release/v'))
     steps:
       - uses: actions/checkout@v4
 
@@ -74,26 +66,17 @@ jobs:
     needs: [lint-and-typecheck, test]
     runs-on: ubuntu-latest
     environment: release
+    concurrency:
+      group: release-zutils
+      cancel-in-progress: false
     outputs:
       version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#release/v}"
-          fi
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
-            echo "::error::Invalid semver: $VERSION"
-            exit 1
-          fi
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          token: ${{ secrets.DISPATCH_TOKEN }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -103,20 +86,35 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Verify version matches pyproject.toml
+      - name: Resolve version
+        id: version
         run: |
-          actual=$(python -c \
-            "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
-          if [ "$actual" != "${{ steps.version.outputs.value }}" ]; then
-            echo "Version mismatch: pyproject.toml=$actual expected=${{ steps.version.outputs.value }}"
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            # Verify input matches pyproject.toml
+            actual=$(uv run python -c \
+              "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
+            if [ "$actual" != "$VERSION" ]; then
+              echo "::error::Version mismatch: pyproject.toml=$actual expected=$VERSION"
+              exit 1
+            fi
+          else
+            # Auto-bump patch version
+            VERSION=$(uv run python scripts/bump-version.py)
+          fi
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Invalid semver: $VERSION"
             exit 1
           fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
 
       - name: Check tag does not already exist
         run: |
           tag="v${{ steps.version.outputs.value }}"
           if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-            echo "Tag $tag already exists on origin. Bump the version in pyproject.toml before releasing."
+            echo "::error::Tag $tag already exists on origin. Bump the version in pyproject.toml before releasing."
             exit 1
           fi
 
@@ -153,6 +151,20 @@ jobs:
         run: |
           tar czf "templates.tar.gz" -C templates .
           (cd templates && zip -r ../templates.zip .)
+
+      - name: Commit and push version bump
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml uv.lock
+          git commit -m "[release] Bump version to v${VERSION}"
+          git fetch origin dev
+          git rebase origin/dev
+          git push origin HEAD:dev
 
       - name: Create and push release tag
         run: |
