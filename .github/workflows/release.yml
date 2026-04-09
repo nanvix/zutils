@@ -151,6 +151,8 @@ jobs:
         run: |
           tar czf "templates.tar.gz" -C templates .
           (cd templates && zip -r ../templates.zip .)
+          # Restore placeholders so the working tree is clean for rebase
+          git checkout -- templates/
 
       - name: Commit and push version bump
         if: github.event_name == 'push'
