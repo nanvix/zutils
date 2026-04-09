@@ -110,6 +110,8 @@ class HelloWorld(ZScript):
             "--foreground",
             "60",
             f"{sysroot}/bin/nanvixd.elf",
+            "-bin-dir",
+            f"{sysroot}/bin",
             "--",
             str(workspace_binary),
             kvm=True,
