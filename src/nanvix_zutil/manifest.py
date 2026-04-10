@@ -246,6 +246,12 @@ def parse_builds_section(
 ) -> BuildMatrix:
     """Parse a ``[builds]`` table into a :class:`BuildMatrix`.
 
+    Validates that ``[builds.matrix]`` contains exactly the required
+    dimensions (``platforms``, ``modes``, ``memory``), each as a
+    non-empty list of strings.  Exclude entries use singular field
+    names (``platform``, ``mode``, ``memory``) and are validated
+    against the known set — unknown keys are rejected.
+
     Args:
         raw: The raw TOML table for the ``[builds]`` section.
         path: Manifest file path (for error messages).
