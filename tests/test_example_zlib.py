@@ -8,12 +8,12 @@ from the example directory — the same way an end-user would run
 ``nanvix-zutil <command>``.
 
 The full lifecycle test (setup → build → test → clean) requires the
-Nanvix cross-compiler (``i686-nanvix-gcc``) and network access to
-download release assets from GitHub.  Detection order:
+Nanvix cross-compiler (``i686-nanvix-gcc``) installed natively on the
+host, plus network access to download release assets from GitHub.
+Detection order:
 
 1. ``NANVIX_TOOLCHAIN`` environment variable
 2. Default path ``/opt/nanvix/``
-3. Docker image ``nanvix/toolchain:latest-minimal``
 
 CLI flag tests (--help, --json) work without any external dependencies.
 """
@@ -56,7 +56,9 @@ def _has_kvm() -> bool:
 
 _HAS_TOOLCHAIN = _has_nanvix_toolchain()
 _HAS_KVM = _has_kvm()
-_SKIP_LIFECYCLE = "Nanvix toolchain not available (set NANVIX_TOOLCHAIN, install to /opt/nanvix, or pull Docker image)"
+_SKIP_LIFECYCLE = (
+    "Nanvix toolchain not available (set NANVIX_TOOLCHAIN or install to /opt/nanvix)"
+)
 _SKIP_NO_KVM = "KVM not available (/dev/kvm not accessible)"
 _LIFECYCLE_TIMEOUT = (
     120  # seconds per step — setup downloads assets + build + VM boot + test + clean

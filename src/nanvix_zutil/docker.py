@@ -77,9 +77,19 @@ def _translate_windows_path(p: Path) -> str:
 
     ``C:\\Users\\foo`` → ``/c/Users/foo``
 
-    On non-Windows platforms (or when the path does not match the
-    ``<drive>:<sep>`` pattern), forward-slashes are normalised but no
-    drive-letter rewriting is performed.
+    The transformation is purely string-based: any path matching the
+    ``<drive>:<sep>`` pattern (e.g. ``C:\\`` or ``D:/``) gets its drive
+    letter lowered and rewritten to a POSIX prefix (``/c/``, ``/d/``).
+    Paths that do not match the pattern are returned with backslashes
+    normalised to forward-slashes.
+
+    .. note::
+
+       This function does **not** check ``sys.platform``.  Platform
+       gating is the caller's responsibility — :meth:`build_run_cmd`
+       only calls this when :func:`is_windows` is ``True``, while
+       :meth:`build_windows_run_cmd` calls it unconditionally (it is
+       only invoked on Windows in the first place).
     """
     s = str(p)
     if len(s) >= 3 and s[1] == ":" and s[2] in ("/", "\\"):
@@ -120,8 +130,9 @@ class DockerConfig:
 
     An instance is stored on :class:`~nanvix_zutil.ZScript` once a Docker
     flag is passed on the command line.  Each :meth:`~nanvix_zutil.ZScript.run`
-    call then delegates to :meth:`build_run_cmd` (or :meth:`build_kvm_run_cmd`
-    when ``kvm=True``) to prepend the appropriate ``docker run`` invocation.
+    call then delegates to :meth:`build_run_cmd`, :meth:`build_kvm_run_cmd`
+    (when ``kvm=True``), or :meth:`build_windows_run_cmd` (on Windows) to
+    prepend the appropriate ``docker run`` invocation.
 
     Attributes:
         image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
@@ -284,6 +295,8 @@ class DockerConfig:
             docker_cmd += ["--group-add", kvm_gid]
 
         for mount in self.mounts:
+            # KVM is Linux-only (see warning above), so Windows-style
+            # paths never appear here — no _translate_windows_path needed.
             # Sysroot must be writable for functional tests; other mounts
             # respect the readonly flag just like build_run_cmd().
             vol = f"{mount.host_path.resolve()}:{mount.container_path}"
@@ -371,7 +384,8 @@ class DockerConfig:
         docker_cmd: list[str] = ["docker", "run", "--rm"]
 
         for mount in self.mounts:
-            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            host = _translate_windows_path(mount.host_path.resolve())
+            vol = f"{host}:{mount.container_path}"
             if mount.readonly:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
