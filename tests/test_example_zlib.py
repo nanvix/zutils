@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import unittest
@@ -34,18 +33,17 @@ _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-zlib"
 
 
 def _has_nanvix_toolchain() -> bool:
-    """Return True if the Nanvix cross-compiler is available."""
+    """Return True if the Nanvix cross-compiler is available on the host.
+
+    Only checks for a native ``i686-nanvix-gcc`` binary — Docker image
+    availability is not sufficient because the lifecycle test invokes the
+    compiler directly (not via ``--with-docker``).
+    """
     custom = os.environ.get("NANVIX_TOOLCHAIN", "")
     if custom and Path(custom, "bin", "i686-nanvix-gcc").exists():
         return True
     if Path("/opt/nanvix/bin/i686-nanvix-gcc").exists():
         return True
-    if shutil.which("docker"):
-        result = subprocess.run(
-            ["docker", "image", "inspect", "nanvix/toolchain:latest-minimal"],
-            capture_output=True,
-        )
-        return result.returncode == 0
     return False
 
 
