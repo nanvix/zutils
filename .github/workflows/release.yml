@@ -126,12 +126,17 @@ jobs:
       - name: Patch template versions
         env:
           VERSION: ${{ steps.version.outputs.value }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Replace {{ZUTIL_VERSION}} placeholder with the release version
           sed -i "s/{{ZUTIL_VERSION}}/${VERSION}/g" \
             templates/z.sh \
             templates/z.ps1 \
             templates/nanvix-ci.yml
+
+          # Fetch latest nanvix/workflows release and patch {{WORKFLOW_VERSION}}
+          WFLOW_VER=$(gh release view --repo nanvix/workflows --json tagName -q .tagName | sed 's/^v//')
+          sed -i "s/{{WORKFLOW_VERSION}}/${WFLOW_VER}/g" templates/nanvix-ci.yml
 
           # Verify patches applied correctly
           grep -qF "${VERSION}" templates/z.sh \
@@ -140,8 +145,10 @@ jobs:
             || { echo "::error::Failed to patch z.ps1"; exit 1; }
           grep -qF "v${VERSION}" templates/nanvix-ci.yml \
             || { echo "::error::Failed to patch nanvix-ci.yml"; exit 1; }
-          if grep -rq '{{ZUTIL_VERSION}}' templates/; then
-            echo "::error::Unreplaced {{ZUTIL_VERSION}} placeholder found"; exit 1
+          grep -qF "@v${WFLOW_VER}" templates/nanvix-ci.yml \
+            || { echo "::error::Failed to patch workflow version"; exit 1; }
+          if grep -rq '{{ZUTIL_VERSION}}\|{{WORKFLOW_VERSION}}' templates/; then
+            echo "::error::Unreplaced {{ZUTIL_VERSION}} or {{WORKFLOW_VERSION}} placeholder found"; exit 1
           fi
 
           echo "Patched template versions to ${VERSION}:"

@@ -11,8 +11,6 @@ on:
   pull_request:
     branches: ["nanvix/**"]
   workflow_dispatch:
-  repository_dispatch:
-    types: [nanvix-minor-release, nanvix-major-release]
 
 permissions:
   contents: write
@@ -26,10 +24,9 @@ concurrency:
 
 jobs:
   ci:
-    uses: nanvix/workflows/.github/workflows/nanvix-ci.yml@v1.6.0
+    uses: nanvix/workflows/.github/workflows/nanvix-ci.yml@v{{WORKFLOW_VERSION}}
     with:
       zutil-version: "v{{ZUTIL_VERSION}}"
-      # Possible values: schedule | push | pull_request | workflow_dispatch | repository_dispatch
       caller-event-name: ${{ github.event_name }}
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
