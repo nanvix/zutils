@@ -537,6 +537,77 @@ class TestZScriptRun(unittest.TestCase):
         self.assertIn("sh", cmd)
         self.assertIn("-c", cmd)
 
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_run_dispatch_windows_default_docker(self, _mock: object) -> None:
+        """run() uses build_windows_run_cmd on Windows even with default
+        (empty) crlf_files and output_files — the dispatch no longer requires
+        these fields to be populated."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+            # crlf_files and output_files intentionally left as defaults ([])
+        )
+        captured_cmds: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Should still use sh -c (Windows tar-copy mode) even without
+        # crlf_files/output_files.
+        self.assertIn("sh", cmd)
+        self.assertIn("-c", cmd)
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_run_dispatch_linux_uses_build_run_cmd(self, _mock: object) -> None:
+        """run() uses build_run_cmd on Linux (not the Windows tar-copy path)."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+        )
+        captured_cmds: list[list[str]] = []
+
+        import subprocess as sp
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Standard docker run — should NOT use sh -c wrapping.
+        self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
+        self.assertIn("make", cmd)
+        self.assertIn("all", cmd)
+        # Not tar-copy mode: "sh" and "-c" must not be the last args.
+        self.assertNotEqual(cmd[-3], "sh")
+
 
 class TestZScriptSysrootRequiredFiles(unittest.TestCase):
     """sysroot_required_files() varies by deployment mode."""

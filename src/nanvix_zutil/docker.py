@@ -72,6 +72,23 @@ def is_windows() -> bool:
     return sys.platform == "win32"
 
 
+def _translate_windows_path(p: Path) -> str:
+    """Convert a Windows absolute path to Docker-compatible POSIX format.
+
+    ``C:\\Users\\foo`` → ``/c/Users/foo``
+
+    On non-Windows platforms (or when the path does not match the
+    ``<drive>:<sep>`` pattern), forward-slashes are normalised but no
+    drive-letter rewriting is performed.
+    """
+    s = str(p)
+    if len(s) >= 3 and s[1] == ":" and s[2] in ("/", "\\"):
+        drive = s[0].lower()
+        rest = s[2:].replace("\\", "/")
+        return f"/{drive}{rest}"
+    return s.replace("\\", "/")
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -216,7 +233,12 @@ class DockerConfig:
         docker_cmd += ["--user", f"{self.uid}:{self.gid}"]
 
         for mount in self.mounts:
-            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            host = (
+                _translate_windows_path(mount.host_path.resolve())
+                if is_windows()
+                else str(mount.host_path.resolve())
+            )
+            vol = f"{host}:{mount.container_path}"
             if mount.readonly:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
@@ -407,6 +429,8 @@ def image_exists(image: str) -> bool:
 
 def _get_kvm_gid() -> str:
     """Return the GID of ``/dev/kvm`` as a string, or empty string on failure."""
+    if sys.platform != "linux":
+        return ""
     try:
         return str(os.stat("/dev/kvm").st_gid)
     except OSError:

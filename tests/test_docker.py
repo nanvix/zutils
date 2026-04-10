@@ -657,5 +657,86 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         self.assertIn("MY_VAR=hello", cmd)
 
 
+class TestTranslateWindowsPath(unittest.TestCase):
+    """Tests for _translate_windows_path() helper."""
+
+    def test_windows_c_drive(self) -> None:
+        """C:\\Users\\foo\\repo → /c/Users/foo/repo."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("C:\\Users\\foo\\repo"))
+        self.assertEqual(result, "/c/Users/foo/repo")
+
+    def test_windows_d_drive(self) -> None:
+        """D:\\builds → /d/builds."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("D:\\builds"))
+        self.assertEqual(result, "/d/builds")
+
+    def test_posix_path_unchanged(self) -> None:
+        """/home/user/repo → /home/user/repo (no-op on POSIX)."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("/home/user/repo"))
+        self.assertEqual(result, "/home/user/repo")
+
+    def test_mixed_separators(self) -> None:
+        """C:/Users\\foo → /c/Users/foo."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("C:/Users\\foo"))
+        # On Linux, Path("C:/Users\\foo") preserves forward slashes.
+        # The function should still normalise backslashes.
+        self.assertTrue(result.startswith("/c/") or result == "C:/Users/foo")
+
+    def test_short_path_no_crash(self) -> None:
+        """Very short paths should not crash the function."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("ab"))
+        self.assertIsInstance(result, str)
+
+
+class TestGetKvmGidPlatformShortCircuit(unittest.TestCase):
+    """Tests for _get_kvm_gid() non-Linux short-circuit."""
+
+    def test_returns_empty_on_non_linux(self) -> None:
+        """_get_kvm_gid() returns '' immediately on non-Linux."""
+        from nanvix_zutil.docker import (
+            _get_kvm_gid,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "win32"
+            result = _get_kvm_gid()
+        self.assertEqual(result, "")
+
+    def test_returns_gid_on_linux(self) -> None:
+        """_get_kvm_gid() reads /dev/kvm on Linux."""
+        from nanvix_zutil.docker import (
+            _get_kvm_gid,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        mock_stat = type("FakeStat", (), {"st_gid": 108})()
+        with (
+            patch("nanvix_zutil.docker.sys") as mock_sys,
+            patch("nanvix_zutil.docker.os.stat", return_value=mock_stat),
+        ):
+            mock_sys.platform = "linux"
+            result = _get_kvm_gid()
+        self.assertEqual(result, "108")
+
+
 if __name__ == "__main__":
     unittest.main()
