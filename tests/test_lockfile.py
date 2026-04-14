@@ -52,8 +52,8 @@ def _make_sample_lockfile() -> Lockfile:
                 dependencies=[],
                 assets=[
                     ResolvedAsset(
-                        name="nanvix-hyperlight-multi-process-release-128mb-fa06b88.tar.bz2",
-                        url="https://github.com/nanvix/nanvix/releases/download/v0.12.257/nanvix-hyperlight-multi-process-release-128mb-fa06b88.tar.bz2",
+                        name="nanvix-x86-hyperlight-multi-process-release-128mb-fa06b88.tar.bz2",
+                        url="https://github.com/nanvix/nanvix/releases/download/v0.12.257/nanvix-x86-hyperlight-multi-process-release-128mb-fa06b88.tar.bz2",
                     ),
                 ],
             ),

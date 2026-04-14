@@ -25,19 +25,21 @@ _MEMORY = "256mb"
 _SHA = "fa06b88"
 _TAG = "v0.4.1"
 _VERSION = "0.4.1"
-_ASSET_NAME = f"nanvix-{_MACHINE}-{_MODE}-release-{_MEMORY}-{_SHA}.tar.bz2"
+_TARGET = "x86"
+_ASSET_NAME = f"nanvix-{_TARGET}-{_MACHINE}-{_MODE}-release-{_MEMORY}-{_SHA}.tar.bz2"
 
 
 def _make_release(
     tag: str = _TAG,
     name: str = f"Nanvix {_VERSION}",
     sha: str = _SHA,
+    target: str = _TARGET,
     machine: str = _MACHINE,
     mode: str = _MODE,
     memory: str = _MEMORY,
 ) -> dict[str, object]:
     """Return a minimal fake GitHub release dictionary."""
-    asset_name = f"nanvix-{machine}-{mode}-release-{memory}-{sha}.tar.bz2"
+    asset_name = f"nanvix-{target}-{machine}-{mode}-release-{memory}-{sha}.tar.bz2"
     return {
         "tag_name": tag,
         "name": name,

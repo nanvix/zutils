@@ -15,6 +15,7 @@ from pathlib import Path
 
 from nanvix_zutil import github, log
 from nanvix_zutil.config import Config
+from nanvix_zutil.config import DEFAULT_TARGET
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 # ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ _DEFAULT_SYSROOT_DIR = Path(".nanvix") / "sysroot"
 # ---------------------------------------------------------------------------
 
 _SYSROOT_REPO = "nanvix/nanvix"
-_SYSROOT_ASSET_PREFIX = "nanvix-{machine}-{mode}-release-{mem}"
+_SYSROOT_ASSET_PREFIX = "nanvix-{target}-{machine}-{mode}-release-{mem}"
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ class Sysroot:
         gh_token: str | None = None,
         dest: Path | None = None,
         config: Config | None = None,
+        target: str = DEFAULT_TARGET,
     ) -> "Sysroot":
         """Download and extract the Nanvix runtime artifact from GitHub releases.
 
@@ -86,6 +88,7 @@ class Sysroot:
                 the resolved ``sysroot_tag``.  After a successful
                 download the tag is written back to *config* and
                 saved to disk.
+            target: Target architecture (default: ``"x86"``).
 
         Returns:
             A :class:`Sysroot` pointing at the extracted directory.
@@ -111,6 +114,7 @@ class Sysroot:
         resolved_tag = tag_name if isinstance(tag_name, str) else ""
 
         asset_prefix = _SYSROOT_ASSET_PREFIX.format(
+            target=target,
             machine=machine,
             mode=deployment_mode,
             mem=memory_size,
