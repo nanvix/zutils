@@ -23,10 +23,14 @@ from typing import cast
 # ---------------------------------------------------------------------------
 
 _DEFAULTS: dict[str, str] = {
+    "NANVIX_TARGET": "x86",
     "NANVIX_MACHINE": "microvm",
     "NANVIX_DEPLOYMENT_MODE": "standalone",
     "NANVIX_MEMORY_SIZE": "256mb",
 }
+
+DEFAULT_TARGET: str = _DEFAULTS["NANVIX_TARGET"]
+"""Default target architecture."""
 
 DEFAULT_MACHINE: str = _DEFAULTS["NANVIX_MACHINE"]
 """Default target machine identifier."""

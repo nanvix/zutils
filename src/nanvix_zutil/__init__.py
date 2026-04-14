@@ -63,6 +63,7 @@ from nanvix_zutil.config import (
     DEFAULT_DEPLOYMENT_MODE,
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
+    DEFAULT_TARGET,
 )
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -124,6 +125,7 @@ __all__ = [
     "DEFAULT_FORMATS",
     "DEFAULT_MACHINE",
     "DEFAULT_MEMORY_SIZE",
+    "DEFAULT_TARGET",
     "Dependency",
     "DockerConfig",
     "EXIT_BUILD_FAILURE",

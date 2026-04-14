@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil.config import DEFAULT_TARGET
 from nanvix_zutil.sysroot import Sysroot
 
 
@@ -135,7 +136,10 @@ class TestSysrootDownloadFetches(unittest.TestCase):
                 dest=dest,
             )
 
-        self.assertEqual(captured[0], "nanvix-microvm-standalone-release-256mb")
+        self.assertEqual(
+            captured[0],
+            f"nanvix-{DEFAULT_TARGET}-microvm-standalone-release-256mb",
+        )
         self.assertTrue(captured_kwargs[0]["match_prefix"])
 
     def test_path_is_absolute(self) -> None:

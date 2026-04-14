@@ -31,6 +31,7 @@ from nanvix_zutil.config import (
     DEFAULT_DEPLOYMENT_MODE,
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
+    DEFAULT_TARGET,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
@@ -48,9 +49,9 @@ from nanvix_zutil.utils import SEMVER_RE
 _DEFAULT_REPO = "nanvix/nanvix"
 _DEFAULT_VERSION = "latest"
 
-# Sysroot asset prefix pattern: nanvix-{machine}-{mode}-release-{mem}-{sha}.tar.bz2
+# Sysroot asset prefix pattern: nanvix-{target}-{machine}-{mode}-release-{mem}-{sha}.tar.bz2
 _ASSET_RE = re.compile(
-    r"^nanvix-(?P<machine>[^-]+-?[^-]*)-(?P<mode>.+)-release-"
+    r"^nanvix-(?P<target>[^-]+)-(?P<machine>[^-]+-?[^-]*)-(?P<mode>.+)-release-"
     r"(?P<mem>[^-]+)-(?P<sha>[0-9a-fA-F]{4,40})\.tar\.bz2$"
 )
 
@@ -95,6 +96,7 @@ class NanvixInfo:
 
 def _extract_sha(
     assets: list[object],
+    target: str,
     machine: str,
     mode: str,
     memory: str,
@@ -103,6 +105,7 @@ def _extract_sha(
 
     Args:
         assets: List of asset dictionaries from the GitHub API.
+        target: Target architecture (e.g. ``"x86"``).
         machine: Target machine identifier (e.g. ``"microvm"``).
         mode: Deployment mode (e.g. ``"standalone"``).
         memory: Memory size string (e.g. ``"256mb"``).
@@ -111,7 +114,7 @@ def _extract_sha(
         The short commit SHA (e.g. ``"fa06b88"``) or ``None`` if no matching
         asset was found.
     """
-    prefix = f"nanvix-{machine}-{mode}-release-{memory}-"
+    prefix = f"nanvix-{target}-{machine}-{mode}-release-{memory}-"
     for raw_item in assets:
         if not isinstance(raw_item, dict):
             continue
@@ -150,6 +153,7 @@ def _extract_version(release_name: object) -> str | None:
 def get_nanvix_info(
     repo: str = _DEFAULT_REPO,
     version: str = _DEFAULT_VERSION,
+    target: str = DEFAULT_TARGET,
     machine: str = DEFAULT_MACHINE,
     mode: str = DEFAULT_DEPLOYMENT_MODE,
     memory: str = DEFAULT_MEMORY_SIZE,
@@ -165,6 +169,7 @@ def get_nanvix_info(
         repo: Repository in ``owner/name`` format (default: ``"nanvix/nanvix"``).
         version: Release tag, ``"latest"``, semver, or commit hash
             (default: ``"latest"``).
+        target: Target architecture (default: ``"x86"``).
         machine: Target machine identifier (default: ``"microvm"``).
         mode: Deployment mode (default: ``"standalone"``).
         memory: Memory size string (default: ``"256mb"``).
@@ -195,15 +200,15 @@ def get_nanvix_info(
         )
     assets: list[object] = cast(list[object], raw_assets)
 
-    sha = _extract_sha(assets, machine, mode, memory)
+    sha = _extract_sha(assets, target, machine, mode, memory)
     if sha is None:
-        prefix = f"nanvix-{machine}-{mode}-release-{memory}-"
+        prefix = f"nanvix-{target}-{machine}-{mode}-release-{memory}-"
         log.fatal(
             f"No sysroot asset matching prefix '{prefix}' found in {repo}@{version}",
             code=EXIT_MISSING_DEP,
             hint=(
-                "Check that --machine, --mode, and --memory match an asset "
-                "in the release."
+                "Check that --target, --machine, --mode, and --memory match "
+                "an asset in the release."
             ),
         )
 
@@ -249,6 +254,12 @@ def _build_parser(prog: str = "nanvix-info") -> argparse.ArgumentParser:
             "Release version specifier: tag name, 'latest', semver, or "
             f"commit hash (default: {_DEFAULT_VERSION})"
         ),
+    )
+    parser.add_argument(
+        "--target",
+        default=DEFAULT_TARGET,
+        metavar="TARGET",
+        help=f"Target architecture (default: {DEFAULT_TARGET})",
     )
     parser.add_argument(
         "--machine",
@@ -308,6 +319,7 @@ def main() -> None:
     info = get_nanvix_info(
         repo=args.repo,
         version=args.version,
+        target=args.target,
         machine=args.machine,
         mode=args.mode,
         memory=args.memory,
