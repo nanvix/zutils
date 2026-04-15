@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
-from nanvix_zutil.manifest import load_manifest
+from nanvix_zutil.manifest import _is_local_path, load_manifest  # pyright: ignore[reportPrivateUsage]
 from tests.testutils import MANIFEST_WITH_BUILDS
 
 
@@ -1029,6 +1029,7 @@ class TestLoadManifestTypeValidation(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+<<<<<<< HEAD
 class TestLoadManifestBuildsSection(unittest.TestCase):
     """Tests for the required [builds] section in nanvix.toml."""
 
@@ -1183,6 +1184,208 @@ class TestLoadManifestBuildsSection(unittest.TestCase):
             load_manifest(path)
 
         self.assertEqual(ctx.exception.code, 2)
+||||||| parent of f129376 ([tests] F: Add tests for RefKind.LOCAL)
+=======
+class TestIsLocalPath(unittest.TestCase):
+    """_is_local_path() detects filesystem paths correctly."""
+
+    def test_unix_absolute(self) -> None:
+        self.assertTrue(_is_local_path("/home/me/zlib-build"))
+
+    def test_unix_root(self) -> None:
+        self.assertTrue(_is_local_path("/"))
+
+    def test_relative_dot_slash(self) -> None:
+        self.assertTrue(_is_local_path("./local-build"))
+
+    def test_relative_dot_dot_slash(self) -> None:
+        self.assertTrue(_is_local_path("../sibling/build"))
+
+    def test_tilde_home(self) -> None:
+        self.assertTrue(_is_local_path("~/nanvix"))
+
+    def test_windows_drive_backslash(self) -> None:
+        self.assertTrue(_is_local_path("C:\\Users\\me\\nanvix"))
+
+    def test_windows_drive_forward_slash(self) -> None:
+        self.assertTrue(_is_local_path("D:/builds/nanvix"))
+
+    def test_windows_unc(self) -> None:
+        self.assertTrue(_is_local_path("\\\\server\\share"))
+
+    def test_semver_string(self) -> None:
+        self.assertFalse(_is_local_path("1.3.1"))
+
+    def test_latest(self) -> None:
+        self.assertFalse(_is_local_path("latest"))
+
+    def test_v_prefixed_version(self) -> None:
+        self.assertFalse(_is_local_path("v0.12.291"))
+
+    def test_commit_hash(self) -> None:
+        self.assertFalse(_is_local_path("b7a6a3c"))
+
+    def test_tag_string(self) -> None:
+        self.assertFalse(_is_local_path("v1.0.0-nanvix-abc"))
+
+
+class TestLoadManifestLocalOverride(unittest.TestCase):
+    """Env var overrides with filesystem paths produce RefKind.LOCAL."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_dep_override_unix_path(self) -> None:
+        """NANVIX_VERSION_ZLIB=/path/to/zlib -> RefKind.LOCAL."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "/home/me/zlib-build"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "/home/me/zlib-build")
+
+    def test_dep_override_windows_path(self) -> None:
+        """NANVIX_VERSION_ZLIB=C:\\path -> RefKind.LOCAL."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "C:\\Users\\me\\zlib"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "C:\\Users\\me\\zlib")
+
+    def test_dep_override_relative_path(self) -> None:
+        """NANVIX_VERSION_ZLIB=./local-build -> RefKind.LOCAL."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "./local-build"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "./local-build")
+
+    def test_dep_override_version_string_not_local(self) -> None:
+        """Non-path env var preserves original RefKind."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "env_sha"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.VERSION)
+
+    def test_sysroot_override_unix_path(self) -> None:
+        """NANVIX_VERSION=/path/to/sysroot -> RefKind.LOCAL sysroot."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "/opt/nanvix/sysroot"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.sysroot_ref.value, "/opt/nanvix/sysroot")
+
+    def test_sysroot_override_version_string_not_local(self) -> None:
+        """Non-path NANVIX_VERSION preserves original RefKind."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "override_sha"}):
+            m = load_manifest(path)
+
+        # Sysroot uses RefKind.TAG (not VERSION) — the original kind from the manifest.
+        self.assertEqual(m.sysroot_ref.kind, RefKind.TAG)
+        self.assertEqual(m.sysroot_ref.value, "override_sha")
+
+    def test_local_dep_not_suffixed(self) -> None:
+        """LOCAL deps are never auto-suffixed with nanvix version."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "/home/me/zlib-build"}):
+            m = load_manifest(path)
+
+        # LOCAL ref value must be the raw path — no suffix appended.
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "/home/me/zlib-build")
+
+    def test_local_sysroot_skips_suffix_loop(self) -> None:
+        """When NANVIX_VERSION is a path, VERSION deps are NOT suffixed."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "4.5.6"\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "/opt/nanvix/sysroot"}):
+            m = load_manifest(path)
+
+        # Sysroot is LOCAL — suffix loop must be skipped entirely.
+        # Without the guard, deps would get "-nanvix-/opt/nanvix/sysroot".
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.VERSION)
+        self.assertEqual(m.dependencies[0].ref.value, "4.5.6")
+>>>>>>> f129376 ([tests] F: Add tests for RefKind.LOCAL)
 
 
 if __name__ == "__main__":
