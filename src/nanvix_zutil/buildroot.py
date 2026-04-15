@@ -98,7 +98,10 @@ class Ref:
 
 @dataclass
 class Dependency:
-    """A library dependency fetched from a GitHub release.
+    """A library dependency resolved from a GitHub release or local path.
+
+    When ``NANVIX_DEP_PATH_<NAME>`` is set, the ref kind is
+    ``RefKind.LOCAL`` and the value is the filesystem path.
 
     Attributes:
         name: Short library name (e.g. ``"zlib"``).
