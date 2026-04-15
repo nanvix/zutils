@@ -9,12 +9,20 @@ or the literal ``"latest"``.  Dependency version fields accept a plain
 string (``version`` specifier), or a table with one of ``version``,
 ``tag``, ``commitish``, or ``id``.
 
-Environment variables ``NANVIX_VERSION`` (for the sysroot) and
-``NANVIX_VERSION_<NAME>`` (for individual dependencies) override the
-versions declared in the manifest.  When the override value looks like
-a filesystem path (starts with ``/``, ``./``, ``../``, or a Windows
-drive letter like ``C:\\``), the ref kind is set to ``local`` instead
-of preserving the original kind from the manifest.
+Environment variables override the versions declared in the manifest:
+
+- ``NANVIX_VERSION`` — override the sysroot version (value is a version
+  string, tag, or commitish).
+- ``NANVIX_VERSION_<NAME>`` — override a dependency version (same value
+  types).
+- ``NANVIX_SYSROOT_PATH`` — point the sysroot at a local filesystem
+  path instead of downloading from GitHub.  Sets ``RefKind.LOCAL``.
+- ``NANVIX_DEP_PATH_<NAME>`` — point a dependency at a local filesystem
+  path.  Sets ``RefKind.LOCAL``.
+
+``NANVIX_VERSION`` and ``NANVIX_SYSROOT_PATH`` are mutually exclusive.
+``NANVIX_VERSION_<NAME>`` and ``NANVIX_DEP_PATH_<NAME>`` are mutually
+exclusive for the same dependency.  Setting both is a fatal error.
 
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
@@ -82,28 +90,9 @@ class Manifest:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
 # We are intentionally keeping the semver matching simple for now.
 _SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
-
-
-def _is_local_path(value: str) -> bool:
-    """Return ``True`` if *value* looks like a filesystem path.
-
-    Detects Unix absolute paths (``/``), home-directory paths (``~/``),
-    relative paths (``./``, ``../``), Windows drive-letter paths
-    (``C:\\``, ``D:/``), and Windows UNC paths (``\\\\server\\share``).
-    """
-    if value.startswith(("/", "./", "../", "~/")):
-        return True
-    # Windows drive letter: C:\, D:/, etc.
-    if len(value) >= 3 and value[1] == ":" and value[2] in ("/", "\\"):
-        return True
-    # Windows UNC path: \\server\share
-    if value.startswith("\\\\"):
-        return True
-    return False
 
 
 def _validate_version_string(raw: str, context: str, path: Path) -> str:
@@ -388,13 +377,24 @@ def _parse_dependencies(
     for name, raw_value in section.items():
         ref = _parse_version_field(raw_value, f"{section_name}.{name}", path)
 
-        env_key = f"NANVIX_VERSION_{name.upper()}"
-        env_val = os.environ.get(env_key)
-        if env_val is not None:
-            if _is_local_path(env_val):
-                ref = Ref(kind=RefKind.LOCAL, value=env_val)
-            else:
-                ref = Ref(kind=ref.kind, value=env_val)
+        env_ver_key = f"NANVIX_VERSION_{name.upper()}"
+        env_path_key = f"NANVIX_DEP_PATH_{name.upper()}"
+        env_ver = os.environ.get(env_ver_key)
+        env_path = os.environ.get(env_path_key)
+
+        if env_ver is not None and env_path is not None:
+            log.fatal(
+                f"{path}: both {env_ver_key} and {env_path_key} are set"
+                f" for dependency '{name}'",
+                code=EXIT_INVALID_ARGS,
+                hint=f"Set only one of {env_ver_key} (version override)"
+                f" or {env_path_key} (local path override).",
+            )
+
+        if env_path is not None:
+            ref = Ref(kind=RefKind.LOCAL, value=env_path)
+        elif env_ver is not None:
+            ref = Ref(kind=ref.kind, value=env_ver)
 
         if (
             ref.kind == RefKind.VERSION
@@ -429,6 +429,8 @@ def load_manifest(path: Path) -> Manifest:
 
     Environment variables ``NANVIX_VERSION`` (sysroot) and
     ``NANVIX_VERSION_<NAME>`` (per dependency) override manifest values.
+    ``NANVIX_SYSROOT_PATH`` and ``NANVIX_DEP_PATH_<NAME>`` provide
+    local filesystem path overrides (producing ``RefKind.LOCAL`` refs).
 
     Args:
         path: Path to the ``nanvix.toml`` file.
@@ -493,15 +495,24 @@ def load_manifest(path: Path) -> Manifest:
         )
 
     sysroot_ref = _parse_nanvix_version(raw_nanvix_version, path)
-    env_sysroot = os.environ.get("NANVIX_VERSION")
-    if env_sysroot is not None:
+    env_sysroot_ver = os.environ.get("NANVIX_VERSION")
+    env_sysroot_path = os.environ.get("NANVIX_SYSROOT_PATH")
+
+    if env_sysroot_ver is not None and env_sysroot_path is not None:
+        log.fatal(
+            f"{path}: both NANVIX_VERSION and NANVIX_SYSROOT_PATH are set",
+            code=EXIT_INVALID_ARGS,
+            hint="Set only one of NANVIX_VERSION (version override)"
+            " or NANVIX_SYSROOT_PATH (local path override).",
+        )
+
+    if env_sysroot_path is not None:
+        sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot_path)
+    elif env_sysroot_ver is not None:
         # NOTE: NANVIX_VERSION intentionally bypasses semver validation.
         # This is a development escape hatch — CI may pass with a non-semver
         # sysroot version if this env var is set.
-        if _is_local_path(env_sysroot):
-            sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot)
-        else:
-            sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
+        sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot_ver)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})

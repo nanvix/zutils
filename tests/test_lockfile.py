@@ -200,6 +200,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
                 manifest_hash="sha256:local_test",
                 nanvix_zutil_version="0.2.2",
             ),
+            builds=_DEFAULT_BUILDS,
             packages=[
                 ResolvedPackage(
                     name="nanvix",
