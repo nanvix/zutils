@@ -11,7 +11,10 @@ string (``version`` specifier), or a table with one of ``version``,
 
 Environment variables ``NANVIX_VERSION`` (for the sysroot) and
 ``NANVIX_VERSION_<NAME>`` (for individual dependencies) override the
-versions declared in the manifest.
+versions declared in the manifest.  When the override value looks like
+a filesystem path (starts with ``/``, ``./``, ``../``, or a Windows
+drive letter like ``C:\\``), the ref kind is set to ``local`` instead
+of preserving the original kind from the manifest.
 
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
