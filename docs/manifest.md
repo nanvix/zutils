@@ -13,9 +13,9 @@ version = "0.1.0"
 nanvix-version = "0.12.257"
 
 [builds.matrix]
-platforms = ["hyperlight"]
-modes = ["multi-process"]
-memory = ["128mb"]
+platforms = ["microvm"]
+modes = ["standalone"]
+memory = ["256mb"]
 ```
 
 ## `[package]`
@@ -139,7 +139,7 @@ bzip2 = "1.0.0"
 [system-dependencies]
 
 [builds.matrix]
-platforms = ["hyperlight"]
-modes = ["multi-process"]
-memory = ["128mb"]
+platforms = ["microvm"]
+modes = ["standalone"]
+memory = ["256mb"]
 ```
