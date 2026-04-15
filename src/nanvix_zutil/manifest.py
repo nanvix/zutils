@@ -85,7 +85,7 @@ _SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
 
 
-def _is_local_path(value: str) -> bool:  # pyright: ignore[reportUnusedFunction]
+def _is_local_path(value: str) -> bool:
     """Return ``True`` if *value* looks like a filesystem path.
 
     Detects Unix absolute paths (``/``), home-directory paths (``~/``),
@@ -388,7 +388,10 @@ def _parse_dependencies(
         env_key = f"NANVIX_VERSION_{name.upper()}"
         env_val = os.environ.get(env_key)
         if env_val is not None:
-            ref = Ref(kind=ref.kind, value=env_val)
+            if _is_local_path(env_val):
+                ref = Ref(kind=RefKind.LOCAL, value=env_val)
+            else:
+                ref = Ref(kind=ref.kind, value=env_val)
 
         if (
             ref.kind == RefKind.VERSION
@@ -492,7 +495,10 @@ def load_manifest(path: Path) -> Manifest:
         # NOTE: NANVIX_VERSION intentionally bypasses semver validation.
         # This is a development escape hatch — CI may pass with a non-semver
         # sysroot version if this env var is set.
-        sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
+        if _is_local_path(env_sysroot):
+            sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot)
+        else:
+            sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})
