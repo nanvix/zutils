@@ -113,8 +113,14 @@ class TestDockerConfigTranslatePath(unittest.TestCase):
         self.assertEqual(cfg.translate_path(p), p)
 
 
+@patch("nanvix_zutil.docker.is_windows", return_value=False)
 class TestDockerConfigBuildRunCmd(unittest.TestCase):
-    """Tests for DockerConfig.build_run_cmd."""
+    """Tests for DockerConfig.build_run_cmd.
+
+    ``is_windows`` is patched to ``False`` so volume-string assertions
+    use raw host paths (no drive-letter translation).  The Windows
+    equivalent (``build_windows_run_cmd``) is tested separately.
+    """
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -145,52 +151,52 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
             gid=1000,
         )
 
-    def test_starts_with_docker_run(self) -> None:
+    def test_starts_with_docker_run(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("make", "all")
         self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
 
-    def test_contains_image(self) -> None:
+    def test_contains_image(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("make", "all")
         self.assertIn("nanvix/toolchain:latest-minimal", cmd)
 
-    def test_contains_user(self) -> None:
+    def test_contains_user(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("echo")
         self.assertIn("--user", cmd)
         self.assertIn("1000:1000", cmd)
 
-    def test_workspace_mount(self) -> None:
+    def test_workspace_mount(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("echo")
         workspace_vol = f"{self._workspace.resolve()}:{WORKSPACE_CONTAINER_PATH}"
         self.assertIn(workspace_vol, cmd)
 
-    def test_sysroot_mount_readonly(self) -> None:
+    def test_sysroot_mount_readonly(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("echo")
         sysroot_vol = f"{self._sysroot.resolve()}:{SYSROOT_CONTAINER_PATH}:ro"
         self.assertIn(sysroot_vol, cmd)
 
-    def test_workdir_set(self) -> None:
+    def test_workdir_set(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("echo")
         self.assertIn("-w", cmd)
         w_idx = cmd.index("-w")
         self.assertEqual(cmd[w_idx + 1], str(WORKSPACE_CONTAINER_PATH))
 
-    def test_home_env(self) -> None:
+    def test_home_env(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("echo")
         self.assertIn("HOME=/tmp", cmd)
 
-    def test_inner_command_appended(self) -> None:
+    def test_inner_command_appended(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("make", "-j4", "all")
         self.assertTrue(cmd[-3:] == ["make", "-j4", "all"])
 
-    def test_extra_env_forwarded(self) -> None:
+    def test_extra_env_forwarded(self, _mock: object) -> None:
         cfg = self._make_config()
         cfg.extra_env["MY_VAR"] = "hello"
         cmd = cfg.build_run_cmd("echo")
@@ -401,7 +407,11 @@ class TestKvmGidInKvmRunCmd(unittest.TestCase):
     def test_group_add_absent_when_no_kvm(self) -> None:
         """When /dev/kvm is inaccessible, --group-add is omitted."""
         cfg = self._make_config()
-        with patch("nanvix_zutil.docker.os.stat", side_effect=OSError):
+        with (
+            patch("nanvix_zutil.docker.sys") as mock_sys,
+            patch("nanvix_zutil.docker.os.stat", side_effect=OSError),
+        ):
+            mock_sys.platform = "linux"
             cmd = cfg.build_kvm_run_cmd("echo")
         self.assertNotIn("--group-add", cmd)
 
@@ -409,7 +419,11 @@ class TestKvmGidInKvmRunCmd(unittest.TestCase):
         """When /dev/kvm has a GID, --group-add <gid> is included."""
         cfg = self._make_config()
         mock_stat = type("FakeStat", (), {"st_gid": 42})()
-        with patch("nanvix_zutil.docker.os.stat", return_value=mock_stat):
+        with (
+            patch("nanvix_zutil.docker.sys") as mock_sys,
+            patch("nanvix_zutil.docker.os.stat", return_value=mock_stat),
+        ):
+            mock_sys.platform = "linux"
             cmd = cfg.build_kvm_run_cmd("echo")
         self.assertIn("--group-add", cmd)
         gid_idx = cmd.index("--group-add")
@@ -655,6 +669,88 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         cfg.extra_env["MY_VAR"] = "hello"
         cmd = cfg.build_windows_run_cmd("echo")
         self.assertIn("MY_VAR=hello", cmd)
+
+
+class TestTranslateWindowsPath(unittest.TestCase):
+    """Tests for _translate_windows_path() helper."""
+
+    def test_windows_c_drive(self) -> None:
+        """C:\\Users\\foo\\repo → /c/Users/foo/repo."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("C:\\Users\\foo\\repo"))
+        self.assertEqual(result, "/c/Users/foo/repo")
+
+    def test_windows_d_drive(self) -> None:
+        """D:\\builds → /d/builds."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("D:\\builds"))
+        self.assertEqual(result, "/d/builds")
+
+    def test_posix_path_unchanged(self) -> None:
+        """/home/user/repo → /home/user/repo (no-op on POSIX)."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("/home/user/repo"))
+        self.assertEqual(result, "/home/user/repo")
+
+    def test_mixed_separators(self) -> None:
+        """C:/Users\\foo → /c/Users/foo."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("C:/Users\\foo"))
+        # On Linux, Path("C:/Users\\foo") keeps the backslash as a literal
+        # character but str() still starts with "C:/", so the drive-letter
+        # pattern matches and the result is always "/c/Users/foo".
+        self.assertEqual(result, "/c/Users/foo")
+
+    def test_short_path_no_crash(self) -> None:
+        """Very short paths should not crash the function."""
+        from nanvix_zutil.docker import (
+            _translate_windows_path,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        result = _translate_windows_path(Path("ab"))
+        self.assertIsInstance(result, str)
+
+
+class TestGetKvmGidPlatformShortCircuit(unittest.TestCase):
+    """Tests for _get_kvm_gid() non-Linux short-circuit."""
+
+    def test_returns_empty_on_non_linux(self) -> None:
+        """_get_kvm_gid() returns '' immediately on non-Linux."""
+        from nanvix_zutil.docker import (
+            _get_kvm_gid,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        with patch("nanvix_zutil.docker.sys") as mock_sys:
+            mock_sys.platform = "win32"
+            result = _get_kvm_gid()
+        self.assertEqual(result, "")
+
+    def test_returns_gid_on_linux(self) -> None:
+        """_get_kvm_gid() reads /dev/kvm on Linux."""
+        from nanvix_zutil.docker import (
+            _get_kvm_gid,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        mock_stat = type("FakeStat", (), {"st_gid": 108})()
+        with (
+            patch("nanvix_zutil.docker.sys") as mock_sys,
+            patch("nanvix_zutil.docker.os.stat", return_value=mock_stat),
+        ):
+            mock_sys.platform = "linux"
+            result = _get_kvm_gid()
+        self.assertEqual(result, "108")
 
 
 if __name__ == "__main__":

@@ -547,7 +547,7 @@ class ZScript:
                         hint="KVM requires a Linux host with /dev/kvm access.",
                     )
                 cmd = cfg.build_kvm_run_cmd(*args)
-            elif is_windows() and (cfg.crlf_files or cfg.output_files):
+            elif is_windows():
                 cmd = cfg.build_windows_run_cmd(*args)
             else:
                 cmd = cfg.build_run_cmd(*args)

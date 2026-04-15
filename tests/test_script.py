@@ -4,6 +4,7 @@
 """Tests for nanvix_zutil.script (ZScript)."""
 
 import os
+import subprocess as sp
 import sys
 import tempfile
 import unittest
@@ -505,7 +506,7 @@ class TestZScriptRun(unittest.TestCase):
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_uses_windows_cmd_when_configured(self, _mock: object) -> None:
-        """run() delegates to build_windows_run_cmd on Windows with crlf/output files."""
+        """run() delegates to build_windows_run_cmd on Windows."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
             image="nanvix/toolchain:latest-minimal",
@@ -522,8 +523,6 @@ class TestZScriptRun(unittest.TestCase):
         )
         captured_cmds: list[list[str]] = []
 
-        import subprocess as sp
-
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
             captured_cmds.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -536,6 +535,73 @@ class TestZScriptRun(unittest.TestCase):
         # Should use sh -c (Windows tar-copy mode).
         self.assertIn("sh", cmd)
         self.assertIn("-c", cmd)
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_run_dispatch_windows_default_docker(self, _mock: object) -> None:
+        """run() uses build_windows_run_cmd on Windows even with default
+        (empty) crlf_files and output_files — the dispatch no longer requires
+        these fields to be populated."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+            # crlf_files and output_files intentionally left as defaults ([])
+        )
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Should still use sh -c (Windows tar-copy mode) even without
+        # crlf_files/output_files.
+        self.assertIn("sh", cmd)
+        self.assertIn("-c", cmd)
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_run_dispatch_linux_uses_build_run_cmd(self, *_mocks: object) -> None:
+        """run() uses build_run_cmd on Linux (not the Windows tar-copy path)."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.docker = DockerConfig(
+            image="nanvix/toolchain:latest-minimal",
+            mounts=[
+                Mount(
+                    host_path=script.repo_root,
+                    container_path=WORKSPACE_CONTAINER_PATH,
+                )
+            ],
+            uid=1000,
+            gid=1000,
+        )
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.run("make", "all")
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Standard docker run — should NOT use sh -c wrapping.
+        self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
+        # Inner command is appended directly (not wrapped in sh -c).
+        self.assertEqual(cmd[-2:], ["make", "all"])
+        self.assertNotEqual(cmd[-3:-1], ["sh", "-c"])
 
 
 class TestZScriptSysrootRequiredFiles(unittest.TestCase):
@@ -694,7 +760,9 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         result = script.run(sys.executable, "-c", "print('ok')", docker=False)
         self.assertEqual(result.returncode, 0)
 
-    def test_run_with_docker_wraps_command(self) -> None:
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_run_with_docker_wraps_command(self, *_mocks: object) -> None:
         """When Docker is active, run() prepends docker run to the command."""
         script = self._make_script()
         script.docker = DockerConfig(
@@ -710,8 +778,6 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         )
         captured: list[list[str]] = []
 
-        import subprocess as sp
-
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -724,7 +790,9 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIn("make", captured[0])
         self.assertIn("all", captured[0])
 
-    def test_run_env_forwarded_into_container(self) -> None:
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_run_env_forwarded_into_container(self, *_mocks: object) -> None:
         """env vars passed to run() are forwarded as -e flags in Docker mode."""
         script = self._make_script()
         script.docker = DockerConfig(
@@ -734,8 +802,6 @@ class TestZScriptDockerIntegration(unittest.TestCase):
             gid=1000,
         )
         captured_kwargs: list[dict[str, object]] = []
-
-        import subprocess as sp
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
             captured_kwargs.append(dict(kwargs))
@@ -748,7 +814,9 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         # env should NOT be passed to the docker subprocess itself
         self.assertIsNone(captured_kwargs[0].get("env"))
 
-    def test_run_env_forwarded_into_container_as_flags(self) -> None:
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_run_env_forwarded_into_container_as_flags(self, *_mocks: object) -> None:
         """env vars appear as -e KEY=VAL in the docker run command."""
         script = self._make_script()
         script.docker = DockerConfig(
@@ -758,8 +826,6 @@ class TestZScriptDockerIntegration(unittest.TestCase):
             gid=1000,
         )
         captured_cmds: list[list[str]] = []
-
-        import subprocess as sp
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
             captured_cmds.append(cmd)

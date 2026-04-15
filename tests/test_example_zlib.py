@@ -8,12 +8,12 @@ from the example directory — the same way an end-user would run
 ``nanvix-zutil <command>``.
 
 The full lifecycle test (setup → build → test → clean) requires the
-Nanvix cross-compiler (``i686-nanvix-gcc``) and network access to
-download release assets from GitHub.  Detection order:
+Nanvix cross-compiler (``i686-nanvix-gcc``) installed natively on the
+host, plus network access to download release assets from GitHub.
+Detection order:
 
 1. ``NANVIX_TOOLCHAIN`` environment variable
 2. Default path ``/opt/nanvix/``
-3. Docker image ``nanvix/toolchain:latest-minimal``
 
 CLI flag tests (--help, --json) work without any external dependencies.
 """
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import unittest
@@ -34,18 +33,17 @@ _EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-zlib"
 
 
 def _has_nanvix_toolchain() -> bool:
-    """Return True if the Nanvix cross-compiler is available."""
+    """Return True if the Nanvix cross-compiler is available on the host.
+
+    Only checks for a native ``i686-nanvix-gcc`` binary — Docker image
+    availability is not sufficient because the lifecycle test invokes the
+    compiler directly (not via ``--with-docker``).
+    """
     custom = os.environ.get("NANVIX_TOOLCHAIN", "")
     if custom and Path(custom, "bin", "i686-nanvix-gcc").exists():
         return True
     if Path("/opt/nanvix/bin/i686-nanvix-gcc").exists():
         return True
-    if shutil.which("docker"):
-        result = subprocess.run(
-            ["docker", "image", "inspect", "nanvix/toolchain:latest-minimal"],
-            capture_output=True,
-        )
-        return result.returncode == 0
     return False
 
 
@@ -58,7 +56,9 @@ def _has_kvm() -> bool:
 
 _HAS_TOOLCHAIN = _has_nanvix_toolchain()
 _HAS_KVM = _has_kvm()
-_SKIP_LIFECYCLE = "Nanvix toolchain not available (set NANVIX_TOOLCHAIN, install to /opt/nanvix, or pull Docker image)"
+_SKIP_LIFECYCLE = (
+    "Nanvix toolchain not available (set NANVIX_TOOLCHAIN or install to /opt/nanvix)"
+)
 _SKIP_NO_KVM = "KVM not available (/dev/kvm not accessible)"
 _LIFECYCLE_TIMEOUT = (
     120  # seconds per step — setup downloads assets + build + VM boot + test + clean

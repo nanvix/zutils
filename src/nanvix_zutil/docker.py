@@ -25,7 +25,7 @@ import subprocess
 import sys
 import warnings
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 # ---------------------------------------------------------------------------
 # Well-known container paths
@@ -72,6 +72,33 @@ def is_windows() -> bool:
     return sys.platform == "win32"
 
 
+def _translate_windows_path(p: Path) -> str:
+    """Convert a Windows absolute path to Docker-compatible POSIX format.
+
+    ``C:\\Users\\foo`` → ``/c/Users/foo``
+
+    Uses :class:`~pathlib.PureWindowsPath` to parse the drive letter and
+    normalise separators, then rewrites drive-letter paths into the
+    MSYS-style ``/<drive>/…`` prefix that Docker Desktop expects for
+    ``-v`` volume mounts.  Paths without a drive letter are returned as
+    POSIX (forward-slash) strings unchanged.
+
+    .. note::
+
+       This function does **not** check ``sys.platform``.  Platform
+       gating is the caller's responsibility — :meth:`build_run_cmd`
+       only calls this when :func:`is_windows` is ``True``, while
+       :meth:`build_windows_run_cmd` calls it unconditionally (it is
+       only invoked on Windows in the first place).
+    """
+    wp = PureWindowsPath(p)
+    posix = wp.as_posix()
+    if wp.drive:
+        # 'C:/Users/foo' → '/c/Users/foo'
+        return f"/{wp.drive[0].lower()}{posix[2:]}"
+    return posix
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -103,8 +130,9 @@ class DockerConfig:
 
     An instance is stored on :class:`~nanvix_zutil.ZScript` once a Docker
     flag is passed on the command line.  Each :meth:`~nanvix_zutil.ZScript.run`
-    call then delegates to :meth:`build_run_cmd` (or :meth:`build_kvm_run_cmd`
-    when ``kvm=True``) to prepend the appropriate ``docker run`` invocation.
+    call then delegates to :meth:`build_run_cmd`, :meth:`build_kvm_run_cmd`
+    (when ``kvm=True``), or :meth:`build_windows_run_cmd` (on Windows) to
+    prepend the appropriate ``docker run`` invocation.
 
     Attributes:
         image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
@@ -216,7 +244,12 @@ class DockerConfig:
         docker_cmd += ["--user", f"{self.uid}:{self.gid}"]
 
         for mount in self.mounts:
-            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            host = (
+                _translate_windows_path(mount.host_path.resolve())
+                if is_windows()
+                else str(mount.host_path.resolve())
+            )
+            vol = f"{host}:{mount.container_path}"
             if mount.readonly:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
@@ -262,6 +295,8 @@ class DockerConfig:
             docker_cmd += ["--group-add", kvm_gid]
 
         for mount in self.mounts:
+            # KVM is Linux-only (see warning above), so Windows-style
+            # paths never appear here — no _translate_windows_path needed.
             # Sysroot must be writable for functional tests; other mounts
             # respect the readonly flag just like build_run_cmd().
             vol = f"{mount.host_path.resolve()}:{mount.container_path}"
@@ -349,7 +384,8 @@ class DockerConfig:
         docker_cmd: list[str] = ["docker", "run", "--rm"]
 
         for mount in self.mounts:
-            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
+            host = _translate_windows_path(mount.host_path.resolve())
+            vol = f"{host}:{mount.container_path}"
             if mount.readonly:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
@@ -407,6 +443,8 @@ def image_exists(image: str) -> bool:
 
 def _get_kvm_gid() -> str:
     """Return the GID of ``/dev/kvm`` as a string, or empty string on failure."""
+    if sys.platform != "linux":
+        return ""
     try:
         return str(os.stat("/dev/kvm").st_gid)
     except OSError:
