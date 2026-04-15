@@ -193,6 +193,31 @@ class TestLockfileRoundTrip(unittest.TestCase):
         self.assertEqual(restored.packages[0].ref.value, 99999)
         self.assertIsInstance(restored.packages[0].ref.value, int)
 
+    def test_round_trip_local_ref(self) -> None:
+        """String ref-value (RefKind.LOCAL) survives round-trip."""
+        lockfile = Lockfile(
+            metadata=LockfileMetadata(
+                manifest_hash="sha256:local_test",
+                nanvix_zutil_version="0.2.2",
+            ),
+            packages=[
+                ResolvedPackage(
+                    name="nanvix",
+                    repo="nanvix/nanvix",
+                    kind="sysroot",
+                    ref=Ref(kind=RefKind.LOCAL, value="/opt/nanvix/sysroot"),
+                    resolved_tag="",
+                    resolved_commitish="",
+                    release_id=0,
+                ),
+            ],
+        )
+        path = Path(self._tmpdir.name) / "nanvix.lock"
+        write_lockfile(lockfile, path)
+        restored = read_lockfile(path)
+        self.assertEqual(restored.packages[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(restored.packages[0].ref.value, "/opt/nanvix/sysroot")
+
 
 class TestComputeManifestHash(unittest.TestCase):
     """compute_manifest_hash tests."""
