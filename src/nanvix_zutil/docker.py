@@ -25,7 +25,7 @@ import subprocess
 import sys
 import warnings
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 # ---------------------------------------------------------------------------
 # Well-known container paths
@@ -77,11 +77,11 @@ def _translate_windows_path(p: Path) -> str:
 
     ``C:\\Users\\foo`` → ``/c/Users/foo``
 
-    The transformation is purely string-based: any path matching the
-    ``<drive>:<sep>`` pattern (e.g. ``C:\\`` or ``D:/``) gets its drive
-    letter lowered and rewritten to a POSIX prefix (``/c/``, ``/d/``).
-    Paths that do not match the pattern are returned with backslashes
-    normalised to forward-slashes.
+    Uses :class:`~pathlib.PureWindowsPath` to parse the drive letter and
+    normalise separators, then rewrites drive-letter paths into the
+    MSYS-style ``/<drive>/…`` prefix that Docker Desktop expects for
+    ``-v`` volume mounts.  Paths without a drive letter are returned as
+    POSIX (forward-slash) strings unchanged.
 
     .. note::
 
@@ -91,12 +91,12 @@ def _translate_windows_path(p: Path) -> str:
        :meth:`build_windows_run_cmd` calls it unconditionally (it is
        only invoked on Windows in the first place).
     """
-    s = str(p)
-    if len(s) >= 3 and s[1] == ":" and s[2] in ("/", "\\"):
-        drive = s[0].lower()
-        rest = s[2:].replace("\\", "/")
-        return f"/{drive}{rest}"
-    return s.replace("\\", "/")
+    wp = PureWindowsPath(p)
+    posix = wp.as_posix()
+    if wp.drive:
+        # 'C:/Users/foo' → '/c/Users/foo'
+        return f"/{wp.drive[0].lower()}{posix[2:]}"
+    return posix
 
 
 # ---------------------------------------------------------------------------
