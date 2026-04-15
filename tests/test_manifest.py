@@ -11,8 +11,11 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
-from nanvix_zutil.manifest import _is_local_path, load_manifest  # pyright: ignore[reportPrivateUsage]
 from tests.testutils import MANIFEST_WITH_BUILDS
+from nanvix_zutil.manifest import (
+    _is_local_path,  # pyright: ignore[reportPrivateUsage]
+    load_manifest,
+)
 
 
 class TestLoadManifestFileNotFound(unittest.TestCase):
@@ -1395,7 +1398,7 @@ class TestLoadManifestLocalOverride(unittest.TestCase):
         self.assertEqual(m.sysroot_ref.value, "override_sha")
 
     def test_local_dep_not_suffixed(self) -> None:
-        """LOCAL deps are never auto-suffixed with nanvix version."""
+        """LOCAL deps skip suffix; adjacent VERSION deps are suffixed."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
             "[package]\n"
@@ -1404,14 +1407,21 @@ class TestLoadManifestLocalOverride(unittest.TestCase):
             'nanvix-version = "0.12.257"\n'
             "[dependencies]\n"
             'zlib = "1.0.0"\n'
+            'openssl = "2.0.0"\n'
         )
 
         with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "/home/me/zlib-build"}):
             m = load_manifest(path)
 
         # LOCAL ref value must be the raw path — no suffix appended.
-        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
-        self.assertEqual(m.dependencies[0].ref.value, "/home/me/zlib-build")
+        zlib = next(d for d in m.dependencies if d.name == "zlib")
+        self.assertEqual(zlib.ref.kind, RefKind.LOCAL)
+        self.assertEqual(zlib.ref.value, "/home/me/zlib-build")
+        self.assertNotIn("-nanvix-", str(zlib.ref.value))
+        # Adjacent VERSION dep IS suffixed normally.
+        openssl = next(d for d in m.dependencies if d.name == "openssl")
+        self.assertEqual(openssl.ref.kind, RefKind.VERSION)
+        self.assertEqual(openssl.ref.value, "2.0.0-nanvix-0.12.257")
 
     def test_local_sysroot_skips_suffix_loop(self) -> None:
         """When NANVIX_VERSION is a path, VERSION deps are NOT suffixed."""

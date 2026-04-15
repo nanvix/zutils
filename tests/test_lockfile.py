@@ -217,6 +217,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
         restored = read_lockfile(path)
         self.assertEqual(restored.packages[0].ref.kind, RefKind.LOCAL)
         self.assertEqual(restored.packages[0].ref.value, "/opt/nanvix/sysroot")
+        self.assertIsInstance(restored.packages[0].ref.value, str)
 
 
 class TestComputeManifestHash(unittest.TestCase):
