@@ -499,5 +499,162 @@ class TestInstallDepPreResolvedRelease(unittest.TestCase):
         self.assertEqual(captured_releases[0], fake_release)
 
 
+class TestInstallDepLocal(unittest.TestCase):
+    """Buildroot.install_dep() handles LOCAL ref dependencies."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def _setup_buildroot(self) -> Buildroot:
+        dest = Path(self._tmpdir.name) / "br"
+        return Buildroot.create(dest=dest)
+
+    def test_local_directory_copies_libs(self) -> None:
+        """LOCAL directory dep copies .a files into buildroot/lib/."""
+        br = self._setup_buildroot()
+        src = Path(self._tmpdir.name) / "local-dep"
+        (src / "lib").mkdir(parents=True)
+        (src / "lib" / "libz.a").write_bytes(b"lib-content")
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value=str(src)),
+        )
+
+        with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+            br.install_dep(dep)
+            mock_dl.assert_not_called()
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+
+    def test_local_directory_copies_headers(self) -> None:
+        """LOCAL directory dep copies .h files into buildroot/include/."""
+        br = self._setup_buildroot()
+        src = Path(self._tmpdir.name) / "local-dep"
+        (src / "include").mkdir(parents=True)
+        (src / "include" / "zlib.h").write_bytes(b"header-content")
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value=str(src)),
+        )
+
+        br.install_dep(dep)
+
+        self.assertTrue((br.path / "include" / "zlib.h").exists())
+
+    def test_local_directory_preserves_subdirs(self) -> None:
+        """LOCAL directory dep preserves subdirectory structure."""
+        br = self._setup_buildroot()
+        src = Path(self._tmpdir.name) / "local-dep"
+        (src / "lib" / "engines").mkdir(parents=True)
+        (src / "lib" / "engines" / "libcapi.a").write_bytes(b"engine")
+        (src / "include" / "openssl").mkdir(parents=True)
+        (src / "include" / "openssl" / "ssl.h").write_bytes(b"ssl")
+
+        dep = Dependency(
+            name="openssl",
+            repo="nanvix/openssl",
+            ref=Ref(kind=RefKind.LOCAL, value=str(src)),
+        )
+
+        br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "engines" / "libcapi.a").exists())
+        self.assertTrue((br.path / "include" / "openssl" / "ssl.h").exists())
+
+    def test_local_directory_selective_libs(self) -> None:
+        """LOCAL directory dep respects install_libs filter."""
+        br = self._setup_buildroot()
+        src = Path(self._tmpdir.name) / "local-dep"
+        (src / "lib").mkdir(parents=True)
+        (src / "lib" / "libz.a").write_bytes(b"wanted")
+        (src / "lib" / "libextra.a").write_bytes(b"not-wanted")
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value=str(src)),
+            install_libs=["libz.a"],
+        )
+
+        br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertFalse((br.path / "lib" / "libextra.a").exists())
+
+    def test_local_directory_selective_headers(self) -> None:
+        """LOCAL directory dep respects install_headers filter."""
+        br = self._setup_buildroot()
+        src = Path(self._tmpdir.name) / "local-dep"
+        (src / "include").mkdir(parents=True)
+        (src / "include" / "zlib.h").write_bytes(b"wanted")
+        (src / "include" / "internal.h").write_bytes(b"not-wanted")
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value=str(src)),
+            install_headers=["zlib.h"],
+        )
+
+        br.install_dep(dep)
+
+        self.assertTrue((br.path / "include" / "zlib.h").exists())
+        self.assertFalse((br.path / "include" / "internal.h").exists())
+
+    def test_local_tarball_extracts(self) -> None:
+        """LOCAL tarball dep extracts using existing tarball logic."""
+        br = self._setup_buildroot()
+        archive = _make_tar_bz2(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+        tarball = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        tarball.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value=str(tarball)),
+        )
+
+        with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+            br.install_dep(dep)
+            mock_dl.assert_not_called()
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertTrue((br.path / "include" / "zlib.h").exists())
+
+    def test_local_invalid_path_exits(self) -> None:
+        """LOCAL ref pointing to non-existent path triggers fatal error."""
+        br = self._setup_buildroot()
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(
+                kind=RefKind.LOCAL,
+                value=str(Path(self._tmpdir.name) / "does-not-exist"),
+            ),
+        )
+
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                br.install_dep(dep)
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+
 if __name__ == "__main__":
     unittest.main()

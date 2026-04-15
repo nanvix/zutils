@@ -10,6 +10,7 @@ describes a single library fetched from a GitHub release.
 
 from __future__ import annotations
 
+import shutil
 import tarfile
 from dataclasses import dataclass, replace as _dc_replace
 from enum import Enum
@@ -56,6 +57,46 @@ def _relative_to_segment(member_path: Path, segment: str) -> str:
         return str(Path(*parts[idx + 1 :]))
     except ValueError:
         return member_path.name
+
+
+def _install_from_directory(
+    src: Path,
+    buildroot: Path,
+    install_libs: list[str] | None,
+    install_headers: list[str] | None,
+) -> None:
+    """Copy ``.a`` and ``.h`` files from a local directory into the buildroot.
+
+    Mirrors the tarball extraction logic: walks ``<src>/lib/`` for ``.a``
+    files and ``<src>/include/`` for ``.h`` files, applying the same
+    selective filters.
+
+    Args:
+        src: Path to the local dependency directory (must contain
+            ``lib/`` and/or ``include/`` subdirectories).
+        buildroot: Path to the buildroot directory.
+        install_libs: List of ``.a`` file names to copy.  ``None``
+            copies all.
+        install_headers: List of header file names to copy.  ``None``
+            copies all.
+    """
+    lib_src = src / "lib"
+    if lib_src.is_dir():
+        for f in lib_src.rglob("*.a"):
+            if install_libs is None or f.name in install_libs:
+                rel = f.relative_to(lib_src)
+                dest = buildroot / "lib" / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
+
+    inc_src = src / "include"
+    if inc_src.is_dir():
+        for f in inc_src.rglob("*.h"):
+            if install_headers is None or f.name in install_headers:
+                rel = f.relative_to(inc_src)
+                dest = buildroot / "include" / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +308,11 @@ class Buildroot:
         extracted.  Selected ``.a`` and ``.h`` files are copied into
         ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
+        When the dependency ref is ``RefKind.LOCAL``, the GitHub download
+        is skipped entirely.  A local directory is installed via
+        :func:`_install_from_directory`; a local ``.tar.bz2`` file is
+        fed directly to the existing tarball extraction logic.
+
         Args:
             dep: The :class:`Dependency` descriptor.
             machine: Target machine identifier.
@@ -278,25 +324,50 @@ class Buildroot:
                 redundant GitHub API calls when the caller has already
                 resolved the release).
         """
-        asset_name = dep.artifact_pattern.format(
-            name=dep.name,
-            machine=machine,
-            mode=deployment_mode,
-            mem=memory_size,
-        )
+        # --- LOCAL ref: install from filesystem ---
+        if dep.ref.kind == RefKind.LOCAL:
+            local_path = Path(str(dep.ref.value))
+            if local_path.is_dir():
+                log.info(f"Installing {dep.name} from local directory {local_path}…")
+                _install_from_directory(
+                    src=local_path,
+                    buildroot=self.path,
+                    install_libs=dep.install_libs,
+                    install_headers=dep.install_headers,
+                )
+                log.success(f"Installed {dep.name} into buildroot")
+                return
+            if local_path.is_file() and local_path.name.endswith(".tar.bz2"):
+                log.info(f"Installing {dep.name} from local tarball {local_path}…")
+                asset_path: Path = local_path
+            else:
+                log.fatal(
+                    f"Local dependency path '{local_path}' for '{dep.name}'"
+                    " is not a directory or .tar.bz2 file.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Set the path to a directory with lib/ and include/"
+                    " subdirectories, or to a .tar.bz2 archive.",
+                )
+        else:
+            asset_name = dep.artifact_pattern.format(
+                name=dep.name,
+                machine=machine,
+                mode=deployment_mode,
+                mem=memory_size,
+            )
 
-        cache_dir = self.path.parent / "cache"
+            cache_dir = self.path.parent / "cache"
 
-        asset_path = github.download_release_asset(
-            repo=dep.repo,
-            version_specifier=dep.ref.value,
-            asset_name=asset_name,
-            dest=cache_dir,
-            gh_token=gh_token,
-            _release=_release,
-        )
+            asset_path = github.download_release_asset(
+                repo=dep.repo,
+                version_specifier=dep.ref.value,
+                asset_name=asset_name,
+                dest=cache_dir,
+                gh_token=gh_token,
+                _release=_release,
+            )
 
-        log.info(f"Extracting {asset_name}...")
+        log.info(f"Extracting {dep.name}...")
         with tarfile.open(asset_path, "r:bz2") as tf:
             for member in tf.getmembers():
                 member_path = Path(member.name)

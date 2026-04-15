@@ -163,6 +163,121 @@ class TestSysrootDownloadFetches(unittest.TestCase):
         self.assertTrue(sysroot.path.is_absolute())
 
 
+class TestSysrootDownloadLocal(unittest.TestCase):
+    """Sysroot.download() copies from a local directory when local_path is set."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_copies_local_directory(self) -> None:
+        """Local sysroot directory is copied into dest."""
+        src = Path(self._tmpdir.name) / "local-sysroot"
+        src.mkdir()
+        (src / "lib").mkdir()
+        (src / "lib" / "libposix.a").write_bytes(b"posix-lib")
+        (src / "bin").mkdir()
+        (src / "bin" / "nanvixd.elf").write_bytes(b"elf")
+
+        dest = Path(self._tmpdir.name) / "sysroot"
+
+        with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+            sysroot = Sysroot.download(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                tag="ignored",
+                dest=dest,
+                local_path=src,
+            )
+            mock_dl.assert_not_called()
+
+        self.assertTrue(sysroot.path.is_dir())
+        self.assertTrue((sysroot.path / "lib" / "libposix.a").exists())
+        self.assertTrue((sysroot.path / "bin" / "nanvixd.elf").exists())
+        self.assertEqual(sysroot.tag, "")
+
+    def test_local_path_is_absolute(self) -> None:
+        """Returned sysroot path is absolute for local copies."""
+        src = Path(self._tmpdir.name) / "local-sysroot"
+        src.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+
+        sysroot = Sysroot.download(
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+            tag="ignored",
+            dest=dest,
+            local_path=src,
+        )
+
+        self.assertTrue(sysroot.path.is_absolute())
+
+    def test_local_path_not_directory_exits(self) -> None:
+        """Non-existent local_path triggers fatal error."""
+        dest = Path(self._tmpdir.name) / "sysroot"
+        bad_path = Path(self._tmpdir.name) / "does-not-exist"
+
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                Sysroot.download(
+                    machine="microvm",
+                    deployment_mode="standalone",
+                    memory_size="256mb",
+                    tag="ignored",
+                    dest=dest,
+                    local_path=bad_path,
+                )
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+    def test_local_skips_when_dest_exists(self) -> None:
+        """Cache hit still applies: if dest exists, local_path is not used."""
+        src = Path(self._tmpdir.name) / "local-sysroot"
+        src.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        dest.mkdir()
+
+        sysroot = Sysroot.download(
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+            tag="ignored",
+            dest=dest,
+            local_path=src,
+        )
+
+        self.assertEqual(sysroot.path, dest.resolve())
+
+    def test_local_persists_empty_tag(self) -> None:
+        """Config receives sysroot_tag='' for local copies."""
+        from nanvix_zutil.config import Config
+
+        src = Path(self._tmpdir.name) / "local-sysroot"
+        src.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        config = Config(Path(self._tmpdir.name) / ".nanvix")
+
+        Sysroot.download(
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+            tag="ignored",
+            dest=dest,
+            config=config,
+            local_path=src,
+        )
+
+        self.assertEqual(config.get("sysroot_tag", "missing"), "")
+
+
 class TestSysrootVerify(unittest.TestCase):
     """Sysroot.verify() checks that required files exist."""
 

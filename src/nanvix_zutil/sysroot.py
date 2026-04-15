@@ -10,6 +10,7 @@ machine, deployment mode, and memory-size configuration.
 
 from __future__ import annotations
 
+import shutil
 import tarfile
 from pathlib import Path
 
@@ -69,6 +70,7 @@ class Sysroot:
         dest: Path | None = None,
         config: Config | None = None,
         target: str = DEFAULT_TARGET,
+        local_path: Path | None = None,
     ) -> "Sysroot":
         """Download and extract the Nanvix runtime artifact from GitHub releases.
 
@@ -89,6 +91,10 @@ class Sysroot:
                 download the tag is written back to *config* and
                 saved to disk.
             target: Target architecture (default: ``"x86"``).
+            local_path: Optional local directory to copy instead of
+                downloading from GitHub.  When set, *tag* and *gh_token*
+                are ignored and the contents of *local_path* are copied
+                into *dest*.
 
         Returns:
             A :class:`Sysroot` pointing at the extracted directory.
@@ -108,6 +114,25 @@ class Sysroot:
                 hint="Remove or rename this path and re-run"
                 " `./z setup` to download the Nanvix sysroot.",
             )
+
+        # --- LOCAL path: copy from filesystem instead of downloading ---
+        if local_path is not None:
+            if not local_path.is_dir():
+                log.fatal(
+                    f"Local sysroot path '{local_path}' does not exist"
+                    " or is not a directory.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Verify the path in NANVIX_SYSROOT_PATH and re-run"
+                    " `./z setup`.",
+                )
+            log.info(f"Copying local sysroot from {local_path}…")
+            sysroot_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(local_path, sysroot_dir, dirs_exist_ok=True)
+            log.success(f"Sysroot copied to {sysroot_dir}")
+            if config is not None:
+                config.set("sysroot_tag", "")
+                config.save()
+            return Sysroot(sysroot_dir.resolve(), tag="")
 
         release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
         tag_name = release.get("tag_name", "")

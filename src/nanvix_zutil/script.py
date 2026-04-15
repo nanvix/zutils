@@ -36,6 +36,7 @@ from nanvix_zutil import log
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
+    RefKind,
     extract_nanvix_version,
     extract_nanvix_version_base,
     suffix_dep,
@@ -291,6 +292,10 @@ class ZScript:
                 super().setup()
                 # extra verification or configuration here
         """
+        sysroot_local: Path | None = None
+        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
+            sysroot_local = Path(str(self.manifest.sysroot_ref.value))
+
         self.sysroot = Sysroot.download(
             machine=self.config.machine,
             deployment_mode=self.config.deployment_mode,
@@ -299,9 +304,28 @@ class ZScript:
             gh_token=self.config.get(CFG_GH_TOKEN),
             dest=self.nanvix_dir / "sysroot",
             config=self.config,
+            local_path=sysroot_local,
         )
         self.sysroot.verify(self.sysroot_required_files())
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
+
+        # LOCAL sysroot cannot provide a nanvix version for auto-suffixing
+        # VERSION deps.  Error early with a clear message.
+        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
+            version_deps = [
+                d for d in self.manifest.dependencies if d.ref.kind == RefKind.VERSION
+            ]
+            if version_deps:
+                names = ", ".join(d.name for d in version_deps)
+                log.fatal(
+                    f"Local sysroot cannot be used with VERSION dependencies"
+                    f" ({names}). VERSION deps require a resolvable nanvix"
+                    f" version for auto-suffixing.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Either override each dependency with a local path"
+                    " (NANVIX_DEP_PATH_<NAME>=/path) or use a GitHub sysroot"
+                    " version instead of a local path.",
+                )
 
         # Deferred auto-suffix: when sysroot is "latest", load_manifest()
         # skips suffixing because the real version isn't known yet.  Now
@@ -326,30 +350,37 @@ class ZScript:
                     # deps, then pass the pre-resolved release and enable
                     # cross-mode asset fallback in install_dep().
                     release: dict[str, object] | None = None
-                    base_version = extract_nanvix_version_base(str(dep.ref.value))
-                    if base_version is not None:
-                        release, fb_ver = resolve_release_with_fallback(
-                            repo=dep.repo,
-                            version_specifier=str(dep.ref.value),
-                            base_version=base_version,
-                            gh_token=self.config.get(CFG_GH_TOKEN),
-                        )
-                        # Log when version fallback was used.
-                        # fb_ver is None when the exact tag was found;
-                        # non-None means a fallback release was used.
-                        if fb_ver is not None:
-                            requested_ver = extract_nanvix_version(str(dep.ref.value))
-                            log.info(
-                                f"Version fallback for {dep.name}: "
-                                f"requested nanvix-{requested_ver}, "
-                                f"resolved nanvix-{fb_ver}"
-                            )
+                    if dep.ref.kind == RefKind.LOCAL:
+                        # LOCAL deps skip GitHub resolution entirely.
+                        # install_dep() handles the local path directly.
+                        pass
                     else:
-                        release = resolve_release(
-                            repo=dep.repo,
-                            version_specifier=dep.ref.value,
-                            gh_token=self.config.get(CFG_GH_TOKEN),
-                        )
+                        base_version = extract_nanvix_version_base(str(dep.ref.value))
+                        if base_version is not None:
+                            release, fb_ver = resolve_release_with_fallback(
+                                repo=dep.repo,
+                                version_specifier=str(dep.ref.value),
+                                base_version=base_version,
+                                gh_token=self.config.get(CFG_GH_TOKEN),
+                            )
+                            # Log when version fallback was used.
+                            # fb_ver is None when the exact tag was found;
+                            # non-None means a fallback release was used.
+                            if fb_ver is not None:
+                                requested_ver = extract_nanvix_version(
+                                    str(dep.ref.value)
+                                )
+                                log.info(
+                                    f"Version fallback for {dep.name}: "
+                                    f"requested nanvix-{requested_ver}, "
+                                    f"resolved nanvix-{fb_ver}"
+                                )
+                        else:
+                            release = resolve_release(
+                                repo=dep.repo,
+                                version_specifier=dep.ref.value,
+                                gh_token=self.config.get(CFG_GH_TOKEN),
+                            )
 
                     self.buildroot.install_dep(
                         dep=dep,

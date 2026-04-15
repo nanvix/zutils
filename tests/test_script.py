@@ -873,5 +873,115 @@ class TestZScriptCleanWindows(unittest.TestCase):
         script.clean()  # Should not raise.
 
 
+class TestZScriptSetupLocalRefs(unittest.TestCase):
+    """setup() handles LOCAL refs correctly."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_local_sysroot_passes_local_path(self) -> None:
+        """setup() passes local_path to Sysroot.download for LOCAL sysroot."""
+        from nanvix_zutil.buildroot import Ref, RefKind
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with patch(
+            "nanvix_zutil.script.Sysroot.download",
+            return_value=fake_sysroot,
+        ) as mock_download:
+            script = ZScript(Path(self._tmpdir.name))
+            script.manifest.sysroot_ref = Ref(
+                kind=RefKind.LOCAL, value="/tmp/my-sysroot"
+            )
+            script.setup()
+
+        _, kwargs = mock_download.call_args
+        self.assertEqual(kwargs["local_path"], Path("/tmp/my-sysroot"))
+
+    def test_non_local_sysroot_no_local_path(self) -> None:
+        """setup() passes local_path=None for non-LOCAL sysroot."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with patch(
+            "nanvix_zutil.script.Sysroot.download",
+            return_value=fake_sysroot,
+        ) as mock_download:
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        _, kwargs = mock_download.call_args
+        self.assertIsNone(kwargs.get("local_path"))
+
+    def test_local_sysroot_with_version_deps_exits(self) -> None:
+        """setup() fatally errors when LOCAL sysroot + VERSION deps."""
+        from nanvix_zutil.buildroot import Ref, RefKind
+
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        log_mod.set_json_mode(True)
+        try:
+            with (
+                patch(
+                    "nanvix_zutil.script.Sysroot.download",
+                    return_value=fake_sysroot,
+                ),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                script = ZScript(Path(self._tmpdir.name))
+                script.manifest.sysroot_ref = Ref(
+                    kind=RefKind.LOCAL, value="/tmp/my-sysroot"
+                )
+                script.setup()
+
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+    def test_local_dep_skips_github_resolution(self) -> None:
+        """setup() skips resolve_release for LOCAL deps."""
+        from nanvix_zutil.buildroot import Dependency, Ref, RefKind
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_buildroot = MagicMock()
+
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.download",
+                return_value=fake_sysroot,
+            ),
+            patch(
+                "nanvix_zutil.script.Buildroot.create",
+                return_value=fake_buildroot,
+            ),
+            patch("nanvix_zutil.script.resolve_release") as mock_resolve,
+            patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_fallback,
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            script.manifest.dependencies = [
+                Dependency(
+                    name="zlib",
+                    repo="nanvix/zlib",
+                    ref=Ref(kind=RefKind.LOCAL, value="/tmp/zlib-build"),
+                )
+            ]
+            script.setup()
+
+        mock_resolve.assert_not_called()
+        mock_fallback.assert_not_called()
+        fake_buildroot.install_dep.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
