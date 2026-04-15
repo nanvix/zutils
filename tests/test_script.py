@@ -505,7 +505,7 @@ class TestZScriptRun(unittest.TestCase):
             log_mod.set_json_mode(False)
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
-    def test_run_uses_windows_cmd_when_configured(self, _mock: object) -> None:
+    def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
         """run() delegates to build_windows_run_cmd on Windows."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
@@ -518,8 +518,6 @@ class TestZScriptRun(unittest.TestCase):
             ],
             uid=1000,
             gid=1000,
-            crlf_files=["Makefile"],
-            output_files=["output.elf"],
         )
         captured_cmds: list[list[str]] = []
 
@@ -539,7 +537,7 @@ class TestZScriptRun(unittest.TestCase):
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_dispatch_windows_default_docker(self, _mock: object) -> None:
         """run() uses build_windows_run_cmd on Windows even with default
-        (empty) crlf_files and output_files — the dispatch no longer requires
+        (empty) output_files — the dispatch no longer requires
         these fields to be populated."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
@@ -552,7 +550,7 @@ class TestZScriptRun(unittest.TestCase):
             ],
             uid=1000,
             gid=1000,
-            # crlf_files and output_files intentionally left as defaults ([])
+            # output_files intentionally left as defaults ([])
         )
         captured_cmds: list[list[str]] = []
 
@@ -566,7 +564,7 @@ class TestZScriptRun(unittest.TestCase):
         self.assertTrue(captured_cmds)
         cmd = captured_cmds[0]
         # Should still use sh -c (Windows tar-copy mode) even without
-        # crlf_files/output_files.
+        # output_files.
         self.assertIn("sh", cmd)
         self.assertIn("-c", cmd)
 

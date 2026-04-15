@@ -164,9 +164,6 @@ class DockerConfig:
     extra_env: dict[str, str] = field(default_factory=dict)
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
 
-    crlf_files: list[str] = field(default_factory=list)
-    """Files requiring CRLF→LF normalization inside the container."""
-
     output_files: list[str] = field(default_factory=list)
     """Build output files to copy back from the container to the host."""
 
@@ -327,9 +324,8 @@ class DockerConfig:
            the host workspace at ``/mnt/workspace``.
         2. Copies sources via ``tar`` from the mounted workspace into a
            container-local build dir.
-        3. Normalizes CRLF line endings in configured files.
-        4. Runs the inner command from the container-local build dir.
-        5. Copies configured output files back to the mounted workspace.
+        3. Runs the inner command from the container-local build dir.
+        4. Copies configured output files back to the mounted workspace.
 
         Args:
             *cmd: Inner command and arguments to wrap.
@@ -343,18 +339,6 @@ class DockerConfig:
 
         # Build tar exclude args.
         excludes = " ".join(f"--exclude={shlex.quote(e)}" for e in self.tar_excludes)
-
-        # CRLF normalization script.
-        crlf_script = ""
-        if self.crlf_files:
-            crlf_cmds: list[str] = []
-            for f in self.crlf_files:
-                qf = shlex.quote(f)
-                crlf_cmds.append(
-                    f'[ -f {qf} ] && sed "s/\\r$//" {qf} > /tmp/_crlf.tmp '
-                    f"&& cat /tmp/_crlf.tmp > {qf}"
-                )
-            crlf_script = " && ".join(crlf_cmds) + " && "
 
         # Output copy-back script.
         output_script = ""
@@ -377,7 +361,6 @@ class DockerConfig:
             f"tar -cf - -C {ws_mount} {excludes} . "
             f"| tar -xf - -C {build_dir} && "
             f"cd {build_dir} && "
-            f"{crlf_script}"
             f"{inner_cmd}; rc=$?{output_script}; exit $rc"
         )
 

@@ -551,10 +551,6 @@ class TestIsWindows(unittest.TestCase):
 class TestDockerConfigWindowsFields(unittest.TestCase):
     """DockerConfig Windows-specific field defaults."""
 
-    def test_crlf_files_default_empty(self) -> None:
-        cfg = DockerConfig(image="test-image")
-        self.assertEqual(cfg.crlf_files, [])
-
     def test_output_files_default_empty(self) -> None:
         cfg = DockerConfig(image="test-image")
         self.assertEqual(cfg.output_files, [])
@@ -582,7 +578,6 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
 
     def _make_config(
         self,
-        crlf_files: list[str] | None = None,
         output_files: list[str] | None = None,
     ) -> DockerConfig:
         return DockerConfig(
@@ -596,7 +591,6 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             ],
             uid=1000,
             gid=1000,
-            crlf_files=crlf_files or [],
             output_files=output_files or [],
         )
 
@@ -616,15 +610,6 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         shell_script = cmd[-1]  # Last arg after sh -c
         self.assertIn("tar -cf", shell_script)
         self.assertIn("tar -xf", shell_script)
-
-    def test_crlf_normalization_included(self) -> None:
-        """CRLF files are normalized in the shell script."""
-        cfg = self._make_config(crlf_files=["Makefile", "configure"])
-        cmd = cfg.build_windows_run_cmd("make", "all")
-        shell_script = cmd[-1]
-        self.assertIn("Makefile", shell_script)
-        self.assertIn("configure", shell_script)
-        self.assertIn("sed", shell_script)
 
     def test_output_files_copied_back(self) -> None:
         """Output files are copied from container to host."""
