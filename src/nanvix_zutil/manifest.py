@@ -85,6 +85,22 @@ _SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
 
 
+def _is_local_path(value: str) -> bool:  # pyright: ignore[reportUnusedFunction]
+    """Return ``True`` if *value* looks like a filesystem path.
+
+    Detects Unix absolute paths (``/``), relative paths (``./``,
+    ``../``), and Windows drive-letter paths (``C:\\``, ``D:/``).
+    Version strings like ``1.3.1``, ``latest``, or hex commit hashes
+    will never match.
+    """
+    if value.startswith(("/", "./", "../")):
+        return True
+    # Windows drive letter: C:\, D:/, etc.
+    if len(value) >= 3 and value[1] == ":" and value[2] in ("/", "\\"):
+        return True
+    return False
+
+
 def _validate_version_string(raw: str, context: str, path: Path) -> str:
     """Validate a plain version string.
 
