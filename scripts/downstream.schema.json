@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "downstream.json",
+  "description": "Configuration for nanvix-zutil downstream consumer testing.",
+  "type": "object",
+  "required": ["consumers"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path to this schema file for editor validation."
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Default values applied to all consumers unless overridden.",
+      "properties": {
+        "checkout_strategy": {
+          "type": "string",
+          "enum": ["bare", "clone", "shallow"],
+          "default": "shallow",
+          "description": "Default checkout strategy for consumer repos."
+        },
+        "repos_root": {
+          "type": "string",
+          "default": "~/repos",
+          "description": "Root directory for consumer repo checkouts."
+        },
+        "win_repos_root": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Windows-side repos root for native NTFS perf. Null means auto-detect from %USERPROFILE%."
+        },
+        "branch_pattern": {
+          "type": "string",
+          "default": "nanvix/v*",
+          "description": "Glob pattern for resolving consumer branch names."
+        }
+      },
+      "additionalProperties": false
+    },
+    "consumers": {
+      "type": "array",
+      "description": "List of downstream consumer repositories to test.",
+      "items": {
+        "type": "object",
+        "required": ["repo"],
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "GitHub owner/name (e.g., 'nanvix/zlib')."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path override — skips repos_root resolution."
+          },
+          "strategy": {
+            "type": "string",
+            "enum": ["bare", "clone", "shallow"],
+            "description": "Per-repo checkout strategy override."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Per-repo branch override — skips branch_pattern resolution."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
