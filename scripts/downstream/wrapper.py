@@ -102,8 +102,8 @@ def _resolve_repos_root(config_path: Path, *, for_windows: bool) -> str:
             defaults = raw.get("defaults", {})
             repos_root = defaults.get("repos_root", "~/repos")
             win_repos_root = defaults.get("win_repos_root") or ""
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"warning: failed to read config: {exc}", file=sys.stderr)
 
     if not for_windows:
         return str(Path(repos_root).expanduser())
@@ -123,8 +123,8 @@ def _resolve_repos_root(config_path: Path, *, for_windows: bool) -> str:
             # Keep as Windows-native path — this will be passed to
             # Python running on the Windows side via pwsh.exe.
             return str(Path(win_userprofile) / "repos")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"warning: failed to detect Windows repos root: {exc}", file=sys.stderr)
 
     return "~/repos"
 
@@ -202,16 +202,17 @@ def _run_windows(
             [sys.executable, "-m", "downstream_tests", *extra, *user_args]
         )
 
-    # WSL — shell out to pwsh.exe with Windows-translated paths.
-    forwarded = " ".join(
-        f"'{a}'" if " " in a else a for a in [*extra, *user_args]
-    )
+    # WSL — shell out to pwsh.exe with list-based args (no string interpolation).
     return subprocess.call(
         [
             "pwsh.exe",
             "-NoProfile",
             "-Command",
-            f"python -m downstream_tests {forwarded}",
+            "python",
+            "-m",
+            "downstream_tests",
+            *extra,
+            *user_args,
         ]
     )
 

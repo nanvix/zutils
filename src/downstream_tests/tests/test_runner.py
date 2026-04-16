@@ -268,7 +268,7 @@ def test_run_consumer_with_docker(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_export_fallback_env(tmp_path):
+def test_export_fallback_env(tmp_path, monkeypatch):
     """Parses nanvix.toml [dependencies] and sets NANVIX_VERSION_* env vars."""
     nanvix_dir = tmp_path / ".nanvix"
     nanvix_dir.mkdir()
@@ -277,18 +277,13 @@ def test_export_fallback_env(tmp_path):
         '[project]\nname = "myrepo"\n\n[dependencies]\nbuildroot = "2024.02.01"\nmusl = "1.2.5"\n'
     )
 
-    # Clean env vars if already set
-    for key in ("NANVIX_VERSION_BUILDROOT", "NANVIX_VERSION_MUSL"):
-        os.environ.pop(key, None)
+    monkeypatch.delenv("NANVIX_VERSION_BUILDROOT", raising=False)
+    monkeypatch.delenv("NANVIX_VERSION_MUSL", raising=False)
 
     export_fallback_env(tmp_path)
 
     assert os.environ["NANVIX_VERSION_BUILDROOT"] == "2024.02.01-nanvix-99.99.99"
     assert os.environ["NANVIX_VERSION_MUSL"] == "1.2.5-nanvix-99.99.99"
-
-    # Cleanup
-    del os.environ["NANVIX_VERSION_BUILDROOT"]
-    del os.environ["NANVIX_VERSION_MUSL"]
 
 
 def test_export_fallback_env_no_manifest(tmp_path):

@@ -10,6 +10,9 @@ from typing import Optional
 
 from .log import dry, fail, log, ok
 
+# Timeout in seconds for wheel build subprocess calls.
+_BUILD_TIMEOUT = 300
+
 
 def build_wheel(
     zutils_root: Path,
@@ -71,7 +74,7 @@ def build_wheel(
             str(zutils_root),
         ]
 
-    subprocess.run(pip_cmd, check=True)
+    subprocess.run(pip_cmd, check=True, timeout=_BUILD_TIMEOUT)
 
     wheels = list(wheel_dir.glob("*.whl"))
     if not wheels:

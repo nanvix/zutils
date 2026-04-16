@@ -9,6 +9,9 @@ from typing import Optional
 
 from .log import dry, fail, log, ok
 
+# Timeout in seconds for git subprocess calls.
+_GIT_TIMEOUT = 600
+
 
 def detect_strategy(repo_path: Path) -> str:
     """Auto-detect the checkout strategy for an existing repo path.
@@ -79,6 +82,7 @@ def resolve_branch(
             ],
             capture_output=True,
             text=True,
+            timeout=_GIT_TIMEOUT,
         )
         refs = [r.strip() for r in result.stdout.splitlines() if r.strip()]
         if refs:
@@ -90,6 +94,7 @@ def resolve_branch(
                 ["git", "-C", str(repo_path), "symbolic-ref", "HEAD"],
                 capture_output=True,
                 text=True,
+                timeout=_GIT_TIMEOUT,
             )
             symref = sym.stdout.strip()
             if symref.startswith("refs/heads/"):
@@ -99,6 +104,7 @@ def resolve_branch(
             ["git", "ls-remote", "--heads", remote_url, pattern],
             capture_output=True,
             text=True,
+            timeout=_GIT_TIMEOUT,
         )
         branches: list[str] = []
         for line in result.stdout.splitlines():
@@ -125,6 +131,7 @@ def resolve_branch(
                 ["git", "ls-remote", "--symref", remote_url, "HEAD"],
                 capture_output=True,
                 text=True,
+                timeout=_GIT_TIMEOUT,
             )
             for line in sym.stdout.splitlines():
                 if line.startswith("ref:"):
@@ -163,7 +170,8 @@ def _resolve_bare(
         log(f"  {consumer}: cloning bare repo to {repo_path}")
         repo_path.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(
-            ["git", "clone", "--bare", clone_url, str(repo_path)]
+            ["git", "clone", "--bare", clone_url, str(repo_path)],
+            timeout=_GIT_TIMEOUT,
         )
         if result.returncode != 0:
             fail(f"  {consumer}: git clone --bare failed")
@@ -176,7 +184,8 @@ def _resolve_bare(
                 "config",
                 "remote.origin.fetch",
                 "+refs/heads/*:refs/remotes/origin/*",
-            ]
+            ],
+            timeout=_GIT_TIMEOUT,
         )
         ok(f"  {consumer}: cloned")
 
@@ -192,6 +201,7 @@ def _resolve_bare(
         ],
         capture_output=True,
         text=True,
+        timeout=_GIT_TIMEOUT,
     )
     if cur.stdout.strip() != "+refs/heads/*:refs/remotes/origin/*":
         subprocess.run(
@@ -202,13 +212,15 @@ def _resolve_bare(
                 "config",
                 "remote.origin.fetch",
                 "+refs/heads/*:refs/remotes/origin/*",
-            ]
+            ],
+            timeout=_GIT_TIMEOUT,
         )
 
     log(f"  {consumer}: fetching latest")
     subprocess.run(
         ["git", "-C", str(repo_path), "fetch", "origin", "--prune"],
         check=False,
+        timeout=_GIT_TIMEOUT,
     )
 
     # Look for existing nanvix/v* worktree directories.
@@ -224,11 +236,13 @@ def _resolve_bare(
                 ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
+                timeout=_GIT_TIMEOUT,
             )
             cur_branch = cur_branch_r.stdout.strip()
             log(f"  {consumer}: updating worktree at {wt_dir}")
             subprocess.run(
-                ["git", "-C", str(wt_dir), "fetch", "origin"], check=False
+                ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
+                timeout=_GIT_TIMEOUT,
             )
             if cur_branch:
                 subprocess.run(
@@ -241,6 +255,7 @@ def _resolve_bare(
                         f"origin/{cur_branch}",
                     ],
                     check=False,
+                    timeout=_GIT_TIMEOUT,
                 )
             return wt_dir
 
@@ -251,10 +266,12 @@ def _resolve_bare(
             ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
+            timeout=_GIT_TIMEOUT,
         )
         cur_branch = cur_branch_r.stdout.strip()
         log(f"  {consumer}: updating worktree at {wt_dir}")
-        subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False)
+        subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
+                       timeout=_GIT_TIMEOUT)
         if cur_branch:
             subprocess.run(
                 [
@@ -266,12 +283,14 @@ def _resolve_bare(
                     f"origin/{cur_branch}",
                 ],
                 check=False,
+                timeout=_GIT_TIMEOUT,
             )
         return wt_dir
 
     log(f"  {consumer}: creating worktree for {branch}")
     subprocess.run(
-        ["git", "-C", str(repo_path), "worktree", "add", str(wt_dir), branch]
+        ["git", "-C", str(repo_path), "worktree", "add", str(wt_dir), branch],
+        timeout=_GIT_TIMEOUT,
     )
     return wt_dir
 
@@ -298,7 +317,8 @@ def _resolve_clone(
     if not repo_path.is_dir():
         log(f"  {consumer}: cloning to {repo_path}")
         repo_path.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(["git", "clone", clone_url, str(repo_path)])
+        result = subprocess.run(["git", "clone", clone_url, str(repo_path)],
+                                timeout=_GIT_TIMEOUT)
         if result.returncode != 0:
             fail(f"  {consumer}: git clone failed")
             return None
@@ -306,11 +326,13 @@ def _resolve_clone(
 
     log(f"  {consumer}: fetching and checking out {branch}")
     subprocess.run(
-        ["git", "-C", str(repo_path), "fetch", "origin"], check=False
+        ["git", "-C", str(repo_path), "fetch", "origin"], check=False,
+        timeout=_GIT_TIMEOUT,
     )
     co = subprocess.run(
         ["git", "-C", str(repo_path), "checkout", branch],
         capture_output=True,
+        timeout=_GIT_TIMEOUT,
     )
     if co.returncode != 0:
         subprocess.run(
@@ -322,7 +344,8 @@ def _resolve_clone(
                 "-b",
                 branch,
                 f"origin/{branch}",
-            ]
+            ],
+            timeout=_GIT_TIMEOUT,
         )
     subprocess.run(
         [
@@ -334,6 +357,7 @@ def _resolve_clone(
             f"origin/{branch}",
         ],
         check=False,
+        timeout=_GIT_TIMEOUT,
     )
     return repo_path
 
@@ -362,7 +386,8 @@ def _resolve_shallow(
         log(f"  {consumer}: shallow clone ({branch}) to {repo_path}")
         repo_path.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", "-b", branch, clone_url, str(repo_path)]
+            ["git", "clone", "--depth", "1", "-b", branch, clone_url, str(repo_path)],
+            timeout=_GIT_TIMEOUT,
         )
         if result.returncode != 0:
             fail(f"  {consumer}: shallow clone failed")
@@ -374,6 +399,7 @@ def _resolve_shallow(
     subprocess.run(
         ["git", "-C", str(repo_path), "fetch", "--depth", "1", "origin", branch],
         check=False,
+        timeout=_GIT_TIMEOUT,
     )
     subprocess.run(
         [
@@ -385,6 +411,7 @@ def _resolve_shallow(
             f"origin/{branch}",
         ],
         check=False,
+        timeout=_GIT_TIMEOUT,
     )
     return repo_path
 

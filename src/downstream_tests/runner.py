@@ -25,6 +25,9 @@ SHIM = (
     "os.getgid=getattr(os,'getgid',lambda:0)"
 )
 
+# Timeout in seconds for subprocess calls.
+_SUBPROCESS_TIMEOUT = 600
+
 
 def run_consumer(
     consumer: str,
@@ -80,6 +83,7 @@ def run_consumer(
         [sys.executable, "-m", "venv", str(venv_dir)],
         capture_output=True,
         text=True,
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     if r.returncode != 0:
         print(r.stdout)
@@ -97,17 +101,20 @@ def run_consumer(
         [str(venv_python), "-m", "pip", "install", "--quiet", str(wheel_path)],
         capture_output=True,
         text=True,
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     if pip_r.returncode != 0:
         # Try ensurepip first.
         subprocess.run(
             [str(venv_python), "-m", "ensurepip", "--default-pip"],
             capture_output=True,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
         pip_r2 = subprocess.run(
             [str(venv_python), "-m", "pip", "install", "--quiet", str(wheel_path)],
             capture_output=True,
             text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
         if pip_r2.returncode != 0:
             fail(f"  {consumer}: wheel install failed")
@@ -117,6 +124,7 @@ def run_consumer(
         [str(venv_python), "-c", "import nanvix_zutil; print('OK')"],
         capture_output=True,
         text=True,
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     log(f"  nanvix_zutil import: {ver.stdout.strip()}")
 
@@ -146,6 +154,7 @@ def run_consumer(
         capture_output=True,
         text=True,
         cwd=str(repo_dir),
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     setup_output = setup_result.stdout + setup_result.stderr
     print(setup_output, end="")
@@ -196,6 +205,7 @@ def run_consumer(
         capture_output=True,
         text=True,
         cwd=str(repo_dir),
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     print(build_result.stdout + build_result.stderr, end="")
     if build_result.returncode != 0:
@@ -218,6 +228,7 @@ def run_consumer(
         capture_output=True,
         text=True,
         cwd=str(repo_dir),
+        timeout=_SUBPROCESS_TIMEOUT,
     )
     print(test_result.stdout + test_result.stderr, end="")
     if test_result.returncode != 0:

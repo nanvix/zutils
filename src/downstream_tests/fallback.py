@@ -17,6 +17,14 @@ def export_fallback_env(repo_dir: Path) -> None:
     ``resolve_release_with_fallback()`` to miss the exact tag and fall back to
     the best available release.
 
+    .. note::
+
+        This function mutates ``os.environ`` directly.  The env vars persist
+        for the lifetime of the process, which is acceptable because each
+        consumer is expected to run in its own subprocess (via the venv
+        python).  If multiple consumers are ever run in-process, this should
+        be refactored to return a dict and pass it via ``env=``.
+
     Args:
         repo_dir: Root of the consumer repo.
 

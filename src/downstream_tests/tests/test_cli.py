@@ -1,6 +1,8 @@
 """test_cli.py — Tests for downstream_tests.cli."""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -99,3 +101,46 @@ def test_main_dry_run_integration(tmp_path):
     # dry_run kwarg should be True
     _, run_kwargs = mock_rc.call_args
     assert run_kwargs.get("dry_run") is True
+
+
+# ---------------------------------------------------------------------------
+# Integration smoke test (real subprocess, --dry-run only)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_subprocess_smoke(tmp_path):
+    """Invoke ``python -m downstream_tests --dry-run`` as a real subprocess.
+
+    This catches broken imports, missing modules, or bad argument handling
+    that mocked unit tests would not detect.
+    """
+    cfg = tmp_path / "downstream.json"
+    config_data = {
+        "$schema": "./downstream.schema.json",
+        "defaults": {
+            "checkout_strategy": "shallow",
+            "repos_root": str(tmp_path / "repos"),
+            "win_repos_root": None,
+            "branch_pattern": "nanvix/v*",
+        },
+        "consumers": [{"repo": "nanvix/zlib"}],
+    }
+    cfg.write_text(json.dumps(config_data))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "downstream_tests",
+            "--config",
+            str(cfg),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()

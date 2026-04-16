@@ -56,8 +56,8 @@ def ensure_config(
             cache_path.write_text(raw, encoding="utf-8")
         log("  Fetched consumer list from remote")
         fetched = True
-    except Exception:
-        pass
+    except Exception as exc:
+        log(f"  Warning: failed to fetch consumer list: {exc}")
 
     if not fetched:
         if cache_path.exists():
