@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from downstream_tests.checkout import detect_strategy, resolve_branch, resolve_repo
 
 
@@ -13,12 +11,12 @@ from downstream_tests.checkout import detect_strategy, resolve_branch, resolve_r
 # ---------------------------------------------------------------------------
 
 
-def test_detect_nonexistent_path(tmp_path):
+def test_detect_nonexistent_path(tmp_path: Path):
     """Non-existent path → 'shallow'."""
     assert detect_strategy(tmp_path / "does-not-exist") == "shallow"
 
 
-def test_detect_bare_repo(tmp_path):
+def test_detect_bare_repo(tmp_path: Path):
     """Directory with HEAD file but no .git → 'bare'."""
     repo = tmp_path / "repo.git"
     repo.mkdir()
@@ -27,7 +25,7 @@ def test_detect_bare_repo(tmp_path):
     assert detect_strategy(repo) == "bare"
 
 
-def test_detect_bare_worktree(tmp_path):
+def test_detect_bare_worktree(tmp_path: Path):
     """Directory with .git as a regular file → 'bare'."""
     repo = tmp_path / "wt"
     repo.mkdir()
@@ -35,7 +33,7 @@ def test_detect_bare_worktree(tmp_path):
     assert detect_strategy(repo) == "bare"
 
 
-def test_detect_clone(tmp_path):
+def test_detect_clone(tmp_path: Path):
     """Directory with .git/ as a directory → 'clone'."""
     repo = tmp_path / "clone"
     repo.mkdir()
@@ -43,7 +41,7 @@ def test_detect_clone(tmp_path):
     assert detect_strategy(repo) == "clone"
 
 
-def test_detect_unknown(tmp_path):
+def test_detect_unknown(tmp_path: Path):
     """Empty directory with no recognisable git markers → 'shallow'."""
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -62,7 +60,7 @@ def _make_run_result(stdout: str, returncode: int = 0):
     return r
 
 
-def test_resolve_branch_bare_local_refs(tmp_path):
+def test_resolve_branch_bare_local_refs(tmp_path: Path):
     """Bare strategy with existing dir: uses git for-each-ref output."""
     repo_path = tmp_path / "nanvix" / "zlib"
     repo_path.mkdir(parents=True)
@@ -77,7 +75,7 @@ def test_resolve_branch_bare_local_refs(tmp_path):
     assert branch == "nanvix/v1.0.0"
 
 
-def test_resolve_branch_clone_ls_remote(tmp_path):
+def test_resolve_branch_clone_ls_remote(tmp_path: Path):
     """Clone/shallow strategy: uses git ls-remote --heads."""
     repo_path = tmp_path / "nanvix" / "zlib"
     # Do NOT create this dir so strategy != bare existing
@@ -96,7 +94,7 @@ def test_resolve_branch_clone_ls_remote(tmp_path):
     assert branch == "nanvix/v2.0.0"
 
 
-def test_resolve_branch_fallback_to_default(tmp_path):
+def test_resolve_branch_fallback_to_default(tmp_path: Path):
     """No pattern match → falls back to HEAD symref."""
     repo_path = tmp_path / "nanvix" / "zlib"
 
@@ -116,7 +114,7 @@ def test_resolve_branch_fallback_to_default(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_repo_dry_run(tmp_path):
+def test_resolve_repo_dry_run(tmp_path: Path):
     """dry_run=True returns expected path without any git calls."""
     repos_root = tmp_path / "repos"
     repos_root.mkdir()
@@ -135,7 +133,7 @@ def test_resolve_repo_dry_run(tmp_path):
     assert "nanvix/zlib" in str(result)
 
 
-def test_resolve_repo_dispatches_to_strategy(tmp_path):
+def test_resolve_repo_dispatches_to_strategy(tmp_path: Path):
     """resolve_repo calls the correct _resolve_* helper based on strategy."""
     repos_root = tmp_path / "repos"
     repos_root.mkdir()

@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -21,7 +21,7 @@ def test_repos_root_flag():
     assert args.repos_root == "/tmp/repos"
 
 
-def test_config_flag(tmp_path):
+def test_config_flag(tmp_path: Path):
     cfg = str(tmp_path / "my.json")
     args = parse_args(["--config", cfg])
     assert args.config == cfg
@@ -65,7 +65,7 @@ def test_no_platform_flag():
 # ---------------------------------------------------------------------------
 
 
-def test_main_dry_run_integration(tmp_path):
+def test_main_dry_run_integration(tmp_path: Path):
     """main() in dry-run mode: no real network, no real git, no real wheel build."""
     cfg = tmp_path / "downstream.json"
     config_data = {
@@ -108,7 +108,7 @@ def test_main_dry_run_integration(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_subprocess_smoke(tmp_path):
+def test_dry_run_subprocess_smoke(tmp_path: Path):
     """Invoke ``python -m downstream_tests --dry-run`` as a real subprocess.
 
     This catches broken imports, missing modules, or bad argument handling

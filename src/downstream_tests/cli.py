@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .config import ensure_config, load_config
 from .wheel import build_wheel
@@ -115,23 +115,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         fail(str(exc))
         return 1
 
-    config = load_config(effective_config_path)
-    defaults = config.get("defaults", {})
+    config: dict[str, Any] = load_config(effective_config_path)
+    defaults: dict[str, Any] = config.get("defaults", {})
 
     # Resolve repos root: CLI flag > config default.
     if args.repos_root:
         repos_root = Path(args.repos_root).expanduser()
     else:
-        repos_root = Path(defaults.get("repos_root", "~/repos")).expanduser()
+        repos_root = Path(str(defaults.get("repos_root", "~/repos"))).expanduser()
 
-    default_strategy = defaults.get("checkout_strategy", "shallow")
-    branch_pattern = defaults.get("branch_pattern", "nanvix/v*")
+    default_strategy: str = str(defaults.get("checkout_strategy", "shallow"))
+    branch_pattern: str = str(defaults.get("branch_pattern", "nanvix/v*"))
 
     # Filter consumers if specified on the CLI.
-    all_consumers: list[dict] = config.get("consumers", [])
+    all_consumers: list[dict[str, Any]] = config.get("consumers", [])
     if args.consumers:
         consumer_set = set(args.consumers)
-        consumers = [c for c in all_consumers if c.get("repo") in consumer_set]
+        consumers: list[dict[str, Any]] = [c for c in all_consumers if c.get("repo") in consumer_set]
         # Also include any CLI-specified consumers not in config (they'll fail
         # validation downstream, giving a clear error message).
         config_repos = {c.get("repo") for c in all_consumers}

@@ -1,7 +1,6 @@
 """test_config.py — Tests for downstream_tests.config."""
 
 import json
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +14,7 @@ from downstream_tests.config import ensure_config, load_config
 # ---------------------------------------------------------------------------
 
 
-def test_ensure_config_exists_already(tmp_path):
+def test_ensure_config_exists_already(tmp_path: Path):
     """If config already exists, ensure_config returns it immediately."""
     cfg = tmp_path / "downstream.json"
     cfg.write_text(json.dumps({"defaults": {}, "consumers": []}))
@@ -26,7 +25,7 @@ def test_ensure_config_exists_already(tmp_path):
     assert result == cfg
 
 
-def test_ensure_config_fetches_remote(tmp_path):
+def test_ensure_config_fetches_remote(tmp_path: Path):
     """When config is absent, ensure_config fetches the remote list and writes config."""
     cfg = tmp_path / "downstream.json"
     cache = tmp_path / "consumer-repos.json"
@@ -35,7 +34,7 @@ def test_ensure_config_fetches_remote(tmp_path):
 
     mock_resp = MagicMock()
     mock_resp.read.return_value = raw
-    mock_resp.__enter__ = lambda s: s
+    mock_resp.__enter__ = lambda s: s  # type: ignore[assignment]
     mock_resp.__exit__ = MagicMock(return_value=False)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
@@ -49,7 +48,7 @@ def test_ensure_config_fetches_remote(tmp_path):
     assert cache.exists()
 
 
-def test_ensure_config_uses_cache_on_remote_failure(tmp_path):
+def test_ensure_config_uses_cache_on_remote_failure(tmp_path: Path):
     """When urlopen raises, ensure_config falls back to the local cache."""
     cfg = tmp_path / "downstream.json"
     cache = tmp_path / "consumer-repos.json"
@@ -64,7 +63,7 @@ def test_ensure_config_uses_cache_on_remote_failure(tmp_path):
     assert data["consumers"][0]["repo"] == "nanvix/zlib"
 
 
-def test_ensure_config_fails_no_cache_no_remote(tmp_path):
+def test_ensure_config_fails_no_cache_no_remote(tmp_path: Path):
     """When both network and cache are unavailable, ensure_config raises RuntimeError."""
     cfg = tmp_path / "downstream.json"
     cache = tmp_path / "consumer-repos.json"  # does not exist
@@ -74,7 +73,7 @@ def test_ensure_config_fails_no_cache_no_remote(tmp_path):
             ensure_config(cfg, cache)
 
 
-def test_ensure_config_dry_run(tmp_path):
+def test_ensure_config_dry_run(tmp_path: Path):
     """In dry-run mode, ensure_config writes to a temp file (not config_path)."""
     cfg = tmp_path / "downstream.json"
     cache = tmp_path / "consumer-repos.json"
@@ -83,7 +82,7 @@ def test_ensure_config_dry_run(tmp_path):
 
     mock_resp = MagicMock()
     mock_resp.read.return_value = raw
-    mock_resp.__enter__ = lambda s: s
+    mock_resp.__enter__ = lambda s: s  # type: ignore[assignment]
     mock_resp.__exit__ = MagicMock(return_value=False)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
@@ -104,7 +103,7 @@ def test_ensure_config_dry_run(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_load_config_expands_tilde(tmp_path):
+def test_load_config_expands_tilde(tmp_path: Path):
     """load_config expands ~ in repos_root."""
     cfg = tmp_path / "downstream.json"
     cfg.write_text(json.dumps({"defaults": {"repos_root": "~/repos"}, "consumers": []}))
@@ -112,7 +111,7 @@ def test_load_config_expands_tilde(tmp_path):
     assert "~" not in data["defaults"]["repos_root"]
 
 
-def test_load_config_defaults(tmp_path):
+def test_load_config_defaults(tmp_path: Path):
     """Missing keys in defaults get sensible values."""
     cfg = tmp_path / "downstream.json"
     cfg.write_text(json.dumps({}))
@@ -124,7 +123,7 @@ def test_load_config_defaults(tmp_path):
     assert data["consumers"] == []
 
 
-def test_load_config_per_consumer_overrides(tmp_path):
+def test_load_config_per_consumer_overrides(tmp_path: Path):
     """Per-consumer strategy and branch are preserved."""
     cfg = tmp_path / "downstream.json"
     consumers = [

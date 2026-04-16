@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,16 +21,14 @@ def _make_run_result(returncode: int = 0):
 # ---------------------------------------------------------------------------
 
 
-def test_build_wheel_with_pip(tmp_path):
+def test_build_wheel_with_pip(tmp_path: Path):
     """When pip is available, build_wheel runs pip wheel and returns the .whl path."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"
     wheel_dir = work_dir / "wheel"
 
-    def mock_run(cmd, **kwargs):
-        # Create a fake wheel file when pip wheel is invoked
-        wheel_dir.mkdir(parents=True, exist_ok=True)
+    def mock_run(cmd: list[str], **kwargs: Any):
         (wheel_dir / "nanvix_zutil-1.0.0-py3-none-any.whl").touch()
         return _make_run_result(0)
 
@@ -41,7 +40,7 @@ def test_build_wheel_with_pip(tmp_path):
     assert result.exists()
 
 
-def test_build_wheel_skip_reuses(tmp_path):
+def test_build_wheel_skip_reuses(tmp_path: Path):
     """With skip_build=True and an existing wheel, reuse it."""
     zutils_root = tmp_path / "zutils"
     work_dir = tmp_path / "work"
@@ -55,7 +54,7 @@ def test_build_wheel_skip_reuses(tmp_path):
     assert result == existing_whl
 
 
-def test_build_wheel_skip_no_wheel(tmp_path):
+def test_build_wheel_skip_no_wheel(tmp_path: Path):
     """With skip_build=True and no wheel file, SystemExit is raised."""
     zutils_root = tmp_path / "zutils"
     work_dir = tmp_path / "work"
@@ -67,7 +66,7 @@ def test_build_wheel_skip_no_wheel(tmp_path):
         build_wheel(zutils_root, work_dir, skip_build=True)
 
 
-def test_build_wheel_dry_run(tmp_path):
+def test_build_wheel_dry_run(tmp_path: Path):
     """In dry-run mode, returns a placeholder path without building."""
     zutils_root = tmp_path / "zutils"
     work_dir = tmp_path / "work"
@@ -79,14 +78,14 @@ def test_build_wheel_dry_run(tmp_path):
     assert "dry_run" in result.name
 
 
-def test_build_wheel_fallback_chain(tmp_path):
+def test_build_wheel_fallback_chain(tmp_path: Path):
     """pip not found → tries uv; uv not found → falls back to python -m pip."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"
     wheel_dir = work_dir / "wheel"
 
-    def mock_run(cmd, **kwargs):
+    def mock_run(cmd: list[str], **kwargs: Any):
         wheel_dir.mkdir(parents=True, exist_ok=True)
         (wheel_dir / "nanvix_zutil-1.0.0-py3-none-any.whl").touch()
         return _make_run_result(0)

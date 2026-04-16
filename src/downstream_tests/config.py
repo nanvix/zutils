@@ -6,6 +6,7 @@ import json
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from .log import dry, log
 
@@ -97,7 +98,7 @@ def ensure_config(
     return config_path
 
 
-def load_config(config_path: Path) -> dict:
+def load_config(config_path: Path) -> dict[str, Any]:
     """Read and parse downstream.json, applying defaults for missing keys.
 
     Expands ``~`` in ``repos_root``.  Sets sensible defaults for any key

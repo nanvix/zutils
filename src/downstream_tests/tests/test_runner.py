@@ -2,12 +2,13 @@
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from downstream_tests.fallback import export_fallback_env
-from downstream_tests.runner import run_consumer, run_consumers
+from downstream_tests.runner import run_consumer
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ def _make_venv(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_run_consumer_setup_only(tmp_path):
+def test_run_consumer_setup_only(tmp_path: Path):
     """With setup_only=True only the venv+setup subprocess calls are made."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -67,7 +68,7 @@ def test_run_consumer_setup_only(tmp_path):
     assert status == "OK (setup)"
 
 
-def test_run_consumer_full_phases(tmp_path):
+def test_run_consumer_full_phases(tmp_path: Path):
     """With setup_only=False, all three phases are executed."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -98,7 +99,7 @@ def test_run_consumer_full_phases(tmp_path):
     assert status == "OK (setup,build,test)"
 
 
-def test_run_consumer_setup_fails(tmp_path):
+def test_run_consumer_setup_fails(tmp_path: Path):
     """Non-zero setup returncode → FAIL (setup)."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -126,7 +127,7 @@ def test_run_consumer_setup_fails(tmp_path):
     assert "FAIL" in status and "setup" in status
 
 
-def test_run_consumer_force_fallback_exit7(tmp_path):
+def test_run_consumer_force_fallback_exit7(tmp_path: Path):
     """force_fallback + exit code 7 from setup → 'OK (fallback verified)'."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -155,7 +156,7 @@ def test_run_consumer_force_fallback_exit7(tmp_path):
     assert status == "OK (fallback verified)"
 
 
-def test_run_consumer_force_fallback_log_match(tmp_path):
+def test_run_consumer_force_fallback_log_match(tmp_path: Path):
     """force_fallback + exit 0 but 'fallback for' in output → OK (fallback verified)."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -184,7 +185,7 @@ def test_run_consumer_force_fallback_log_match(tmp_path):
     assert status == "OK (fallback verified)"
 
 
-def test_run_consumer_force_fallback_not_triggered(tmp_path):
+def test_run_consumer_force_fallback_not_triggered(tmp_path: Path):
     """force_fallback + exit 0 with no fallback log → FAIL."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
@@ -213,7 +214,7 @@ def test_run_consumer_force_fallback_not_triggered(tmp_path):
     assert "FAIL" in status and "fallback" in status.lower()
 
 
-def test_run_consumer_dry_run(tmp_path):
+def test_run_consumer_dry_run(tmp_path: Path):
     """dry_run=True: no subprocess calls, returns OK (dry-run)."""
     repo_dir = tmp_path
     wheel = tmp_path / "wheel.whl"
@@ -233,22 +234,22 @@ def test_run_consumer_dry_run(tmp_path):
     assert status == "OK (dry-run)"
 
 
-def test_run_consumer_with_docker(tmp_path):
+def test_run_consumer_with_docker(tmp_path: Path):
     """with_docker=True: --with-docker flag forwarded to build/test commands."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
 
-    captured_cmds = []
+    captured_cmds: list[list[str]] = []
 
-    def capture_run(cmd, **kwargs):
+    def capture_run(cmd: list[str], **kwargs: Any) -> MagicMock:
         captured_cmds.append(list(cmd))
         return _run_result(0)
 
     with patch("subprocess.run", side_effect=capture_run):
         with patch("shutil.rmtree"):
             with patch("shutil.which", return_value="/usr/bin/docker"):
-                _, status = run_consumer(
+                _, _status = run_consumer(
                     "nanvix/zlib",
                     repo_dir,
                     wheel,
@@ -268,7 +269,7 @@ def test_run_consumer_with_docker(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_export_fallback_env(tmp_path, monkeypatch):
+def test_export_fallback_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Parses nanvix.toml [dependencies] and sets NANVIX_VERSION_* env vars."""
     nanvix_dir = tmp_path / ".nanvix"
     nanvix_dir.mkdir()
@@ -286,7 +287,7 @@ def test_export_fallback_env(tmp_path, monkeypatch):
     assert os.environ["NANVIX_VERSION_MUSL"] == "1.2.5-nanvix-99.99.99"
 
 
-def test_export_fallback_env_no_manifest(tmp_path):
+def test_export_fallback_env_no_manifest(tmp_path: Path):
     """Raises RuntimeError when nanvix.toml does not exist."""
     with pytest.raises(RuntimeError, match="nanvix.toml"):
         export_fallback_env(tmp_path)

@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .fallback import export_fallback_env
 from .log import dry, fail, log, ok
@@ -240,7 +240,7 @@ def run_consumer(
 
 
 def run_consumers(
-    consumers: list[dict],
+    consumers: list[dict[str, Any]],
     repos_root: Path,
     default_strategy: str,
     branch_pattern: str,
@@ -280,7 +280,7 @@ def run_consumers(
     failed = 0
 
     for consumer_cfg in consumers:
-        consumer = consumer_cfg["repo"]
+        consumer: str = str(consumer_cfg["repo"])
 
         if not validate_consumer(consumer):
             fail(f"Invalid consumer name: '{consumer}' (must match owner/repo)")
@@ -291,9 +291,9 @@ def run_consumers(
         log(f"--- Testing {consumer} ---")
 
         # Per-consumer overrides.
-        c_strategy: str = consumer_cfg.get("strategy", "") or default_strategy
-        c_branch: str = consumer_cfg.get("branch", "") or ""
-        c_path: str = consumer_cfg.get("path", "") or ""
+        c_strategy: str = str(consumer_cfg.get("strategy", "") or default_strategy)
+        c_branch: str = str(consumer_cfg.get("branch", "") or "")
+        c_path: str = str(consumer_cfg.get("path", "") or "")
 
         if c_path:
             repo_dir: Optional[Path] = Path(c_path)
