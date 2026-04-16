@@ -248,23 +248,24 @@ def _run_linux_from_windows(
         capture_output=True,
         text=True,
     )
-    wsl_src = wsl_src_result.stdout.strip() or str(_SRC_DIR)
-    env_pairs = [f"PYTHONPATH={wsl_src}"]
+    wsl_src = wsl_src_result.stdout.strip()
+    if not wsl_src or wsl_src_result.returncode != 0:
+        # Fallback: manually convert Windows path to /mnt/ form.
+        win_path = str(_SRC_DIR)
+        if len(win_path) >= 2 and win_path[1] == ":":
+            drive = win_path[0].lower()
+            wsl_src = f"/mnt/{drive}{win_path[2:].replace(chr(92), '/')}"
+        else:
+            wsl_src = str(_SRC_DIR)
+
+    # Build a bash command string so env vars survive the WSL launch.
+    env_exports = f"export PYTHONPATH='{wsl_src}'"
     if warn_file:
-        env_pairs.append(f"DOWNSTREAM_REPORT_FILE={warn_file}")
-    return subprocess.call(
-        [
-            "wsl",
-            "--",
-            "env",
-            *env_pairs,
-            "python3",
-            "-m",
-            "downstream_tests",
-            *extra,
-            *user_args,
-        ]
-    )
+        env_exports += f"; export DOWNSTREAM_REPORT_FILE='{warn_file}'"
+    all_args = [*extra, *user_args]
+    bash_args = " ".join(f"'{a}'" for a in all_args)
+    bash_cmd = f"{env_exports}; python3 -m downstream_tests {bash_args}".rstrip()
+    return subprocess.call(["wsl", "--", "bash", "-c", bash_cmd])
 
 
 def main() -> int:
