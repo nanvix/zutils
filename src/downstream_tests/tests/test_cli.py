@@ -144,3 +144,20 @@ def test_dry_run_subprocess_smoke(tmp_path: Path):
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
     assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()
+
+
+def test_help_outputs_once():
+    """``--help`` must produce exactly one help block, not one per platform.
+
+    Regression: the wrapper used to dispatch --help to both Linux and Windows,
+    producing duplicate output (and a failure on the Windows side).
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "downstream_tests", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    # "usage:" should appear exactly once — not duplicated.
+    assert result.stdout.count("usage:") == 1

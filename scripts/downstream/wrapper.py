@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).parent
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_SRC_DIR = _REPO_ROOT / "src"
 
 
 def _to_windows_path(posix_path: str) -> str:
@@ -202,18 +204,16 @@ def _run_windows(
             [sys.executable, "-m", "downstream_tests", *extra, *user_args]
         )
 
-    # WSL — shell out to pwsh.exe with list-based args (no string interpolation).
+    # WSL — shell out to pwsh.exe with PYTHONPATH set so Windows Python
+    # can find the downstream_tests package in the WSL source tree.
+    win_src = _to_windows_path(str(_SRC_DIR))
+    all_args = [*extra, *user_args]
+    # Build a PowerShell command that sets PYTHONPATH and invokes python.
+    # Use PowerShell array syntax to avoid injection via argument values.
+    ps_args = ", ".join(f"'{a.replace(chr(39), chr(39)*2)}'" for a in all_args)
+    ps_cmd = f"$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
     return subprocess.call(
-        [
-            "pwsh.exe",
-            "-NoProfile",
-            "-Command",
-            "python",
-            "-m",
-            "downstream_tests",
-            *extra,
-            *user_args,
-        ]
+        ["pwsh.exe", "-NoProfile", "-Command", ps_cmd]
     )
 
 
@@ -232,6 +232,9 @@ def _run_linux_from_windows(
     return subprocess.call(
         [
             "wsl",
+            "--",
+            "env",
+            f"PYTHONPATH={_SRC_DIR}",
             "python3",
             "-m",
             "downstream_tests",
@@ -246,6 +249,13 @@ def main() -> int:
     platform, config_path, has_repos_root, user_args = _parse_wrapper_args(
         list(sys.argv[1:])
     )
+
+    # Short-circuit: if --help or -h is in args, run once locally and exit.
+    # No need to dispatch to both platforms for help text.
+    if "-h" in user_args or "--help" in user_args:
+        return subprocess.call(
+            [sys.executable, "-m", "downstream_tests", "--help"]
+        )
 
     if not platform:
         platform = _default_platform()
