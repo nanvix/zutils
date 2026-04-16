@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .fallback import export_fallback_env
-from .log import dry, fail, heading, log, ok, print_warning_summary
+from .log import dry, fail, heading, log, ok
 from .validation import validate_consumer
 from .checkout import resolve_repo
 
@@ -359,7 +359,5 @@ def run_consumers(
         print(f"\033[1;31mFAIL\033[0m {failed} consumer(s) FAILED")
     else:
         ok("All consumers passed!")
-
-    print_warning_summary()
 
     return failed
