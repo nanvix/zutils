@@ -71,49 +71,144 @@ if ((Test-Path $gnuwin32) -and ($env:PATH -notlike "*GnuWin32*"))
     Write-Host "Injected GnuWin32 into PATH: $gnuwin32" -ForegroundColor DarkGray
 }
 
-# --- Resolve-RepoDir ----------------------------------------------------------
-# Mirrors resolve_repo_dir() from test-downstream.sh.
-# Clones the bare repo from GitHub if it doesn't exist locally.
-# Looks for existing nanvix\v* worktree directories, creates one if none exist.
-function Resolve-RepoDir
+# --- Resolve-RepoDir (multi-strategy) -----------------------------------------
+
+# Detect-CheckoutStrategy <RepoPath>
+#   Auto-detect the checkout strategy for an existing repo path.
+#   Returns: bare, clone, or shallow (default for new/unknown).
+function Detect-CheckoutStrategy
+{
+    param([string]$RepoPath)
+
+    if (-not (Test-Path $RepoPath))
+    {
+        return "shallow"
+    }
+    if ((Test-Path (Join-Path $RepoPath "HEAD")) -and -not (Test-Path (Join-Path $RepoPath ".git") -PathType Container))
+    {
+        return "bare"
+    }
+    if (Test-Path (Join-Path $RepoPath ".git") -PathType Leaf)
+    {
+        # .git is a file → gitdir pointer → worktree of a bare repo
+        return "bare"
+    }
+    if (Test-Path (Join-Path $RepoPath ".git") -PathType Container)
+    {
+        return "clone"
+    }
+    return "shallow"
+}
+
+# Resolve-Branch <Consumer> <RepoPath> <Strategy> [BranchPattern]
+#   Resolve the target branch for a consumer repo.
+function Resolve-Branch
 {
     param(
         [string]$Consumer,
-        [string]$Root
+        [string]$RepoPath,
+        [string]$Strategy,
+        [string]$BranchPattern = "nanvix/v*"
     )
 
-    $bareRoot = Join-Path $Root $Consumer
+    $targetRef = $null
+
+    if ($Strategy -eq "bare" -and (Test-Path $RepoPath))
+    {
+        $refs = git -C $RepoPath for-each-ref --sort=version:refname `
+            --format='%(refname:short)' "refs/heads/$BranchPattern" "refs/remotes/origin/$BranchPattern" 2>$null
+        if ($refs)
+        {
+            $refList = @($refs) | Where-Object { $_ }
+            if ($refList.Count -gt 0)
+            {
+                $targetRef = $refList[-1] -replace '^origin/', ''
+            }
+        }
+
+        # Fallback: bare repo HEAD.
+        if (-not $targetRef)
+        {
+            try
+            {
+                $symRef = git -C $RepoPath symbolic-ref HEAD 2>$null
+                if ($symRef -match "refs/heads/(.+)")
+                {
+                    $targetRef = $Matches[1]
+                }
+            } catch { }
+        }
+    }
+    else
+    {
+        # Use git ls-remote for clone/shallow.
+        $remoteRefs = git ls-remote --heads "https://github.com/$Consumer.git" $BranchPattern 2>$null
+        if ($remoteRefs)
+        {
+            $refList = @($remoteRefs) | ForEach-Object {
+                if ($_ -match 'refs/heads/(.+)$') { $Matches[1] }
+            } | Sort-Object { [version]($_ -replace '^nanvix/v', '' -replace '[^0-9.]', '') } -ErrorAction SilentlyContinue
+            if ($refList) { $targetRef = @($refList)[-1] }
+        }
+
+        # Fallback: default branch via ls-remote HEAD.
+        if (-not $targetRef)
+        {
+            $headRef = git ls-remote --symref "https://github.com/$Consumer.git" HEAD 2>$null
+            if ($headRef)
+            {
+                $line = @($headRef) | Where-Object { $_ -match '^ref:' } | Select-Object -First 1
+                if ($line -match 'refs/heads/(.+)\s')
+                {
+                    $targetRef = $Matches[1]
+                }
+            }
+        }
+    }
+
+    return $targetRef
+}
+
+# Resolve-RepoBare <Consumer> <RepoPath> <Branch>
+#   Bare-repo + worktree strategy (original behavior).
+function Resolve-RepoBare
+{
+    param(
+        [string]$Consumer,
+        [string]$RepoPath,
+        [string]$Branch
+    )
 
     # Clone if missing.
-    if (-not (Test-Path $bareRoot))
+    if (-not (Test-Path $RepoPath))
     {
-        Write-Host "  $Consumer`: cloning bare repo to $bareRoot" -ForegroundColor DarkGray
-        New-Item -ItemType Directory -Path $Root -Force | Out-Null
+        Write-Host "  $Consumer`: cloning bare repo to $RepoPath" -ForegroundColor DarkGray
+        New-Item -ItemType Directory -Path (Split-Path $RepoPath -Parent) -Force | Out-Null
         $cloneUrl = "https://github.com/$Consumer.git"
-        git clone --bare $cloneUrl $bareRoot 2>&1 |
+        git clone --bare $cloneUrl $RepoPath 2>&1 |
             ForEach-Object { Write-Host "    $_" }
         if ($LASTEXITCODE -ne 0)
         {
             Write-Host "  $Consumer`: git clone --bare failed" -ForegroundColor Red
             return $null
         }
-        # Set up fetch refspec (remote-tracking avoids checked-out-branch conflicts).
-        git -C $bareRoot config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+        git -C $RepoPath config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
         Write-Host "  $Consumer`: cloned" -ForegroundColor Green
     }
 
-    # Ensure fetch refspec is correct (remote-tracking avoids checked-out-branch conflicts).
-    $curFetch = git -C $bareRoot config --get remote.origin.fetch 2>$null
-    if ($curFetch -ne '+refs/heads/*:refs/remotes/origin/*') {
-        git -C $bareRoot config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    # Ensure fetch refspec is correct.
+    $curFetch = git -C $RepoPath config --get remote.origin.fetch 2>$null
+    if ($curFetch -ne '+refs/heads/*:refs/remotes/origin/*')
+    {
+        git -C $RepoPath config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
     }
 
-    # Fetch latest from origin.
+    # Fetch latest.
     Write-Host "  $Consumer`: fetching latest" -ForegroundColor DarkGray
-    git -C $bareRoot fetch origin --prune 2>&1 | ForEach-Object { Write-Host "    $_" }
+    git -C $RepoPath fetch origin --prune 2>&1 | ForEach-Object { Write-Host "    $_" }
 
     # Look for existing nanvix\v* worktree directories.
-    $wtParent = Join-Path $bareRoot "nanvix"
+    $wtParent = Join-Path $RepoPath "nanvix"
     if (Test-Path $wtParent)
     {
         $candidates = Get-ChildItem -Path $wtParent -Directory -Filter "v*" |
@@ -121,73 +216,147 @@ function Resolve-RepoDir
         if ($candidates.Count -gt 0)
         {
             $wtDir = $candidates[-1].FullName
-            # Fetch and reset to latest from origin.
-            $branch = git -C $wtDir rev-parse --abbrev-ref HEAD 2>$null
+            $curBranch = git -C $wtDir rev-parse --abbrev-ref HEAD 2>$null
             Write-Host "  $Consumer`: updating worktree at $wtDir" -ForegroundColor DarkGray
             git -C $wtDir fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
-            if ($branch)
+            if ($curBranch)
             {
-                git -C $wtDir reset --hard "origin/$branch" 2>&1 | ForEach-Object { Write-Host "    $_" }
+                git -C $wtDir reset --hard "origin/$curBranch" 2>&1 | ForEach-Object { Write-Host "    $_" }
             }
             return $wtDir
         }
     }
 
-    # No worktree yet — find the target branch.
-    $targetRef = $null
+    $wtDir = Join-Path $RepoPath $Branch
 
-    # Prefer nanvix/v* branches (check both local and remote ref namespaces).
-    $refs = git -C $bareRoot for-each-ref --sort=version:refname `
-        --format='%(refname:short)' 'refs/heads/nanvix/v*' 'refs/remotes/origin/nanvix/v*' 2>$null
-    if ($refs)
-    {
-        $refList = @($refs) | Where-Object { $_ }
-        if ($refList.Count -gt 0)
-        {
-            $targetRef = $refList[-1] -replace '^origin/', ''
-        }
-    }
-
-    # Fallback: default branch (bare repo HEAD).
-    if (-not $targetRef)
-    {
-        try
-        {
-            $symRef = git -C $bareRoot symbolic-ref HEAD 2>$null
-            if ($symRef -match "refs/heads/(.+)")
-            {
-                $targetRef = $Matches[1]
-            }
-        } catch
-        {
-        }
-    }
-
-    if (-not $targetRef)
-    {
-        Write-Host "  $Consumer`: no nanvix/v* branch and cannot determine default branch" -ForegroundColor Red
-        return $null
-    }
-
-    $wtDir = Join-Path $bareRoot $targetRef
-
-    # If the worktree directory already exists, update it instead of creating.
+    # Update existing worktree.
     if (Test-Path $wtDir)
     {
-        $branch = git -C $wtDir rev-parse --abbrev-ref HEAD 2>$null
+        $curBranch = git -C $wtDir rev-parse --abbrev-ref HEAD 2>$null
         Write-Host "  $Consumer`: updating worktree at $wtDir" -ForegroundColor DarkGray
         git -C $wtDir fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
-        if ($branch)
+        if ($curBranch)
         {
-            git -C $wtDir reset --hard "origin/$branch" 2>&1 | ForEach-Object { Write-Host "    $_" }
+            git -C $wtDir reset --hard "origin/$curBranch" 2>&1 | ForEach-Object { Write-Host "    $_" }
         }
         return $wtDir
     }
 
-    Write-Host "  $Consumer`: creating worktree for $targetRef" -ForegroundColor DarkGray
-    git -C $bareRoot worktree add $wtDir $targetRef 2>&1 |
+    Write-Host "  $Consumer`: creating worktree for $Branch" -ForegroundColor DarkGray
+    git -C $RepoPath worktree add $wtDir $Branch 2>&1 |
         ForEach-Object { Write-Host "    $_" }
     return $wtDir
+}
+
+# Resolve-RepoClone <Consumer> <RepoPath> <Branch>
+#   Standard clone strategy.
+function Resolve-RepoClone
+{
+    param(
+        [string]$Consumer,
+        [string]$RepoPath,
+        [string]$Branch
+    )
+
+    if (-not (Test-Path $RepoPath))
+    {
+        Write-Host "  $Consumer`: cloning to $RepoPath" -ForegroundColor DarkGray
+        New-Item -ItemType Directory -Path (Split-Path $RepoPath -Parent) -Force | Out-Null
+        git clone "https://github.com/$Consumer.git" $RepoPath 2>&1 |
+            ForEach-Object { Write-Host "    $_" }
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Host "  $Consumer`: git clone failed" -ForegroundColor Red
+            return $null
+        }
+        Write-Host "  $Consumer`: cloned" -ForegroundColor Green
+    }
+
+    Write-Host "  $Consumer`: fetching and checking out $Branch" -ForegroundColor DarkGray
+    git -C $RepoPath fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
+    git -C $RepoPath checkout $Branch 2>$null
+    if ($LASTEXITCODE -ne 0) { git -C $RepoPath checkout -b $Branch "origin/$Branch" 2>&1 | ForEach-Object { Write-Host "    $_" } }
+    git -C $RepoPath reset --hard "origin/$Branch" 2>&1 | ForEach-Object { Write-Host "    $_" }
+    return $RepoPath
+}
+
+# Resolve-RepoShallow <Consumer> <RepoPath> <Branch>
+#   Shallow clone strategy (default for new repos — fastest).
+function Resolve-RepoShallow
+{
+    param(
+        [string]$Consumer,
+        [string]$RepoPath,
+        [string]$Branch
+    )
+
+    if (-not (Test-Path $RepoPath))
+    {
+        Write-Host "  $Consumer`: shallow clone ($Branch) to $RepoPath" -ForegroundColor DarkGray
+        New-Item -ItemType Directory -Path (Split-Path $RepoPath -Parent) -Force | Out-Null
+        git clone --depth 1 -b $Branch "https://github.com/$Consumer.git" $RepoPath 2>&1 |
+            ForEach-Object { Write-Host "    $_" }
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Host "  $Consumer`: shallow clone failed" -ForegroundColor Red
+            return $null
+        }
+        Write-Host "  $Consumer`: cloned (shallow)" -ForegroundColor Green
+        return $RepoPath
+    }
+
+    Write-Host "  $Consumer`: updating shallow clone" -ForegroundColor DarkGray
+    git -C $RepoPath fetch --depth 1 origin $Branch 2>&1 | ForEach-Object { Write-Host "    $_" }
+    git -C $RepoPath reset --hard "origin/$Branch" 2>&1 | ForEach-Object { Write-Host "    $_" }
+    return $RepoPath
+}
+
+# Resolve-RepoDir <Consumer> <Root> [Strategy] [Branch] [BranchPattern]
+#   Resolve a consumer repo to a working directory path.
+#   Auto-detects strategy and branch if not provided.
+function Resolve-RepoDir
+{
+    param(
+        [string]$Consumer,
+        [string]$Root,
+        [string]$Strategy,
+        [string]$Branch,
+        [string]$BranchPattern = "nanvix/v*"
+    )
+
+    $repoPath = Join-Path $Root $Consumer
+
+    # Auto-detect strategy if not specified.
+    if (-not $Strategy)
+    {
+        $Strategy = Detect-CheckoutStrategy -RepoPath $repoPath
+        Write-Host "  $Consumer`: auto-detected strategy: $Strategy" -ForegroundColor DarkGray
+    }
+
+    # Resolve branch if not specified.
+    if (-not $Branch)
+    {
+        $Branch = Resolve-Branch -Consumer $Consumer -RepoPath $repoPath -Strategy $Strategy -BranchPattern $BranchPattern
+    }
+
+    if (-not $Branch)
+    {
+        Write-Host "  $Consumer`: cannot determine target branch" -ForegroundColor Red
+        return $null
+    }
+
+    Write-Host "  $Consumer`: strategy=$Strategy branch=$Branch" -ForegroundColor DarkGray
+
+    switch ($Strategy)
+    {
+        "bare"    { return Resolve-RepoBare    -Consumer $Consumer -RepoPath $repoPath -Branch $Branch }
+        "clone"   { return Resolve-RepoClone   -Consumer $Consumer -RepoPath $repoPath -Branch $Branch }
+        "shallow" { return Resolve-RepoShallow -Consumer $Consumer -RepoPath $repoPath -Branch $Branch }
+        default   {
+            Write-Host "  $Consumer`: unknown checkout strategy: $Strategy" -ForegroundColor Red
+            return $null
+        }
+    }
 }
 
 # --- Build-Wheel --------------------------------------------------------------
