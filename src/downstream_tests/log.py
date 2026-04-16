@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-# Module-level warning accumulator.  Call ``warn()`` to record a warning
-# and ``get_warnings()`` / ``print_warning_summary()`` to retrieve them.
+# Module-level accumulators.  Call ``warn()`` / ``fail()`` to record messages
+# and ``get_warnings()`` / ``get_errors()`` / ``print_warning_summary()`` to
+# retrieve them.
 _warnings: list[str] = []
+_errors: list[str] = []
 
 
 def log(msg: str) -> None:
@@ -18,8 +20,9 @@ def ok(msg: str) -> None:
 
 
 def fail(msg: str) -> None:
-    """Print a failure message with a red bold prefix."""
+    """Print a failure message with a red bold prefix and record it."""
     print(f"\033[1;31mFAIL\033[0m {msg}")
+    _errors.append(msg)
 
 
 def dry(msg: str) -> None:
@@ -53,9 +56,19 @@ def get_warnings() -> list[str]:
     return list(_warnings)
 
 
+def get_errors() -> list[str]:
+    """Return a copy of the accumulated errors."""
+    return list(_errors)
+
+
 def clear_warnings() -> None:
     """Clear the accumulated warnings."""
     _warnings.clear()
+
+
+def clear_errors() -> None:
+    """Clear the accumulated errors."""
+    _errors.clear()
 
 
 def print_warning_summary() -> None:

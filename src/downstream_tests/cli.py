@@ -11,7 +11,7 @@ from typing import Any, Optional
 from .config import ensure_config, load_config
 from .wheel import build_wheel
 from .runner import run_consumers
-from .log import fail, get_warnings
+from .log import fail, get_errors, get_warnings
 
 # scripts/downstream/ lives three levels above this file:
 # src/downstream_tests/cli.py -> src/downstream_tests/ -> src/ -> <repo_root>
@@ -165,12 +165,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         dry_run=args.dry_run,
     )
 
-    # If the wrapper asked us to dump warnings to a file, do so.
-    warn_file = os.environ.get("DOWNSTREAM_WARN_FILE")
-    if warn_file:
+    # If the wrapper asked us to dump warnings/errors to a file, do so.
+    report_file = os.environ.get("DOWNSTREAM_REPORT_FILE")
+    if report_file:
         try:
-            Path(warn_file).write_text(
-                "\n".join(get_warnings()), encoding="utf-8"
+            lines: list[str] = []
+            for w in get_warnings():
+                lines.append(f"WARN: {w}")
+            for e in get_errors():
+                lines.append(f"ERROR: {e}")
+            Path(report_file).write_text(
+                "\n".join(lines), encoding="utf-8"
             )
         except OSError:
             pass  # best-effort

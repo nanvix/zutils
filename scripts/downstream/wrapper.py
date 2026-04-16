@@ -218,7 +218,7 @@ def _run_windows(
     warn_env = ""
     if warn_file:
         win_warn = _to_windows_path(warn_file)
-        warn_env = f"$env:DOWNSTREAM_WARN_FILE='{win_warn}'; "
+        warn_env = f"$env:DOWNSTREAM_REPORT_FILE='{win_warn}'; "
     ps_cmd = (
         f"{warn_env}$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
     )
@@ -241,7 +241,7 @@ def _run_linux_from_windows(
         ]
     env_pairs = [f"PYTHONPATH={_SRC_DIR}"]
     if warn_file:
-        env_pairs.append(f"DOWNSTREAM_WARN_FILE={warn_file}")
+        env_pairs.append(f"DOWNSTREAM_REPORT_FILE={warn_file}")
     return subprocess.call(
         [
             "wsl",
@@ -287,61 +287,75 @@ def main() -> int:
         return 1
 
     results: list[tuple[str, int]] = []
-    platform_warnings: dict[str, list[str]] = {}
+    platform_warnings: dict[str, int] = {}
+    platform_errors: dict[str, int] = {}
 
     if run_linux:
         _print_platform_banner("Linux")
-        warn_file = _make_warn_file()
+        report_file = _make_warn_file()
         if sys.platform == "win32":
-            rc = _run_linux_from_windows(config_path, has_repos_root, user_args, warn_file=warn_file)
+            rc = _run_linux_from_windows(config_path, has_repos_root, user_args, warn_file=report_file)
         else:
-            rc = _run_linux(config_path, has_repos_root, user_args, warn_file=warn_file)
+            rc = _run_linux(config_path, has_repos_root, user_args, warn_file=report_file)
         results.append(("Linux", rc))
-        platform_warnings["Linux"] = _read_warn_file(warn_file)
+        warns, errs = _read_warn_file(report_file)
+        platform_warnings["Linux"] = len(warns)
+        platform_errors["Linux"] = len(errs)
 
     if run_windows:
         _print_platform_banner("Windows")
-        warn_file = _make_warn_file()
-        rc_win = _run_windows(config_path, has_repos_root, user_args, warn_file=warn_file)
+        report_file = _make_warn_file()
+        rc_win = _run_windows(config_path, has_repos_root, user_args, warn_file=report_file)
         results.append(("Windows", rc_win))
-        platform_warnings["Windows"] = _read_warn_file(warn_file)
+        warns, errs = _read_warn_file(report_file)
+        platform_warnings["Windows"] = len(warns)
+        platform_errors["Windows"] = len(errs)
 
     # Combined summary when multiple platforms were tested.
     if len(results) > 1:
-        _print_combined_summary(results, platform_warnings)
+        _print_combined_summary(results, platform_warnings, platform_errors)
 
     return max(rc for _, rc in results) if results else 0
 
 
 def _make_warn_file() -> str:
-    """Create a temp file for the child process to write warnings to."""
-    fd, path = tempfile.mkstemp(prefix="downstream-warn-", suffix=".txt")
+    """Create a temp file for the child process to write reports to."""
+    fd, path = tempfile.mkstemp(prefix="downstream-report-", suffix=".txt")
     os.close(fd)
     return path
 
 
-def _read_warn_file(path: str) -> list[str]:
-    """Read warnings from a temp file and clean up."""
+def _read_warn_file(path: str) -> tuple[list[str], list[str]]:
+    """Read warnings and errors from a report file and clean up.
+
+    Returns:
+        (warnings, errors) tuple of string lists.
+    """
     warnings: list[str] = []
+    errors: list[str] = []
     try:
         text = Path(path).read_text(encoding="utf-8").strip()
         if text:
-            warnings = text.splitlines()
+            for line in text.splitlines():
+                if line.startswith("WARN: "):
+                    warnings.append(line[6:])
+                elif line.startswith("ERROR: "):
+                    errors.append(line[7:])
     except OSError:
         pass
     try:
         os.unlink(path)
     except OSError:
         pass
-    return warnings
+    return warnings, errors
 
 
 def _env_with_warn_file(warn_file: str) -> dict[str, str] | None:
-    """Return an env dict with DOWNSTREAM_WARN_FILE set, or None."""
+    """Return an env dict with DOWNSTREAM_REPORT_FILE set, or None."""
     if not warn_file:
         return None
     env = os.environ.copy()
-    env["DOWNSTREAM_WARN_FILE"] = warn_file
+    env["DOWNSTREAM_REPORT_FILE"] = warn_file
     return env
 
 
@@ -358,7 +372,8 @@ def _print_platform_banner(platform_name: str) -> None:
 
 def _print_combined_summary(
     results: list[tuple[str, int]],
-    platform_warnings: dict[str, list[str]] | None = None,
+    platform_warnings: dict[str, int] | None = None,
+    platform_errors: dict[str, int] | None = None,
 ) -> None:
     """Print a combined summary across all platform runs."""
     print()
@@ -373,28 +388,24 @@ def _print_combined_summary(
         else:
             marker = "\033[1;31mFAIL\033[0m"
             all_ok = False
-        print(f"  {marker}  {plat}: {'passed' if rc == 0 else f'{rc} failure(s)'}")
+        # Build a suffix with warning/error counts.
+        parts: list[str] = []
+        if rc != 0:
+            parts.append(f"{rc} failure(s)")
+        nwarn = (platform_warnings or {}).get(plat, 0)
+        nerr = (platform_errors or {}).get(plat, 0)
+        if nerr:
+            parts.append(f"{nerr} error(s)")
+        if nwarn:
+            parts.append(f"{nwarn} warning(s)")
+        detail = ", ".join(parts) if parts else "passed"
+        print(f"  {marker}  {plat}: {detail}")
     print(f"\033[1m{rule}\033[0m")
     if all_ok:
         print(f"\033[1;32m OK\033[0m All platforms passed!")
     else:
         total_failures = sum(rc for _, rc in results)
         print(f"\033[1;31mFAIL\033[0m {total_failures} total failure(s) across platforms")
-
-    # Replay warnings from all platforms.
-    if platform_warnings:
-        all_warnings: list[tuple[str, str]] = []
-        for plat, warns in platform_warnings.items():
-            for w in warns:
-                all_warnings.append((plat, w))
-        if all_warnings:
-            print()
-            print(f"\033[1;33m{rule}\033[0m")
-            print(f"\033[1;33m  {len(all_warnings)} warning(s) across platforms\033[0m")
-            print(f"\033[1;33m{rule}\033[0m")
-            for plat, w in all_warnings:
-                print(f"  \033[33m- [{plat}] {w}\033[0m")
-
     print()
 
 
