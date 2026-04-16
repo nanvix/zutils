@@ -15,6 +15,7 @@ Commands:
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean         Remove Python bytecode caches and build artifacts
   release       Build distribution artifacts (wheel + sdist) for release
+  downstream    Run downstream consumer tests (auto-detects platform)
   version       Bump version across pyproject.toml and templates
   shell-lint    Check shell script formatting and correctness
   shell-format  Auto-fix shell script formatting with shfmt
@@ -178,6 +179,25 @@ def release() -> int:
         for f in artifacts:
             print(f"  {f}")
     return 0
+
+
+def downstream() -> int:
+    """Run downstream consumer tests (auto-detects platform).
+
+    Delegates to scripts/downstream/downstream.py which auto-detects
+    the platform (Windows / WSL / Linux) and dispatches to the
+    appropriate shell script with translated arguments.
+
+    Usage:
+        uv run tasks.py downstream                     # auto-detect platform
+        uv run tasks.py downstream --platform linux    # override platform
+        uv run tasks.py downstream --setup-only sqlite # forward flags
+    """
+    script = _REPO_ROOT / "scripts" / "downstream" / "downstream.py"
+    if not script.exists():
+        print(f"error: downstream runner not found at {script}")
+        return 1
+    return _run(sys.executable, str(script), *sys.argv[2:])
 
 
 def _find_bash_scripts() -> list[str]:
@@ -453,6 +473,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
+    "downstream": (downstream, "Run downstream consumer tests (auto-detects platform)"),
     "version": (version, "Bump version across pyproject.toml and templates"),
     "shell-lint": (shell_lint, "Check shell script formatting and correctness"),
     "shell-format": (shell_format, "Auto-fix shell script formatting with shfmt"),
