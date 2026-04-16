@@ -320,13 +320,28 @@ def test_resolve_repo_no_override_when_strategy_matches(tmp_path: Path):
 import subprocess as _subprocess
 
 
+def _git_init(repo: Path) -> None:
+    """Initialise a git repo with user config so commits work on CI."""
+    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test"],
+        check=True,
+        capture_output=True,
+    )
+    _subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@test.com"],
+        check=True,
+        capture_output=True,
+    )
+
+
 def test_is_dirty_clean_repo(tmp_path: Path):
     """_is_dirty returns False for a clean working tree."""
     from downstream_tests.checkout import _is_dirty
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _git_init(repo)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
         check=True,
@@ -341,7 +356,7 @@ def test_is_dirty_with_modifications(tmp_path: Path):
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _git_init(repo)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
         check=True,
@@ -357,7 +372,7 @@ def test_is_dirty_with_staged_changes(tmp_path: Path):
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _git_init(repo)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
         check=True,
@@ -380,7 +395,7 @@ def test_safe_reset_skips_dirty(
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _git_init(repo)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
         check=True,
@@ -397,7 +412,7 @@ def test_safe_reset_proceeds_when_clean(tmp_path: Path):
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    _git_init(repo)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
         check=True,
@@ -421,7 +436,7 @@ def _make_bare_with_worktree(tmp_path: Path) -> tuple[Path, Path, str]:
     bare = tmp_path / "bare.git"
     src = tmp_path / "src"
     src.mkdir()
-    _subprocess.run(["git", "init", str(src)], check=True, capture_output=True)
+    _git_init(src)
     _subprocess.run(
         ["git", "-C", str(src), "commit", "--allow-empty", "-m", "init"],
         check=True,
