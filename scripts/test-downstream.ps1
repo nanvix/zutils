@@ -39,10 +39,58 @@ if ($ForceFallback)
 $ErrorActionPreference = 'Stop'
 $results = @{}
 
-# --- Fetch consumer list ------------------------------------------------------
+# --- Config generation --------------------------------------------------------
 
 $ConsumersUrl = "https://raw.githubusercontent.com/nanvix/workflows/refs/heads/main/consumer-repos.json"
 $ConsumersCache = Join-Path $PSScriptRoot "consumer-repos.json"
+
+# Ensure-Config <ConfigFile>
+#   Generate downstream.json from consumer-repos.json on first run.
+function Ensure-Config
+{
+    param([string]$ConfigFile)
+
+    if (Test-Path $ConfigFile) { return }
+
+    Write-Host "No downstream.json found - generating from consumer-repos.json..." -ForegroundColor Cyan
+
+    $json = $null
+    try
+    {
+        $json = Invoke-RestMethod -Uri $ConsumersUrl -ErrorAction Stop
+        $json | ConvertTo-Json | Out-File -FilePath $ConsumersCache -Encoding utf8
+        Write-Host "  Fetched consumer list from remote" -ForegroundColor DarkGray
+    }
+    catch
+    {
+        if (Test-Path $ConsumersCache)
+        {
+            $json = Get-Content $ConsumersCache | ConvertFrom-Json
+            Write-Host "  Using cached consumer-repos.json" -ForegroundColor DarkGray
+        }
+        else
+        {
+            Write-Host "ERROR: Cannot fetch consumer list and no cache at $ConsumersCache" -ForegroundColor Red
+            exit 1
+        }
+    }
+
+    $config = @{
+        '$schema'  = './downstream.schema.json'
+        defaults   = @{
+            checkout_strategy = 'shallow'
+            repos_root        = '~/repos'
+            win_repos_root    = $null
+            branch_pattern    = 'nanvix/v*'
+        }
+        consumers  = @($json | ForEach-Object { @{ repo = $_ } })
+    }
+
+    $config | ConvertTo-Json -Depth 3 | Out-File -FilePath $ConfigFile -Encoding utf8
+    Write-Host "Generated $ConfigFile - customize as needed." -ForegroundColor Cyan
+}
+
+# --- Fetch consumer list ------------------------------------------------------
 
 if (-not $Consumers) {
     try {

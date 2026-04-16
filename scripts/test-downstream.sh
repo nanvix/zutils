@@ -77,6 +77,46 @@ fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; }
 
 TOTAL_FAILED=0
 
+# --- Config generation --------------------------------------------------------
+
+# ensure_config <config_file>
+#   Generate downstream.json from consumer-repos.json on first run.
+ensure_config() {
+    local config_file="$1"
+    if [[ -f "$config_file" ]]; then
+        return 0
+    fi
+
+    log "No downstream.json found — generating from consumer-repos.json..."
+
+    # Try remote first.
+    local json=""
+    if json=$(curl -fsSL "$CONSUMERS_URL" 2>/dev/null); then
+        echo "$json" > "$CONSUMERS_CACHE"
+        log "  Fetched consumer list from remote"
+    elif [[ -f "$CONSUMERS_CACHE" ]]; then
+        json=$(cat "$CONSUMERS_CACHE")
+        log "  Using cached consumer-repos.json"
+    else
+        fail "Cannot fetch consumer list and no cache at $CONSUMERS_CACHE"
+        return 1
+    fi
+
+    # Transform string array into downstream.json structure.
+    echo "$json" | jq '{
+        "$schema": "./downstream.schema.json",
+        "defaults": {
+            "checkout_strategy": "shallow",
+            "repos_root": "~/repos",
+            "win_repos_root": null,
+            "branch_pattern": "nanvix/v*"
+        },
+        "consumers": [.[] | {"repo": .}]
+    }' > "$config_file"
+
+    log "Generated $config_file — customize as needed."
+}
+
 # --- Parse args ---------------------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
