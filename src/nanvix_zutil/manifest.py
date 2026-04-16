@@ -24,6 +24,10 @@ Environment variables override the versions declared in the manifest:
 ``NANVIX_VERSION_<NAME>`` and ``NANVIX_DEP_PATH_<NAME>`` are mutually
 exclusive for the same dependency.  Setting both is a fatal error.
 
+When ``NANVIX_SYSROOT_PATH`` is set (i.e. the sysroot ref is LOCAL),
+auto-suffixing of ``VERSION`` dependency refs is skipped entirely —
+there is no sysroot version string to append.
+
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
 ``commitish``, and ``id`` specifiers are exact-match and never suffixed.

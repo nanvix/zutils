@@ -65,6 +65,10 @@ the resolver falls back to `1.2.3-nanvix-{hash}` (e.g.
 `TAG`, `COMMITISH`, and `ID` refs are never suffixed — they resolve
 exactly as written.
 
+When `NANVIX_SYSROOT_PATH` is set (sysroot ref is `LOCAL`),
+auto-suffixing is skipped entirely — there is no sysroot version
+string to append.
+
 Refs that already contain `-nanvix-` are rejected to prevent accidental
 double-suffixing.
 

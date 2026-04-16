@@ -5,7 +5,8 @@
 
 :class:`Buildroot` manages a directory that collects headers and static
 libraries required to compile a consumer repository.  :class:`Dependency`
-describes a single library fetched from a GitHub release.
+describes a single library fetched from a GitHub release or resolved
+from a local filesystem path (when ``NANVIX_DEP_PATH_<NAME>`` is set).
 """
 
 from __future__ import annotations
