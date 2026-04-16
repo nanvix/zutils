@@ -22,6 +22,7 @@
 #   --force-fallback                Force dependency version fallback (exit 7)
 #   --setup-only                    Only run setup
 #   --skip-build                    Skip wheel build (reuse existing)
+#   --dry-run                       Print what would happen without executing
 #   -h, --help                      Show this help
 #
 # Examples:
@@ -53,6 +54,7 @@ SETUP_ONLY=false
 SKIP_BUILD=false
 FORCE_FALLBACK=false
 WITH_DOCKER=false
+DRY_RUN=false
 CONSUMERS=()
 USER_CONSUMERS=false
 
@@ -61,6 +63,17 @@ USER_CONSUMERS=false
 log() { printf '\033[1;34m>>>\033[0m %s\n' "$*"; }
 ok() { printf '\033[1;32m OK\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; }
+dry() { printf '\033[1;33m[dry-run]\033[0m %s\n' "$*"; }
+
+# run_or_dry <command...>
+#   Execute a command, or print it if --dry-run is active.
+run_or_dry() {
+    if [[ "$DRY_RUN" == true ]]; then
+        dry "would run: $*"
+        return 0
+    fi
+    "$@"
+}
 
 # validate_consumer <name>
 #   Ensure a consumer name matches the expected owner/repo pattern.
@@ -101,6 +114,12 @@ ensure_config() {
     fi
 
     # Transform string array into downstream.json structure.
+    if [[ "$DRY_RUN" == true ]]; then
+        dry "would generate $config_file from consumer-repos.json"
+        # Write to a temp file so the rest of the script can still read config.
+        config_file="$(mktemp)"
+        _DRY_RUN_CONFIG_TEMP="$config_file"
+    fi
     echo "$json" | jq '{
         "$schema": "./downstream.schema.json",
         "defaults": {
@@ -144,6 +163,10 @@ while [[ $# -gt 0 ]]; do
         SETUP_ONLY=true
         shift
         ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
     --help | -h)
         head -38 "$0" | grep '^#' | sed 's/^# \?//'
         exit 0
@@ -163,6 +186,11 @@ CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/downstream.json}"
 if ! ensure_config "$CONFIG_FILE"; then
     fail "Could not generate or find config at $CONFIG_FILE"
     exit 1
+fi
+
+# In dry-run mode, ensure_config wrote to a temp file — use that for reads.
+if [[ -n "${_DRY_RUN_CONFIG_TEMP:-}" ]]; then
+    CONFIG_FILE="$_DRY_RUN_CONFIG_TEMP"
 fi
 
 # Read config.
@@ -197,6 +225,12 @@ fi
 build_wheel() {
     local work_dir="$1"
     local wheel_dir="$work_dir/wheel"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        dry "would build wheel from $ZUTILS_ROOT → $wheel_dir"
+        WHEEL_FILE="$wheel_dir/nanvix_zutil-dry_run-py3-none-any.whl"
+        return 0
+    fi
 
     if [[ "$SKIP_BUILD" == true ]]; then
         WHEEL_FILE="$(find "$wheel_dir" -name '*.whl' -print -quit 2>/dev/null || true)"
@@ -442,6 +476,21 @@ resolve_repo_dir() {
 
     log "  $consumer: strategy=$strategy branch=$branch" >&2
 
+    # In dry-run mode, print what would happen and return a placeholder path.
+    if [[ "$DRY_RUN" == true ]]; then
+        local target_dir="$repo_path"
+        [[ "$strategy" == "bare" ]] && target_dir="$repo_path/$branch"
+        dry "  $consumer: would resolve via '$strategy' strategy" >&2
+        if [[ ! -e "$repo_path" ]]; then
+            dry "  $consumer: would clone https://github.com/$consumer.git → $repo_path" >&2
+        else
+            dry "  $consumer: would fetch + update at $repo_path" >&2
+        fi
+        dry "  $consumer: working directory → $target_dir" >&2
+        echo "$target_dir"
+        return 0
+    fi
+
     case "$strategy" in
     bare)
         resolve_repo_bare "$consumer" "$repo_path" "$branch"
@@ -544,6 +593,24 @@ run_linux() {
             continue
         fi
         log "  Using: $repo_dir"
+
+        # In dry-run mode, print what would happen and skip.
+        if [[ "$DRY_RUN" == true ]]; then
+            dry "  $consumer: would create venv at $repo_dir/.nanvix/venv"
+            dry "  $consumer: would install wheel $WHEEL_FILE"
+            if [[ "$FORCE_FALLBACK" == true ]]; then
+                dry "  $consumer: would force dependency fallback"
+            fi
+            dry "  $consumer: would run: nanvix-zutil setup"
+            if [[ "$SETUP_ONLY" != true ]]; then
+                local df=""
+                [[ "$WITH_DOCKER" == true ]] && df="--with-docker "
+                dry "  $consumer: would run: nanvix-zutil ${df}build"
+                dry "  $consumer: would run: nanvix-zutil ${df}test"
+            fi
+            results+=("$consumer: OK (dry-run)")
+            continue
+        fi
 
         # Clean and recreate venv
         local venv_dir="$repo_dir/.nanvix/venv"
@@ -690,6 +757,26 @@ run_windows() {
     local work_dir="/mnt/c/tmp/nanvix-downstream-test"
 
     log "=== Windows Downstream Test ==="
+
+    if [[ "$DRY_RUN" == true ]]; then
+        dry "would build wheel from $ZUTILS_ROOT → $work_dir/wheel"
+        dry "would copy test-downstream.ps1 → $work_dir/run-tests.ps1"
+        dry "would copy $CONFIG_FILE → $work_dir/downstream.json"
+        dry "would launch pwsh.exe with:"
+        dry "  -WheelPath <wheel>"
+        dry "  -ConfigFile <config>"
+        local sf="" ff=""
+        [[ "$SETUP_ONLY" == true ]] && sf=" -SetupOnly"
+        [[ "$FORCE_FALLBACK" == true ]] && ff=" -ForceFallback"
+        if [[ "$USER_CONSUMERS" == true ]]; then
+            dry "  -Consumers ${CONSUMERS[*]}${sf}${ff}"
+        else
+            dry "  (all consumers from config)${sf}${ff}"
+        fi
+        ok "Windows: dry-run complete"
+        return 0
+    fi
+
     build_wheel "$work_dir"
 
     local wheel_win

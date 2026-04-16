@@ -61,6 +61,9 @@ def _translate_args_for_ps1(args: list[str]) -> list[str]:
         elif arg == "--force-fallback":
             translated.append("-ForceFallback")
             i += 1
+        elif arg == "--dry-run":
+            translated.append("-DryRun")
+            i += 1
         elif arg == "--config":
             translated.extend(["-ConfigFile", args[i + 1]])
             i += 2

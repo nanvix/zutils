@@ -31,7 +31,8 @@ param(
     [string]$ResultsFile = (Join-Path $env:TEMP "nanvix-downstream-results.json"),
     [switch]$SetupOnly,
     [switch]$SkipBuild,
-    [switch]$ForceFallback
+    [switch]$ForceFallback,
+    [switch]$DryRun
 )
 
 # ForceFallback implies SetupOnly (same as bash script).
@@ -53,6 +54,12 @@ function Validate-Consumer
         return $false
     }
     return $true
+}
+
+function Write-Dry
+{
+    param([string]$Message)
+    Write-Host "[dry-run] $Message" -ForegroundColor Yellow
 }
 
 # --- Config generation --------------------------------------------------------
@@ -402,6 +409,22 @@ function Resolve-RepoDir
 
     Write-Host "  $Consumer`: strategy=$Strategy branch=$Branch" -ForegroundColor DarkGray
 
+    # In dry-run mode, print what would happen and return a placeholder path.
+    if ($DryRun)
+    {
+        $targetDir = if ($Strategy -eq "bare") { Join-Path $repoPath $Branch } else { $repoPath }
+        if (-not (Test-Path $repoPath))
+        {
+            Write-Dry "  $Consumer`: would clone https://github.com/$Consumer.git -> $repoPath"
+        }
+        else
+        {
+            Write-Dry "  $Consumer`: would fetch + update at $repoPath"
+        }
+        Write-Dry "  $Consumer`: working directory -> $targetDir"
+        return $targetDir
+    }
+
     switch ($Strategy)
     {
         "bare"    { return Resolve-RepoBare    -Consumer $Consumer -RepoPath $repoPath -Branch $Branch }
@@ -421,6 +444,13 @@ function Build-Wheel
     param([string]$ZutilsPath)
 
     $wheelDir = Join-Path $env:TEMP "nanvix-downstream-test\wheel"
+
+    if ($DryRun)
+    {
+        Write-Dry "would build wheel from $ZutilsPath -> $wheelDir"
+        return (Join-Path $wheelDir "nanvix_zutil-dry_run-py3-none-any.whl")
+    }
+
     if (-not (Test-Path $wheelDir))
     {
         New-Item -ItemType Directory -Path $wheelDir -Force | Out-Null
@@ -522,6 +552,21 @@ for ($i = 0; $i -lt $Consumers.Count; $i++)
     $repoDir = $RepoPaths[$i]
     Write-Host "`n--- Testing $consumer ---" -ForegroundColor Yellow
     Write-Host "  Repo: $repoDir"
+
+    if ($DryRun)
+    {
+        Write-Dry "  $consumer`: would create venv at $repoDir\.nanvix\venv"
+        Write-Dry "  $consumer`: would install wheel $WheelPath"
+        if ($ForceFallback) { Write-Dry "  $consumer`: would force dependency fallback" }
+        Write-Dry "  $consumer`: would run: nanvix-zutil setup"
+        if (-not $SetupOnly)
+        {
+            Write-Dry "  $consumer`: would run: nanvix-zutil --with-docker build"
+            Write-Dry "  $consumer`: would run: nanvix-zutil --with-docker test"
+        }
+        $results[$consumer] = @{ status = "OK"; phases = @("dry-run") }
+        continue
+    }
 
     if (-not (Test-Path $repoDir))
     {
