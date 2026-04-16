@@ -126,8 +126,8 @@ def test_run_consumer_setup_fails(tmp_path: Path):
     assert "FAIL" in status and "setup" in status
 
 
-def test_run_consumer_force_fallback_exit7(tmp_path: Path):
-    """force_fallback + exit code 7 from setup -> 'OK (fallback verified)'."""
+def test_run_consumer_force_fallback_exit7_no_log(tmp_path: Path):
+    """force_fallback + exit code 7 without fallback log -> FAIL."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -136,7 +136,7 @@ def test_run_consumer_force_fallback_exit7(tmp_path: Path):
         _run_result(0),  # venv create
         _run_result(0),  # pip install
         _run_result(0, stdout="OK"),  # import check
-        _run_result(7),  # setup exits 7
+        _run_result(7),  # setup exits 7, no fallback log
     ]
 
     with patch("subprocess.run", side_effect=side_effects):
@@ -152,7 +152,7 @@ def test_run_consumer_force_fallback_exit7(tmp_path: Path):
                     dry_run=False,
                 )
 
-    assert status == "OK (fallback verified)"
+    assert "FAIL" in status
 
 
 def test_run_consumer_force_fallback_log_match(tmp_path: Path):

@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """runner.py -- Consumer runner for downstream_tests."""
 
 from __future__ import annotations
@@ -161,7 +164,7 @@ def run_consumer(
     setup_rc = setup_result.returncode
 
     if force_fallback:
-        fallback_detected = setup_rc == 7 or bool(
+        fallback_detected = bool(
             re.search(r"fallback for", setup_output, re.IGNORECASE)
         )
         if fallback_detected:

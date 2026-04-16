@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """fallback.py -- Fallback environment helpers for downstream_tests."""
 
 from __future__ import annotations

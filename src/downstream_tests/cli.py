@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """cli.py -- Command-line interface for downstream_tests."""
 
 from __future__ import annotations

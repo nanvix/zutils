@@ -23,6 +23,7 @@ Commands:
   yaml-lint     Lint YAML files with yamllint
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -89,7 +90,13 @@ def test() -> int:
 
 def test_downstream() -> int:
     """Run the downstream_tests unit tests with pytest."""
-    return _run(sys.executable, "-m", "pytest", "src/downstream_tests/tests/", "-v")
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    src = str(_REPO_ROOT / "src")
+    env["PYTHONPATH"] = f"{src}{os.pathsep}{existing}" if existing else src
+    cmd = [sys.executable, "-m", "pytest", "src/downstream_tests/tests/", "-v"]
+    print(f"> {' '.join(cmd)}")
+    return subprocess.call(cmd, env=env)
 
 
 def clean() -> int:
@@ -190,9 +197,10 @@ def release() -> int:
 def downstream() -> int:
     """Run downstream consumer tests (auto-detects platform).
 
-    Delegates to scripts/downstream/wrapper.py which auto-detects
-    the platform (Windows / WSL / Linux) and dispatches to the
-    appropriate shell script with translated arguments.
+    Delegates to the Python wrapper at scripts/downstream/wrapper.py,
+    which auto-detects the platform (Windows / WSL / Linux) and
+    dispatches to the appropriate downstream runner with translated
+    arguments.
 
     Usage:
         uv run tasks.py downstream                     # auto-detect platform

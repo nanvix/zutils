@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """checkout.py -- Checkout helpers for downstream_tests."""
 
 from __future__ import annotations
@@ -42,7 +45,7 @@ def _force_reset(
     consumer: str,
     work_dir: Path,
     target: str,
-) -> None:
+) -> bool:
     """Reset to *target* unconditionally.
 
     Caller is responsible for checking dirty state beforehand if needed.
@@ -51,12 +54,25 @@ def _force_reset(
         consumer:  Consumer slug (for log messages).
         work_dir:  Path to the git working directory.
         target:    Reset target, e.g. ``"origin/nanvix/v1.0.0"``.
+
+    Returns:
+        True on success, False on failure.
     """
-    subprocess.run(
+    result = subprocess.run(
         ["git", "-C", str(work_dir), "reset", "--hard", target],
         check=False,
+        capture_output=True,
+        text=True,
         timeout=_GIT_TIMEOUT,
     )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            fail(f"  {consumer}: failed to reset {work_dir} to {target}: {stderr}")
+        else:
+            fail(f"  {consumer}: failed to reset {work_dir} to {target}")
+        return False
+    return True
 
 
 def detect_strategy(repo_path: Path) -> str:

@@ -171,7 +171,9 @@ def _run_linux(
             "--repos-root",
             _resolve_repos_root(config_path, for_windows=False),
         ]
-    env = _env_with_warn_file(warn_file)
+    env = _env_with_pythonpath(
+        {"DOWNSTREAM_REPORT_FILE": warn_file} if warn_file else None
+    )
     return subprocess.call(
         [sys.executable, "-m", "downstream_tests", *extra, *user_args],
         env=env,
@@ -200,7 +202,9 @@ def _run_windows(
 
     if sys.platform == "win32":
         # Native Windows -- run directly.
-        env = _env_with_warn_file(warn_file)
+        env = _env_with_pythonpath(
+            {"DOWNSTREAM_REPORT_FILE": warn_file} if warn_file else None
+        )
         return subprocess.call(
             [sys.executable, "-m", "downstream_tests", *extra, *user_args],
             env=env,
@@ -237,7 +241,15 @@ def _run_linux_from_windows(
             "--repos-root",
             _resolve_repos_root(config_path, for_windows=False),
         ]
-    env_pairs = [f"PYTHONPATH={_SRC_DIR}"]
+    # Translate _SRC_DIR (a Windows path) to a WSL path so Linux Python
+    # can find the downstream_tests package.
+    wsl_src_result = subprocess.run(
+        ["wsl", "--", "wslpath", "-u", str(_SRC_DIR)],
+        capture_output=True,
+        text=True,
+    )
+    wsl_src = wsl_src_result.stdout.strip() or str(_SRC_DIR)
+    env_pairs = [f"PYTHONPATH={wsl_src}"]
     if warn_file:
         env_pairs.append(f"DOWNSTREAM_REPORT_FILE={warn_file}")
     return subprocess.call(
@@ -264,7 +276,10 @@ def main() -> int:
     # Short-circuit: if --help or -h is in args, run once locally and exit.
     # No need to dispatch to both platforms for help text.
     if "-h" in user_args or "--help" in user_args:
-        return subprocess.call([sys.executable, "-m", "downstream_tests", "--help"])
+        env = _env_with_pythonpath()
+        return subprocess.call(
+            [sys.executable, "-m", "downstream_tests", "--help"], env=env
+        )
 
     if not platform:
         platform = _default_platform()
@@ -354,12 +369,17 @@ def _read_warn_file(path: str) -> tuple[list[str], list[str]]:
     return warnings, errors
 
 
-def _env_with_warn_file(warn_file: str) -> dict[str, str] | None:
-    """Return an env dict with DOWNSTREAM_REPORT_FILE set, or None."""
-    if not warn_file:
-        return None
+def _env_with_pythonpath(
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return an env dict with PYTHONPATH including src/ (and optional extras)."""
     env = os.environ.copy()
-    env["DOWNSTREAM_REPORT_FILE"] = warn_file
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        f"{_SRC_DIR}{os.pathsep}{existing}" if existing else str(_SRC_DIR)
+    )
+    if extra:
+        env.update(extra)
     return env
 
 

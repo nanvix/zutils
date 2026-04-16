@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """wheel.py -- Wheel build helper for downstream_tests."""
 
 from __future__ import annotations

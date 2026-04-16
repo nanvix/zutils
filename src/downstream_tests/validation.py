@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """validation.py -- Consumer name validation for downstream_tests."""
 
 from __future__ import annotations

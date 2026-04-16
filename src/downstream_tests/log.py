@@ -1,3 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 """log.py -- Logging helpers for downstream_tests."""
 
 from __future__ import annotations
