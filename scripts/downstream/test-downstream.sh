@@ -103,7 +103,9 @@ ensure_config() {
     # Try remote first.
     local json=""
     if json=$(curl -fsSL "$CONSUMERS_URL" 2>/dev/null); then
-        echo "$json" > "$CONSUMERS_CACHE"
+        if [[ "$DRY_RUN" != true ]]; then
+            echo "$json" > "$CONSUMERS_CACHE"
+        fi
         log "  Fetched consumer list from remote"
     elif [[ -f "$CONSUMERS_CACHE" ]]; then
         json=$(cat "$CONSUMERS_CACHE")

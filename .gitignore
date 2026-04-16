@@ -44,8 +44,9 @@ pyrightconfig.json
 *.swp
 *~
 
-# Downstream test config (generated per-user)
-scripts/downstream.json
+# Downstream test artifacts (generated per-user)
+scripts/downstream/downstream.json
+scripts/downstream/consumer-repos.json
 
 # OS
 .DS_Store
