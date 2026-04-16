@@ -10,7 +10,7 @@ from typing import Optional
 from .config import ensure_config, load_config
 from .wheel import build_wheel
 from .runner import run_consumers
-from .log import fail
+from .log import fail, ok
 
 # scripts/downstream/ lives three levels above this file:
 # src/downstream_tests/cli.py → src/downstream_tests/ → src/ → <repo_root>
@@ -168,7 +168,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     if failure_count > 0:
         fail(f"Overall: {failure_count} failure(s)")
     else:
-        from .log import ok
         ok("Overall: All consumers passed!")
 
     return failure_count
