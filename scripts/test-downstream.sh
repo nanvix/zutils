@@ -177,99 +177,235 @@ build_wheel() {
     ok "Built: $(basename "$WHEEL_FILE")"
 }
 
-# --- Resolve local repos (bare-repo / worktree layout) -----------------------
+# --- Resolve local repos (multi-strategy) ------------------------------------
 
-# resolve_repo_dir <consumer> [repos_root]
-#   Prints the worktree path for the consumer's default branch.
-#   Clones the bare repo from GitHub if it doesn't exist locally.
-#   Creates the worktree if it doesn't exist yet.
-#   Uses $REPOS_ROOT if repos_root is not provided.
-resolve_repo_dir() {
+# detect_checkout_strategy <repo_path>
+#   Auto-detect the checkout strategy for an existing repo path.
+#   Returns: bare, clone, or shallow (default for new/unknown).
+detect_checkout_strategy() {
+    local repo_path="$1"
+    if [[ ! -e "$repo_path" ]]; then
+        echo "shallow"
+        return
+    fi
+    if [[ -f "$repo_path/HEAD" && ! -d "$repo_path/.git" ]]; then
+        echo "bare"
+        return
+    fi
+    if [[ -f "$repo_path/.git" ]]; then
+        # .git is a file → gitdir pointer → worktree of a bare repo
+        echo "bare"
+        return
+    fi
+    if [[ -d "$repo_path/.git" ]]; then
+        echo "clone"
+        return
+    fi
+    echo "shallow"
+}
+
+# resolve_branch <consumer> <repo_path> <strategy> <branch_pattern>
+#   Resolve the target branch for a consumer repo.
+#   For bare: check local refs. For clone/shallow: use git ls-remote.
+#   Prints the resolved branch name.
+resolve_branch() {
     local consumer="$1"
-    local repos_root="${2:-$REPOS_ROOT}"
-    local bare_root="$repos_root/$consumer"
+    local repo_path="$2"
+    local strategy="$3"
+    local branch_pattern="${4:-nanvix/v*}"
+
+    local target_ref=""
+
+    if [[ "$strategy" == "bare" && -d "$repo_path" ]]; then
+        # Check local refs in bare repo.
+        target_ref=$(git -C "$repo_path" for-each-ref --sort=version:refname \
+            --format='%(refname:short)' "refs/heads/$branch_pattern" "refs/remotes/origin/$branch_pattern" \
+            2>/dev/null | tail -1)
+        target_ref="${target_ref#origin/}"
+
+        # Fallback: bare repo HEAD.
+        if [[ -z "$target_ref" ]]; then
+            local symref
+            symref=$(git -C "$repo_path" symbolic-ref HEAD 2>/dev/null || true)
+            target_ref="${symref#refs/heads/}"
+        fi
+    else
+        # Use git ls-remote for clone/shallow or bare repos that don't exist yet.
+        target_ref=$(git ls-remote --heads "https://github.com/$consumer.git" "$branch_pattern" 2>/dev/null \
+            | awk '{print $2}' | sed 's|refs/heads/||' | sort -V | tail -1)
+
+        # Fallback: default branch via ls-remote HEAD.
+        if [[ -z "$target_ref" ]]; then
+            target_ref=$(git ls-remote --symref "https://github.com/$consumer.git" HEAD 2>/dev/null \
+                | awk '/^ref:/{print $2}' | sed 's|refs/heads/||')
+        fi
+    fi
+
+    echo "$target_ref"
+}
+
+# resolve_repo_bare <consumer> <repo_path> <branch>
+#   Bare-repo + worktree strategy (original behavior).
+#   Prints the worktree directory path.
+resolve_repo_bare() {
+    local consumer="$1"
+    local repo_path="$2"
+    local branch="$3"
 
     # Clone if missing.
-    if [[ ! -d "$bare_root" ]]; then
-        log "  $consumer: cloning bare repo to $bare_root" >&2
-        mkdir -p "$repos_root"
-        if ! git clone --bare "https://github.com/$consumer.git" "$bare_root" >&2; then
+    if [[ ! -d "$repo_path" ]]; then
+        log "  $consumer: cloning bare repo to $repo_path" >&2
+        mkdir -p "$(dirname "$repo_path")"
+        if ! git clone --bare "https://github.com/$consumer.git" "$repo_path" >&2; then
             fail "  $consumer: git clone --bare failed" >&2
             return 1
         fi
-        # Set up fetch refspec (remote-tracking avoids checked-out-branch conflicts).
-        git -C "$bare_root" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+        git -C "$repo_path" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
         ok "  $consumer: cloned" >&2
     fi
 
-    # Ensure fetch refspec is correct (remote-tracking avoids checked-out-branch conflicts).
+    # Ensure fetch refspec is correct.
     local cur_fetch
-    cur_fetch=$(git -C "$bare_root" config --get remote.origin.fetch 2>/dev/null || true)
+    cur_fetch=$(git -C "$repo_path" config --get remote.origin.fetch 2>/dev/null || true)
     if [[ "$cur_fetch" != '+refs/heads/*:refs/remotes/origin/*' ]]; then
-        git -C "$bare_root" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+        git -C "$repo_path" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
     fi
 
-    # Fetch latest from origin.
+    # Fetch latest.
     log "  $consumer: fetching latest" >&2
-    git -C "$bare_root" fetch origin --prune >&2 || true
+    git -C "$repo_path" fetch origin --prune >&2 || true
 
-    # Look for an existing nanvix/v* worktree directory.
+    # Look for existing nanvix/v* worktree directories.
     local candidates
-    candidates=("$bare_root"/nanvix/v*)
+    candidates=("$repo_path"/nanvix/v*)
     if [[ -d "${candidates[0]}" ]]; then
         local wt_dir="${candidates[-1]}"
-        # Fetch and reset to latest from origin.
-        local branch
-        branch=$(git -C "$wt_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        local cur_branch
+        cur_branch=$(git -C "$wt_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
         log "  $consumer: updating worktree at $wt_dir" >&2
         git -C "$wt_dir" fetch origin >&2 || true
-        if [[ -n "$branch" ]]; then
-            git -C "$wt_dir" reset --hard "origin/$branch" >&2 || true
+        if [[ -n "$cur_branch" ]]; then
+            git -C "$wt_dir" reset --hard "origin/$cur_branch" >&2 || true
         fi
         echo "$wt_dir"
         return 0
     fi
 
-    # No worktree yet — find the target branch.
-    local target_ref=""
+    local wt_dir="$repo_path/$branch"
 
-    # Prefer nanvix/v* branches (check both local and remote ref namespaces).
-    target_ref=$(git -C "$bare_root" for-each-ref --sort=version:refname \
-        --format='%(refname:short)' 'refs/heads/nanvix/v*' 'refs/remotes/origin/nanvix/v*' \
-        2>/dev/null | tail -1)
-    # Strip remote prefix if present (e.g. "origin/nanvix/v3.49.0" → "nanvix/v3.49.0").
-    target_ref="${target_ref#origin/}"
-
-    # Fallback: default branch (bare repo HEAD).
-    if [[ -z "$target_ref" ]]; then
-        local symref
-        symref=$(git -C "$bare_root" symbolic-ref HEAD 2>/dev/null || true)
-        target_ref="${symref#refs/heads/}"
+    # Update existing worktree.
+    if [[ -d "$wt_dir" ]]; then
+        local cur_branch
+        cur_branch=$(git -C "$wt_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        log "  $consumer: updating worktree at $wt_dir" >&2
+        git -C "$wt_dir" fetch origin >&2 || true
+        if [[ -n "$cur_branch" ]]; then
+            git -C "$wt_dir" reset --hard "origin/$cur_branch" >&2 || true
+        fi
+        echo "$wt_dir"
+        return 0
     fi
 
-    if [[ -z "$target_ref" ]]; then
-        fail "  $consumer: no nanvix/v* branch and cannot determine default branch" >&2
+    log "  $consumer: creating worktree for $branch" >&2
+    git -C "$repo_path" worktree add "$wt_dir" "$branch" >&2
+    echo "$wt_dir"
+}
+
+# resolve_repo_clone <consumer> <repo_path> <branch>
+#   Standard clone strategy.
+#   Prints the repo directory path.
+resolve_repo_clone() {
+    local consumer="$1"
+    local repo_path="$2"
+    local branch="$3"
+
+    if [[ ! -d "$repo_path" ]]; then
+        log "  $consumer: cloning to $repo_path" >&2
+        mkdir -p "$(dirname "$repo_path")"
+        if ! git clone "https://github.com/$consumer.git" "$repo_path" >&2; then
+            fail "  $consumer: git clone failed" >&2
+            return 1
+        fi
+        ok "  $consumer: cloned" >&2
+    fi
+
+    log "  $consumer: fetching and checking out $branch" >&2
+    git -C "$repo_path" fetch origin >&2 || true
+    git -C "$repo_path" checkout "$branch" >&2 2>/dev/null || git -C "$repo_path" checkout -b "$branch" "origin/$branch" >&2
+    git -C "$repo_path" reset --hard "origin/$branch" >&2 || true
+    echo "$repo_path"
+}
+
+# resolve_repo_shallow <consumer> <repo_path> <branch>
+#   Shallow clone strategy (default for new repos — fastest).
+#   Prints the repo directory path.
+resolve_repo_shallow() {
+    local consumer="$1"
+    local repo_path="$2"
+    local branch="$3"
+
+    if [[ ! -d "$repo_path" ]]; then
+        log "  $consumer: shallow clone ($branch) to $repo_path" >&2
+        mkdir -p "$(dirname "$repo_path")"
+        if ! git clone --depth 1 -b "$branch" "https://github.com/$consumer.git" "$repo_path" >&2; then
+            fail "  $consumer: shallow clone failed" >&2
+            return 1
+        fi
+        ok "  $consumer: cloned (shallow)" >&2
+        echo "$repo_path"
+        return 0
+    fi
+
+    log "  $consumer: updating shallow clone" >&2
+    git -C "$repo_path" fetch --depth 1 origin "$branch" >&2 || true
+    git -C "$repo_path" reset --hard "origin/$branch" >&2 || true
+    echo "$repo_path"
+}
+
+# resolve_repo_dir <consumer> <repos_root> [strategy] [branch] [branch_pattern]
+#   Resolve a consumer repo to a working directory path.
+#   Auto-detects strategy and branch if not provided.
+resolve_repo_dir() {
+    local consumer="$1"
+    local repos_root="${2:-$REPOS_ROOT}"
+    local strategy="${3:-}"
+    local branch="${4:-}"
+    local branch_pattern="${5:-nanvix/v*}"
+    local repo_path="$repos_root/$consumer"
+
+    # Auto-detect strategy if not specified.
+    if [[ -z "$strategy" ]]; then
+        strategy=$(detect_checkout_strategy "$repo_path")
+        log "  $consumer: auto-detected strategy: $strategy" >&2
+    fi
+
+    # Resolve branch if not specified.
+    if [[ -z "$branch" ]]; then
+        branch=$(resolve_branch "$consumer" "$repo_path" "$strategy" "$branch_pattern")
+    fi
+
+    if [[ -z "$branch" ]]; then
+        fail "  $consumer: cannot determine target branch" >&2
         return 1
     fi
 
-    local wt_dir="$bare_root/$target_ref"
+    log "  $consumer: strategy=$strategy branch=$branch" >&2
 
-    # If the worktree directory already exists, update it instead of creating.
-    if [[ -d "$wt_dir" ]]; then
-        local branch
-        branch=$(git -C "$wt_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-        log "  $consumer: updating worktree at $wt_dir" >&2
-        git -C "$wt_dir" fetch origin >&2 || true
-        if [[ -n "$branch" ]]; then
-            git -C "$wt_dir" reset --hard "origin/$branch" >&2 || true
-        fi
-        echo "$wt_dir"
-        return 0
-    fi
-
-    log "  $consumer: creating worktree for $target_ref" >&2
-    git -C "$bare_root" worktree add "$wt_dir" "$target_ref" >&2
-    echo "$wt_dir"
+    case "$strategy" in
+    bare)
+        resolve_repo_bare "$consumer" "$repo_path" "$branch"
+        ;;
+    clone)
+        resolve_repo_clone "$consumer" "$repo_path" "$branch"
+        ;;
+    shallow)
+        resolve_repo_shallow "$consumer" "$repo_path" "$branch"
+        ;;
+    *)
+        fail "  $consumer: unknown checkout strategy: $strategy" >&2
+        return 1
+        ;;
+    esac
 }
 
 # export_fallback_env <repo_dir>
