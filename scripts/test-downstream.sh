@@ -675,18 +675,20 @@ run_windows() {
     local wheel_win
     wheel_win=$(wslpath -w "$WHEEL_FILE")
 
-    local repos_root_win
-    repos_root_win=$(wslpath -w "$WIN_REPOS_ROOT")
-
-    # Copy the PowerShell script into the work dir.
+    # Copy the PowerShell script and config into the work dir.
     local ps_src
     ps_src="$(dirname "$(readlink -f "$0")")/test-downstream.ps1"
     local ps_script="$work_dir/run-tests.ps1"
     cp "$ps_src" "$ps_script"
     ok "Copied $ps_script"
 
+    # Copy config file to work dir so PS1 can read it natively.
+    local config_copy="$work_dir/downstream.json"
+    cp "$CONFIG_FILE" "$config_copy"
+    local config_win
+    config_win=$(wslpath -w "$config_copy")
+
     # Launch PowerShell — let it handle repo resolution with native Git for Windows.
-    # Consumer list: only forward if user specified on CLI; otherwise PS1 fetches its own.
     log "Launching pwsh.exe..."
     log "Setup only: $SETUP_ONLY"
     echo ""
@@ -713,7 +715,7 @@ run_windows() {
 
     pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "$ps_script_win" \
         -WheelPath "$wheel_win" \
-        -ReposRoot "$repos_root_win" \
+        -ConfigFile "$config_win" \
         -ResultsFile "$results_win" \
         "${consumers_flag[@]}" \
         $setup_flag $fallback_flag
