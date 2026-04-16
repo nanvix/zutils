@@ -149,7 +149,10 @@ done
 CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/downstream.json}"
 
 # Ensure config exists (auto-generate on first run).
-ensure_config "$CONFIG_FILE"
+if ! ensure_config "$CONFIG_FILE"; then
+    fail "Could not generate or find config at $CONFIG_FILE"
+    exit 1
+fi
 
 # Read config.
 REPOS_ROOT=$(jq -r '.defaults.repos_root // "~/repos"' "$CONFIG_FILE")
@@ -161,6 +164,7 @@ BRANCH_PATTERN=$(jq -r '.defaults.branch_pattern // "nanvix/v*"' "$CONFIG_FILE")
 # Auto-detect WIN_REPOS_ROOT if not set in config.
 if [[ -z "$WIN_REPOS_ROOT" ]]; then
     _win_userprofile="$(cmd.exe /C 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r' || true)"
+    _win_home=""
     if [[ -n "$_win_userprofile" ]]; then
         _win_home="$(wslpath -u "$_win_userprofile" 2>/dev/null || true)"
     fi
