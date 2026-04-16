@@ -12,6 +12,7 @@ Commands:
   format        Fix code formatting with black
   typecheck     Run strict type checking with basedpyright
   test          Run the test suite with pytest
+  test-downstream  Run the downstream_tests unit tests
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean         Remove Python bytecode caches and build artifacts
   release       Build distribution artifacts (wheel + sdist) for release
@@ -84,6 +85,11 @@ def typecheck() -> int:
 def test() -> int:
     """Run the test suite with pytest."""
     return _run(sys.executable, "-m", "pytest", "tests/", "-v")
+
+
+def test_downstream() -> int:
+    """Run the downstream_tests unit tests with pytest."""
+    return _run(sys.executable, "-m", "pytest", "src/downstream_tests/tests/", "-v")
 
 
 def clean() -> int:
@@ -467,6 +473,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
+    "test-downstream": (test_downstream, "Run the downstream_tests unit tests"),
     "ci": (
         ci,
         "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
