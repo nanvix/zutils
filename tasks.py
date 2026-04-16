@@ -184,7 +184,7 @@ def release() -> int:
 def downstream() -> int:
     """Run downstream consumer tests (auto-detects platform).
 
-    Delegates to scripts/downstream/downstream.py which auto-detects
+    Delegates to scripts/downstream/wrapper.py which auto-detects
     the platform (Windows / WSL / Linux) and dispatches to the
     appropriate shell script with translated arguments.
 
@@ -193,7 +193,7 @@ def downstream() -> int:
         uv run tasks.py downstream --platform linux    # override platform
         uv run tasks.py downstream --setup-only sqlite # forward flags
     """
-    script = _REPO_ROOT / "scripts" / "downstream" / "downstream.py"
+    script = _REPO_ROOT / "scripts" / "downstream" / "wrapper.py"
     if not script.exists():
         print(f"error: downstream runner not found at {script}")
         return 1
