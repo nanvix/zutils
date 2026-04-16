@@ -38,30 +38,25 @@ def _is_dirty(work_dir: Path) -> bool:
         return True
 
 
-def _safe_reset(
+def _force_reset(
     consumer: str,
     work_dir: Path,
     target: str,
-) -> bool:
-    """Reset to *target* only if the working tree is clean.
+) -> None:
+    """Reset to *target* unconditionally.
+
+    Caller is responsible for checking dirty state beforehand if needed.
 
     Args:
         consumer:  Consumer slug (for log messages).
         work_dir:  Path to the git working directory.
         target:    Reset target, e.g. ``"origin/nanvix/v1.0.0"``.
-
-    Returns:
-        True if reset succeeded, False if skipped due to dirty tree.
     """
-    if _is_dirty(work_dir):
-        warn(f"  {consumer}: skipping reset -- uncommitted changes in {work_dir}")
-        return False
     subprocess.run(
         ["git", "-C", str(work_dir), "reset", "--hard", target],
         check=False,
         timeout=_GIT_TIMEOUT,
     )
-    return True
 
 
 def detect_strategy(repo_path: Path) -> str:
@@ -292,6 +287,11 @@ def _resolve_bare(
     if worktrees:
         # Prefer the last worktree (sorted by path for determinism).
         wt_dir = sorted(worktrees, key=lambda p: str(p))[-1]
+        # Snapshot dirty state *before* we touch anything.  If the tree
+        # was already dirty (e.g. user edits), warn and skip reset.  If
+        # it was clean, any new untracked files (like .nanvix/ build
+        # artifacts from a prior run) won't block us.
+        was_dirty = _is_dirty(wt_dir)
         log(f"  {consumer}: updating worktree at {wt_dir}")
         subprocess.run(
             ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
@@ -300,16 +300,23 @@ def _resolve_bare(
         # Reset to the *resolved* branch, not whatever HEAD currently
         # points to -- the old HEAD branch may have been deleted upstream
         # (fetch --prune removes the remote-tracking ref).
-        _safe_reset(consumer, wt_dir, f"origin/{branch}")
+        if was_dirty:
+            warn(f"  {consumer}: skipping reset -- uncommitted changes in {wt_dir}")
+        else:
+            _force_reset(consumer, wt_dir, f"origin/{branch}")
         return wt_dir
 
     wt_dir = repo_path / branch
 
     if wt_dir.is_dir():
+        was_dirty = _is_dirty(wt_dir)
         log(f"  {consumer}: updating worktree at {wt_dir}")
         subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
                        timeout=_GIT_TIMEOUT)
-        _safe_reset(consumer, wt_dir, f"origin/{branch}")
+        if was_dirty:
+            warn(f"  {consumer}: skipping reset -- uncommitted changes in {wt_dir}")
+        else:
+            _force_reset(consumer, wt_dir, f"origin/{branch}")
         return wt_dir
 
     log(f"  {consumer}: creating worktree for {branch}")
@@ -349,6 +356,7 @@ def _resolve_clone(
             return None
         ok(f"  {consumer}: cloned")
 
+    was_dirty = _is_dirty(repo_path)
     log(f"  {consumer}: fetching and checking out {branch}")
     subprocess.run(
         ["git", "-C", str(repo_path), "fetch", "origin"], check=False,
@@ -372,7 +380,10 @@ def _resolve_clone(
             ],
             timeout=_GIT_TIMEOUT,
         )
-    _safe_reset(consumer, repo_path, f"origin/{branch}")
+    if was_dirty:
+        warn(f"  {consumer}: skipping reset -- uncommitted changes in {repo_path}")
+    else:
+        _force_reset(consumer, repo_path, f"origin/{branch}")
     return repo_path
 
 
@@ -410,12 +421,16 @@ def _resolve_shallow(
         return repo_path
 
     log(f"  {consumer}: updating shallow clone")
+    was_dirty = _is_dirty(repo_path)
     subprocess.run(
         ["git", "-C", str(repo_path), "fetch", "--depth", "1", "origin", branch],
         check=False,
         timeout=_GIT_TIMEOUT,
     )
-    _safe_reset(consumer, repo_path, f"origin/{branch}")
+    if was_dirty:
+        warn(f"  {consumer}: skipping reset -- uncommitted changes in {repo_path}")
+    else:
+        _force_reset(consumer, repo_path, f"origin/{branch}")
     return repo_path
 
 

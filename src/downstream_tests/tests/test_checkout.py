@@ -373,8 +373,8 @@ def test_is_dirty_with_staged_changes(tmp_path: Path):
 def test_safe_reset_skips_dirty(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """_safe_reset refuses to reset a dirty working tree."""
-    from downstream_tests.checkout import _safe_reset
+    """_is_dirty returns True for dirty tree; callers should skip reset."""
+    from downstream_tests.checkout import _is_dirty
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -385,17 +385,12 @@ def test_safe_reset_skips_dirty(
     )
     (repo / "dirty.txt").write_text("do not lose me")
 
-    result = _safe_reset("nanvix/test", repo, "HEAD")
-    assert result is False
-
-    output = capsys.readouterr().out
-    assert "WARN" in output
-    assert "uncommitted changes" in output
+    assert _is_dirty(repo) is True
 
 
 def test_safe_reset_proceeds_when_clean(tmp_path: Path):
-    """_safe_reset resets a clean working tree."""
-    from downstream_tests.checkout import _safe_reset
+    """_force_reset resets a clean working tree."""
+    from downstream_tests.checkout import _force_reset, _is_dirty
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -405,8 +400,8 @@ def test_safe_reset_proceeds_when_clean(tmp_path: Path):
         check=True, capture_output=True,
     )
 
-    result = _safe_reset("nanvix/test", repo, "HEAD")
-    assert result is True
+    assert _is_dirty(repo) is False
+    _force_reset("nanvix/test", repo, "HEAD")
 
 
 # ---------------------------------------------------------------------------
