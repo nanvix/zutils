@@ -1,4 +1,4 @@
-"""test_wheel.py — Tests for downstream_tests.wheel."""
+"""test_wheel.py -- Tests for downstream_tests.wheel."""
 
 import sys
 from pathlib import Path
@@ -79,7 +79,7 @@ def test_build_wheel_dry_run(tmp_path: Path):
 
 
 def test_build_wheel_fallback_chain(tmp_path: Path):
-    """pip not found → tries uv; uv not found → falls back to python -m pip."""
+    """pip not found -> tries uv; uv not found -> falls back to python -m pip."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"
@@ -90,7 +90,7 @@ def test_build_wheel_fallback_chain(tmp_path: Path):
         (wheel_dir / "nanvix_zutil-1.0.0-py3-none-any.whl").touch()
         return _make_run_result(0)
 
-    # pip=None, uv=None → falls through to sys.executable -m pip
+    # pip=None, uv=None -> falls through to sys.executable -m pip
     with patch("shutil.which", return_value=None):
         with patch("subprocess.run", side_effect=mock_run) as mock_sub:
             result = build_wheel(zutils_root, work_dir)

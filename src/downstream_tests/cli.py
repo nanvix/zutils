@@ -1,4 +1,4 @@
-"""cli.py — Command-line interface for downstream_tests."""
+"""cli.py -- Command-line interface for downstream_tests."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from .runner import run_consumers
 from .log import fail, ok
 
 # scripts/downstream/ lives three levels above this file:
-# src/downstream_tests/cli.py → src/downstream_tests/ → src/ → <repo_root>
-# → <repo_root>/scripts/downstream/
+# src/downstream_tests/cli.py -> src/downstream_tests/ -> src/ -> <repo_root>
+# -> <repo_root>/scripts/downstream/
 _SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "downstream"
 
 

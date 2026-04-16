@@ -1,4 +1,4 @@
-"""test_cli.py — Tests for downstream_tests.cli."""
+"""test_cli.py -- Tests for downstream_tests.cli."""
 
 import json
 import subprocess
@@ -159,5 +159,5 @@ def test_help_outputs_once():
         timeout=10,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
-    # "usage:" should appear exactly once — not duplicated.
+    # "usage:" should appear exactly once -- not duplicated.
     assert result.stdout.count("usage:") == 1

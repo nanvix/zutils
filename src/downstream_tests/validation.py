@@ -1,4 +1,4 @@
-"""validation.py — Consumer name validation for downstream_tests."""
+"""validation.py -- Consumer name validation for downstream_tests."""
 
 from __future__ import annotations
 
@@ -18,4 +18,10 @@ def validate_consumer(name: str) -> bool:
     Returns:
         True if valid, False otherwise.
     """
-    return bool(CONSUMER_RE.match(name))
+    if not CONSUMER_RE.match(name):
+        return False
+    # Reject path traversal components.
+    parts = name.replace("\\", "/").split("/")
+    if any(p in (".", "..") for p in parts):
+        return False
+    return True

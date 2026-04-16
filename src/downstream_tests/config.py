@@ -1,4 +1,4 @@
-"""config.py — Config loading helpers for downstream_tests."""
+"""config.py -- Config loading helpers for downstream_tests."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def ensure_config(
     if config_path.exists():
         return config_path
 
-    log("No downstream.json found — generating from consumer-repos.json...")
+    log("No downstream.json found -- generating from consumer-repos.json...")
 
     repos: list[str] = []
     fetched = False
@@ -94,7 +94,7 @@ def ensure_config(
         return Path(tmp.name)
 
     config_path.write_text(config_json, encoding="utf-8")
-    log(f"Generated {config_path} — customize as needed.")
+    log(f"Generated {config_path} -- customize as needed.")
     return config_path
 
 

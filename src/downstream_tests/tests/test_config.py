@@ -1,4 +1,4 @@
-"""test_config.py — Tests for downstream_tests.config."""
+"""test_config.py -- Tests for downstream_tests.config."""
 
 import json
 from pathlib import Path

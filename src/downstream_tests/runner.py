@@ -1,4 +1,4 @@
-"""runner.py — Consumer runner for downstream_tests."""
+"""runner.py -- Consumer runner for downstream_tests."""
 
 from __future__ import annotations
 
@@ -179,14 +179,14 @@ def run_consumer(
     ok(f"  {consumer} setup: OK")
 
     if setup_only:
-        log("  (skipping build/test — setup-only mode)")
+        log("  (skipping build/test -- setup-only mode)")
         return consumer, "OK (setup)"
 
     # --- Docker availability check ---------------------------------------------
     docker_flag: list[str] = []
     if with_docker:
         if not shutil.which("docker"):
-            log("  --with-docker requested but Docker not available — skipping build/test")
+            log("  --with-docker requested but Docker not available -- skipping build/test")
             return consumer, "OK (setup, no docker)"
         docker_flag = ["--with-docker"]
 

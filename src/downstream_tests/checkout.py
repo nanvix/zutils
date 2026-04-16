@@ -1,4 +1,4 @@
-"""checkout.py — Checkout helpers for downstream_tests."""
+"""checkout.py -- Checkout helpers for downstream_tests."""
 
 from __future__ import annotations
 
@@ -7,21 +7,72 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .log import dry, fail, log, ok
+from .log import dry, fail, log, ok, warn
 
 # Timeout in seconds for git subprocess calls.
 _GIT_TIMEOUT = 600
+
+
+def _is_dirty(work_dir: Path) -> bool:
+    """Return True if the working tree has uncommitted changes.
+
+    Checks both staged and unstaged modifications, plus untracked files
+    that would be lost by a hard reset.
+
+    Args:
+        work_dir: Path to a git working directory (clone or worktree).
+
+    Returns:
+        True if there are uncommitted changes, False if clean.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(work_dir), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+        )
+        return bool(r.stdout.strip())
+    except Exception:
+        # If we can't determine status, assume dirty to be safe.
+        return True
+
+
+def _safe_reset(
+    consumer: str,
+    work_dir: Path,
+    target: str,
+) -> bool:
+    """Reset to *target* only if the working tree is clean.
+
+    Args:
+        consumer:  Consumer slug (for log messages).
+        work_dir:  Path to the git working directory.
+        target:    Reset target, e.g. ``"origin/nanvix/v1.0.0"``.
+
+    Returns:
+        True if reset succeeded, False if skipped due to dirty tree.
+    """
+    if _is_dirty(work_dir):
+        warn(f"  {consumer}: skipping reset -- uncommitted changes in {work_dir}")
+        return False
+    subprocess.run(
+        ["git", "-C", str(work_dir), "reset", "--hard", target],
+        check=False,
+        timeout=_GIT_TIMEOUT,
+    )
+    return True
 
 
 def detect_strategy(repo_path: Path) -> str:
     """Auto-detect the checkout strategy for an existing repo path.
 
     Logic (mirrors bash detect_checkout_strategy):
-    - Non-existent path → "shallow"
-    - Has HEAD file but no .git directory → "bare"
-    - .git is a regular file (gitdir pointer / worktree) → "bare"
-    - .git is a directory → "clone"
-    - Anything else → "shallow"
+    - Non-existent path -> "shallow"
+    - Has HEAD file but no .git directory -> "bare"
+    - .git is a regular file (gitdir pointer / worktree) -> "bare"
+    - .git is a directory -> "clone"
+    - Anything else -> "shallow"
 
     Args:
         repo_path: Filesystem path to inspect.
@@ -36,7 +87,7 @@ def detect_strategy(repo_path: Path) -> str:
     if head_file.is_file() and not git_entry.is_dir():
         return "bare"
     if git_entry.is_file():
-        # .git is a file → gitdir pointer → worktree of a bare repo
+        # .git is a file -> gitdir pointer -> worktree of a bare repo
         return "bare"
     if git_entry.is_dir():
         return "clone"
@@ -223,41 +274,39 @@ def _resolve_bare(
         timeout=_GIT_TIMEOUT,
     )
 
-    # Look for existing nanvix/v* worktree directories.
-    nanvix_dir = repo_path / "nanvix"
-    if nanvix_dir.is_dir():
-        v_dirs = sorted(
-            [d for d in nanvix_dir.iterdir() if d.is_dir() and d.name.startswith("v")],
-            key=lambda d: d.name,
+    # Find existing worktrees via git worktree list.
+    wt_result = subprocess.run(
+        ["git", "-C", str(repo_path), "worktree", "list", "--porcelain"],
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT,
+    )
+    worktrees: list[Path] = []
+    for line in wt_result.stdout.splitlines():
+        if line.startswith("worktree "):
+            wt_path = Path(line.removeprefix("worktree ").strip())
+            # Skip the bare repo itself (it shows up as a worktree entry).
+            if wt_path != repo_path:
+                worktrees.append(wt_path)
+
+    if worktrees:
+        # Prefer the last worktree (sorted by path for determinism).
+        wt_dir = sorted(worktrees, key=lambda p: str(p))[-1]
+        cur_branch_r = subprocess.run(
+            ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
         )
-        if v_dirs:
-            wt_dir = v_dirs[-1]
-            cur_branch_r = subprocess.run(
-                ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=_GIT_TIMEOUT,
-            )
-            cur_branch = cur_branch_r.stdout.strip()
-            log(f"  {consumer}: updating worktree at {wt_dir}")
-            subprocess.run(
-                ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
-                timeout=_GIT_TIMEOUT,
-            )
-            if cur_branch:
-                subprocess.run(
-                    [
-                        "git",
-                        "-C",
-                        str(wt_dir),
-                        "reset",
-                        "--hard",
-                        f"origin/{cur_branch}",
-                    ],
-                    check=False,
-                    timeout=_GIT_TIMEOUT,
-                )
-            return wt_dir
+        cur_branch = cur_branch_r.stdout.strip()
+        log(f"  {consumer}: updating worktree at {wt_dir}")
+        subprocess.run(
+            ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
+            timeout=_GIT_TIMEOUT,
+        )
+        if cur_branch:
+            _safe_reset(consumer, wt_dir, f"origin/{cur_branch}")
+        return wt_dir
 
     wt_dir = repo_path / branch
 
@@ -273,18 +322,7 @@ def _resolve_bare(
         subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
                        timeout=_GIT_TIMEOUT)
         if cur_branch:
-            subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(wt_dir),
-                    "reset",
-                    "--hard",
-                    f"origin/{cur_branch}",
-                ],
-                check=False,
-                timeout=_GIT_TIMEOUT,
-            )
+            _safe_reset(consumer, wt_dir, f"origin/{cur_branch}")
         return wt_dir
 
     log(f"  {consumer}: creating worktree for {branch}")
@@ -347,18 +385,7 @@ def _resolve_clone(
             ],
             timeout=_GIT_TIMEOUT,
         )
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_path),
-            "reset",
-            "--hard",
-            f"origin/{branch}",
-        ],
-        check=False,
-        timeout=_GIT_TIMEOUT,
-    )
+    _safe_reset(consumer, repo_path, f"origin/{branch}")
     return repo_path
 
 
@@ -401,18 +428,7 @@ def _resolve_shallow(
         check=False,
         timeout=_GIT_TIMEOUT,
     )
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_path),
-            "reset",
-            "--hard",
-            f"origin/{branch}",
-        ],
-        check=False,
-        timeout=_GIT_TIMEOUT,
-    )
+    _safe_reset(consumer, repo_path, f"origin/{branch}")
     return repo_path
 
 
@@ -445,15 +461,23 @@ def resolve_repo(
     """
     repo_path = repos_root / consumer
 
-    if not strategy:
+    if not strategy or strategy == "auto":
         strategy = detect_strategy(repo_path)
         log(f"  {consumer}: auto-detected strategy: {strategy}")
+    elif repo_path.exists():
+        # Override config default with auto-detection when the repo
+        # already exists locally -- prevents e.g. shallow-cloning over
+        # an existing bare+worktree checkout.
+        detected = detect_strategy(repo_path)
+        if detected != strategy:
+            log(f"  {consumer}: overriding strategy '{strategy}' -> '{detected}' (repo exists)")
+            strategy = detected
 
     if not branch:
-        if dry_run:
-            branch = pattern.replace("*", "vX.Y.Z")
-        else:
-            branch = resolve_branch(consumer, repo_path, strategy, pattern) or ""
+        branch = resolve_branch(consumer, repo_path, strategy, pattern) or ""
+        if not branch and dry_run:
+            # Fallback placeholder only if resolution fails (e.g. no network)
+            branch = pattern.replace("*", "X.Y.Z")
 
     if not branch:
         fail(f"  {consumer}: cannot determine target branch")
@@ -465,10 +489,10 @@ def resolve_repo(
         target_dir = (repo_path / branch) if strategy == "bare" else repo_path
         dry(f"  {consumer}: would resolve via '{strategy}' strategy")
         if not repo_path.exists():
-            dry(f"  {consumer}: would clone https://github.com/{consumer}.git → {repo_path}")
+            dry(f"  {consumer}: would clone https://github.com/{consumer}.git -> {repo_path}")
         else:
             dry(f"  {consumer}: would fetch + update at {repo_path}")
-        dry(f"  {consumer}: working directory → {target_dir}")
+        dry(f"  {consumer}: working directory -> {target_dir}")
         return target_dir
 
     if strategy == "bare":

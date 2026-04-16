@@ -1,13 +1,13 @@
-"""Downstream consumer test runner — platform-aware dispatcher.
+"""Downstream consumer test runner -- platform-aware dispatcher.
 
 Detects the current platform and dispatches ``python -m downstream_tests``
 with the correct ``--repos-root`` for each requested platform.
 
 Platform capabilities:
-    Native Linux          → can test linux only
-    WSL                   → can test linux + windows (default: both)
-    Native Windows + WSL  → can test linux + windows (default: both)
-    Native Windows        → can test windows only
+    Native Linux          -> can test linux only
+    WSL                   -> can test linux + windows (default: both)
+    Native Windows + WSL  -> can test linux + windows (default: both)
+    Native Windows        -> can test windows only
 
 Can be invoked directly:
     python scripts/downstream/wrapper.py [--platform linux|windows|both] [args...]
@@ -37,16 +37,6 @@ def _to_windows_path(posix_path: str) -> str:
     return r.stdout.strip() or posix_path
 
 
-def _to_posix_path(win_path: str) -> str:
-    """Convert a Windows path to a POSIX/WSL path via wslpath."""
-    r = subprocess.run(
-        ["wslpath", "-u", win_path],
-        capture_output=True,
-        text=True,
-    )
-    return r.stdout.strip() or win_path
-
-
 def _is_wsl() -> bool:
     """Detect if running inside Windows Subsystem for Linux."""
     try:
@@ -59,7 +49,7 @@ def _can_linux() -> bool:
     """Return True if we can run Linux downstream tests."""
     if sys.platform != "win32":
         return True
-    # Native Windows — can do Linux if WSL is installed.
+    # Native Windows -- can do Linux if WSL is installed.
     return shutil.which("wsl") is not None
 
 
@@ -67,7 +57,7 @@ def _can_windows() -> bool:
     """Return True if we can run Windows downstream tests."""
     if sys.platform == "win32":
         return True
-    # Linux — can do Windows only from WSL with pwsh.exe available.
+    # Linux -- can do Windows only from WSL with pwsh.exe available.
     return _is_wsl() and shutil.which("pwsh.exe") is not None
 
 
@@ -122,9 +112,11 @@ def _resolve_repos_root(config_path: Path, *, for_windows: bool) -> str:
         )
         win_userprofile = wp.stdout.strip()
         if win_userprofile:
-            # Keep as Windows-native path — this will be passed to
+            # Keep as Windows-native path -- this will be passed to
             # Python running on the Windows side via pwsh.exe.
-            return str(Path(win_userprofile) / "repos")
+            # Use string concat (not Path) to preserve backslashes;
+            # on WSL, Path is PosixPath and would use forward slashes.
+            return win_userprofile.rstrip("\\") + "\\repos"
     except Exception as exc:
         print(f"warning: failed to detect Windows repos root: {exc}", file=sys.stderr)
 
@@ -199,22 +191,22 @@ def _run_windows(
         ]
 
     if sys.platform == "win32":
-        # Native Windows — run directly.
+        # Native Windows -- run directly.
         return subprocess.call(
             [sys.executable, "-m", "downstream_tests", *extra, *user_args]
         )
 
-    # WSL — shell out to pwsh.exe with PYTHONPATH set so Windows Python
+    # WSL -- shell out to pwsh.exe with PYTHONPATH set so Windows Python
     # can find the downstream_tests package in the WSL source tree.
     win_src = _to_windows_path(str(_SRC_DIR))
     all_args = [*extra, *user_args]
     # Build a PowerShell command that sets PYTHONPATH and invokes python.
     # Use PowerShell array syntax to avoid injection via argument values.
-    ps_args = ", ".join(f"'{a.replace(chr(39), chr(39)*2)}'" for a in all_args)
-    ps_cmd = f"$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
-    return subprocess.call(
-        ["pwsh.exe", "-NoProfile", "-Command", ps_cmd]
+    ps_args = " ".join(f"'{a.replace(chr(39), chr(39) * 2)}'" for a in all_args)
+    ps_cmd = (
+        f"$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
     )
+    return subprocess.call(["pwsh.exe", "-NoProfile", "-Command", ps_cmd])
 
 
 def _run_linux_from_windows(
@@ -245,7 +237,7 @@ def _run_linux_from_windows(
 
 
 def main() -> int:
-    """Entry point — parse platform, validate capabilities, dispatch."""
+    """Entry point -- parse platform, validate capabilities, dispatch."""
     platform, config_path, has_repos_root, user_args = _parse_wrapper_args(
         list(sys.argv[1:])
     )
@@ -253,9 +245,7 @@ def main() -> int:
     # Short-circuit: if --help or -h is in args, run once locally and exit.
     # No need to dispatch to both platforms for help text.
     if "-h" in user_args or "--help" in user_args:
-        return subprocess.call(
-            [sys.executable, "-m", "downstream_tests", "--help"]
-        )
+        return subprocess.call([sys.executable, "-m", "downstream_tests", "--help"])
 
     if not platform:
         platform = _default_platform()

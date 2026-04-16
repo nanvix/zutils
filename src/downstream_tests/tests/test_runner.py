@@ -1,4 +1,4 @@
-"""test_runner.py — Tests for downstream_tests.runner and downstream_tests.fallback."""
+"""test_runner.py -- Tests for downstream_tests.runner and downstream_tests.fallback."""
 
 import os
 from pathlib import Path
@@ -100,7 +100,7 @@ def test_run_consumer_full_phases(tmp_path: Path):
 
 
 def test_run_consumer_setup_fails(tmp_path: Path):
-    """Non-zero setup returncode → FAIL (setup)."""
+    """Non-zero setup returncode -> FAIL (setup)."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -128,7 +128,7 @@ def test_run_consumer_setup_fails(tmp_path: Path):
 
 
 def test_run_consumer_force_fallback_exit7(tmp_path: Path):
-    """force_fallback + exit code 7 from setup → 'OK (fallback verified)'."""
+    """force_fallback + exit code 7 from setup -> 'OK (fallback verified)'."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -157,7 +157,7 @@ def test_run_consumer_force_fallback_exit7(tmp_path: Path):
 
 
 def test_run_consumer_force_fallback_log_match(tmp_path: Path):
-    """force_fallback + exit 0 but 'fallback for' in output → OK (fallback verified)."""
+    """force_fallback + exit 0 but 'fallback for' in output -> OK (fallback verified)."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -186,7 +186,7 @@ def test_run_consumer_force_fallback_log_match(tmp_path: Path):
 
 
 def test_run_consumer_force_fallback_not_triggered(tmp_path: Path):
-    """force_fallback + exit 0 with no fallback log → FAIL."""
+    """force_fallback + exit 0 with no fallback log -> FAIL."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()

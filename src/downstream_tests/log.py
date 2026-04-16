@@ -1,4 +1,4 @@
-"""log.py — Logging helpers for downstream_tests."""
+"""log.py -- Logging helpers for downstream_tests."""
 
 
 def log(msg: str) -> None:
@@ -19,3 +19,8 @@ def fail(msg: str) -> None:
 def dry(msg: str) -> None:
     """Print a dry-run notice with a yellow bold prefix."""
     print(f"\033[1;33m[dry-run]\033[0m {msg}")
+
+
+def warn(msg: str) -> None:
+    """Print a warning message with a yellow bold prefix."""
+    print(f"\033[1;33mWARN\033[0m {msg}")

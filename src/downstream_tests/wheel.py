@@ -1,4 +1,4 @@
-"""wheel.py — Wheel build helper for downstream_tests."""
+"""wheel.py -- Wheel build helper for downstream_tests."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def build_wheel(
     wheel_dir = work_dir / "wheel"
 
     if dry_run:
-        dry(f"would build wheel from {zutils_root} → {wheel_dir}")
+        dry(f"would build wheel from {zutils_root} -> {wheel_dir}")
         return wheel_dir / "nanvix_zutil-dry_run-py3-none-any.whl"
 
     if skip_build:

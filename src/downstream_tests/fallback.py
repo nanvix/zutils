@@ -1,4 +1,4 @@
-"""fallback.py — Fallback environment helpers for downstream_tests."""
+"""fallback.py -- Fallback environment helpers for downstream_tests."""
 
 from __future__ import annotations
 
