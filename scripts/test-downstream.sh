@@ -755,6 +755,18 @@ run_windows() {
 }
 
 # =============================================================================
+# Pre-validate all consumer names before any platform dispatch.
+# =============================================================================
+
+for _c in "${CONSUMERS[@]}"; do
+    if ! validate_consumer "$_c"; then
+        fail "Aborting: invalid consumer name '$_c'"
+        exit 1
+    fi
+done
+unset _c
+
+# =============================================================================
 # Main dispatch
 # =============================================================================
 
