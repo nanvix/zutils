@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
@@ -10,7 +11,7 @@ from typing import Any, Optional
 from .config import ensure_config, load_config
 from .wheel import build_wheel
 from .runner import run_consumers
-from .log import fail
+from .log import fail, get_warnings
 
 # scripts/downstream/ lives three levels above this file:
 # src/downstream_tests/cli.py -> src/downstream_tests/ -> src/ -> <repo_root>
@@ -163,5 +164,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         with_docker=args.with_docker,
         dry_run=args.dry_run,
     )
+
+    # If the wrapper asked us to dump warnings to a file, do so.
+    warn_file = os.environ.get("DOWNSTREAM_WARN_FILE")
+    if warn_file:
+        try:
+            Path(warn_file).write_text(
+                "\n".join(get_warnings()), encoding="utf-8"
+            )
+        except OSError:
+            pass  # best-effort
 
     return failure_count

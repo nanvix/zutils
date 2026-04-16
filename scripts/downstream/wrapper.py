@@ -17,9 +17,11 @@ Or via tasks.py:
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).parent
@@ -159,6 +161,8 @@ def _run_linux(
     config_path: Path,
     has_repos_root: bool,
     user_args: list[str],
+    *,
+    warn_file: str = "",
 ) -> int:
     """Run downstream_tests for Linux."""
     extra: list[str] = []
@@ -167,8 +171,10 @@ def _run_linux(
             "--repos-root",
             _resolve_repos_root(config_path, for_windows=False),
         ]
+    env = _env_with_warn_file(warn_file)
     return subprocess.call(
-        [sys.executable, "-m", "downstream_tests", *extra, *user_args]
+        [sys.executable, "-m", "downstream_tests", *extra, *user_args],
+        env=env,
     )
 
 
@@ -176,6 +182,8 @@ def _run_windows(
     config_path: Path,
     has_repos_root: bool,
     user_args: list[str],
+    *,
+    warn_file: str = "",
 ) -> int:
     """Run downstream_tests for Windows.
 
@@ -192,8 +200,10 @@ def _run_windows(
 
     if sys.platform == "win32":
         # Native Windows -- run directly.
+        env = _env_with_warn_file(warn_file)
         return subprocess.call(
-            [sys.executable, "-m", "downstream_tests", *extra, *user_args]
+            [sys.executable, "-m", "downstream_tests", *extra, *user_args],
+            env=env,
         )
 
     # WSL -- shell out to pwsh.exe with PYTHONPATH set so Windows Python
@@ -203,8 +213,14 @@ def _run_windows(
     # Build a PowerShell command that sets PYTHONPATH and invokes python.
     # Use PowerShell array syntax to avoid injection via argument values.
     ps_args = " ".join(f"'{a.replace(chr(39), chr(39) * 2)}'" for a in all_args)
+    # For the warn file, convert the WSL path to Windows path so the
+    # Windows Python child can write to it.
+    warn_env = ""
+    if warn_file:
+        win_warn = _to_windows_path(warn_file)
+        warn_env = f"$env:DOWNSTREAM_WARN_FILE='{win_warn}'; "
     ps_cmd = (
-        f"$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
+        f"{warn_env}$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
     )
     return subprocess.call(["pwsh.exe", "-NoProfile", "-Command", ps_cmd])
 
@@ -213,6 +229,8 @@ def _run_linux_from_windows(
     config_path: Path,
     has_repos_root: bool,
     user_args: list[str],
+    *,
+    warn_file: str = "",
 ) -> int:
     """Run downstream_tests for Linux from native Windows via wsl.exe."""
     extra: list[str] = []
@@ -221,12 +239,15 @@ def _run_linux_from_windows(
             "--repos-root",
             _resolve_repos_root(config_path, for_windows=False),
         ]
+    env_pairs = [f"PYTHONPATH={_SRC_DIR}"]
+    if warn_file:
+        env_pairs.append(f"DOWNSTREAM_WARN_FILE={warn_file}")
     return subprocess.call(
         [
             "wsl",
             "--",
             "env",
-            f"PYTHONPATH={_SRC_DIR}",
+            *env_pairs,
             "python3",
             "-m",
             "downstream_tests",
@@ -266,25 +287,62 @@ def main() -> int:
         return 1
 
     results: list[tuple[str, int]] = []
+    platform_warnings: dict[str, list[str]] = {}
 
     if run_linux:
         _print_platform_banner("Linux")
+        warn_file = _make_warn_file()
         if sys.platform == "win32":
-            rc = _run_linux_from_windows(config_path, has_repos_root, user_args)
+            rc = _run_linux_from_windows(config_path, has_repos_root, user_args, warn_file=warn_file)
         else:
-            rc = _run_linux(config_path, has_repos_root, user_args)
+            rc = _run_linux(config_path, has_repos_root, user_args, warn_file=warn_file)
         results.append(("Linux", rc))
+        platform_warnings["Linux"] = _read_warn_file(warn_file)
 
     if run_windows:
         _print_platform_banner("Windows")
-        rc_win = _run_windows(config_path, has_repos_root, user_args)
+        warn_file = _make_warn_file()
+        rc_win = _run_windows(config_path, has_repos_root, user_args, warn_file=warn_file)
         results.append(("Windows", rc_win))
+        platform_warnings["Windows"] = _read_warn_file(warn_file)
 
     # Combined summary when multiple platforms were tested.
     if len(results) > 1:
-        _print_combined_summary(results)
+        _print_combined_summary(results, platform_warnings)
 
     return max(rc for _, rc in results) if results else 0
+
+
+def _make_warn_file() -> str:
+    """Create a temp file for the child process to write warnings to."""
+    fd, path = tempfile.mkstemp(prefix="downstream-warn-", suffix=".txt")
+    os.close(fd)
+    return path
+
+
+def _read_warn_file(path: str) -> list[str]:
+    """Read warnings from a temp file and clean up."""
+    warnings: list[str] = []
+    try:
+        text = Path(path).read_text(encoding="utf-8").strip()
+        if text:
+            warnings = text.splitlines()
+    except OSError:
+        pass
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+    return warnings
+
+
+def _env_with_warn_file(warn_file: str) -> dict[str, str] | None:
+    """Return an env dict with DOWNSTREAM_WARN_FILE set, or None."""
+    if not warn_file:
+        return None
+    env = os.environ.copy()
+    env["DOWNSTREAM_WARN_FILE"] = warn_file
+    return env
 
 
 def _print_platform_banner(platform_name: str) -> None:
@@ -295,10 +353,13 @@ def _print_platform_banner(platform_name: str) -> None:
     print(f"\033[1;36m{rule}\033[0m")
     print(f"\033[1;36m##{banner:^{len(rule) - 4}}##\033[0m")
     print(f"\033[1;36m{rule}\033[0m")
-    print()
+    print(flush=True)
 
 
-def _print_combined_summary(results: list[tuple[str, int]]) -> None:
+def _print_combined_summary(
+    results: list[tuple[str, int]],
+    platform_warnings: dict[str, list[str]] | None = None,
+) -> None:
     """Print a combined summary across all platform runs."""
     print()
     rule = "=" * 64
@@ -319,6 +380,21 @@ def _print_combined_summary(results: list[tuple[str, int]]) -> None:
     else:
         total_failures = sum(rc for _, rc in results)
         print(f"\033[1;31mFAIL\033[0m {total_failures} total failure(s) across platforms")
+
+    # Replay warnings from all platforms.
+    if platform_warnings:
+        all_warnings: list[tuple[str, str]] = []
+        for plat, warns in platform_warnings.items():
+            for w in warns:
+                all_warnings.append((plat, w))
+        if all_warnings:
+            print()
+            print(f"\033[1;33m{rule}\033[0m")
+            print(f"\033[1;33m  {len(all_warnings)} warning(s) across platforms\033[0m")
+            print(f"\033[1;33m{rule}\033[0m")
+            for plat, w in all_warnings:
+                print(f"  \033[33m- [{plat}] {w}\033[0m")
+
     print()
 
 
