@@ -4,7 +4,7 @@ Auto-detects platform (Windows / WSL / Linux) and dispatches to
 the appropriate shell script with translated arguments.
 
 Can be invoked directly:
-    python scripts/downstream/downstream.py [args...]
+    python scripts/downstream/wrapper.py [args...]
 
 Or via tasks.py:
     uv run tasks.py downstream [args...]
