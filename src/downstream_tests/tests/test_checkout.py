@@ -487,3 +487,29 @@ def test_resolve_bare_uses_git_worktree_list(tmp_path: Path):
 
     result = _resolve_bare("nanvix/test", bare, branch)
     assert result == wt
+
+
+def test_resolve_bare_resets_to_resolved_branch_not_head(tmp_path: Path) -> None:
+    """_resolve_bare resets to origin/{resolved_branch}, not origin/{HEAD}.
+
+    Regression: worktree HEAD pointed at a branch that was deleted upstream
+    (e.g. fix/gitattributes-eol-lf). After fetch --prune removed the
+    remote-tracking ref, ``git reset --hard origin/<deleted>`` failed with
+    'ambiguous argument'. The fix: always reset to the *resolved* branch
+    passed as parameter, not the stale HEAD branch.
+    """
+    from downstream_tests.checkout import _resolve_bare
+
+    bare, wt, branch = _make_bare_with_worktree(tmp_path)
+
+    # Simulate: worktree HEAD is on a different branch than the resolved one.
+    # Create a local branch "fix/old-branch" and switch the worktree to it.
+    _subprocess.run(
+        ["git", "-C", str(wt), "checkout", "-b", "fix/old-branch"],
+        check=True, capture_output=True,
+    )
+
+    # Now resolve with the correct branch (nanvix/v1.0.0).
+    # _resolve_bare should reset to origin/nanvix/v1.0.0, NOT origin/fix/old-branch.
+    result = _resolve_bare("nanvix/test", bare, branch)
+    assert result == wt

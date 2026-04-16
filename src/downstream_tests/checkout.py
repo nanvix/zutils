@@ -292,37 +292,24 @@ def _resolve_bare(
     if worktrees:
         # Prefer the last worktree (sorted by path for determinism).
         wt_dir = sorted(worktrees, key=lambda p: str(p))[-1]
-        cur_branch_r = subprocess.run(
-            ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
-        cur_branch = cur_branch_r.stdout.strip()
         log(f"  {consumer}: updating worktree at {wt_dir}")
         subprocess.run(
             ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
             timeout=_GIT_TIMEOUT,
         )
-        if cur_branch:
-            _safe_reset(consumer, wt_dir, f"origin/{cur_branch}")
+        # Reset to the *resolved* branch, not whatever HEAD currently
+        # points to -- the old HEAD branch may have been deleted upstream
+        # (fetch --prune removes the remote-tracking ref).
+        _safe_reset(consumer, wt_dir, f"origin/{branch}")
         return wt_dir
 
     wt_dir = repo_path / branch
 
     if wt_dir.is_dir():
-        cur_branch_r = subprocess.run(
-            ["git", "-C", str(wt_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT,
-        )
-        cur_branch = cur_branch_r.stdout.strip()
         log(f"  {consumer}: updating worktree at {wt_dir}")
         subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
                        timeout=_GIT_TIMEOUT)
-        if cur_branch:
-            _safe_reset(consumer, wt_dir, f"origin/{cur_branch}")
+        _safe_reset(consumer, wt_dir, f"origin/{branch}")
         return wt_dir
 
     log(f"  {consumer}: creating worktree for {branch}")
