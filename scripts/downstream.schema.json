@@ -46,6 +46,7 @@
         "properties": {
           "repo": {
             "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$",
             "description": "GitHub owner/name (e.g., 'nanvix/zlib')."
           },
           "path": {

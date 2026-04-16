@@ -42,6 +42,19 @@ if ($ForceFallback)
 $ErrorActionPreference = 'Stop'
 $results = @{}
 
+# Validate-Consumer <Name>
+#   Ensure a consumer name matches the expected owner/repo pattern.
+function Validate-Consumer
+{
+    param([string]$Name)
+    if ($Name -notmatch '^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$')
+    {
+        Write-Host "  Invalid consumer name: '$Name' (must match owner/repo)" -ForegroundColor Red
+        return $false
+    }
+    return $true
+}
+
 # --- Config generation --------------------------------------------------------
 
 $ConsumersUrl = "https://raw.githubusercontent.com/nanvix/workflows/refs/heads/main/consumer-repos.json"
@@ -462,6 +475,12 @@ if (-not $RepoPaths)
     $resolvedConsumers = @()
     foreach ($c in $Consumers)
     {
+        if (-not (Validate-Consumer -Name $c))
+        {
+            $results[$c] = @{ status = "SKIP"; reason = "invalid consumer name" }
+            continue
+        }
+
         # Read per-consumer overrides from config.
         $consumerCfg = $config.consumers | Where-Object { $_.repo -eq $c } | Select-Object -First 1
         $cStrategy = if ($consumerCfg.strategy) { $consumerCfg.strategy } else { $DefaultStrategy }

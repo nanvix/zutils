@@ -62,6 +62,17 @@ log() { printf '\033[1;34m>>>\033[0m %s\n' "$*"; }
 ok() { printf '\033[1;32m OK\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; }
 
+# validate_consumer <name>
+#   Ensure a consumer name matches the expected owner/repo pattern.
+#   Rejects names that could cause shell injection or path traversal.
+validate_consumer() {
+    local name="$1"
+    if [[ ! "$name" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+        fail "Invalid consumer name: '$name' (must match owner/repo)"
+        return 1
+    fi
+}
+
 TOTAL_FAILED=0
 
 # --- Config generation --------------------------------------------------------
@@ -505,6 +516,11 @@ run_linux() {
     echo ""
 
     for consumer in "${CONSUMERS[@]}"; do
+        if ! validate_consumer "$consumer"; then
+            results+=("$consumer: FAIL (invalid name)")
+            failed=$((failed + 1))
+            continue
+        fi
         log "--- Testing $consumer ---"
 
         # Read per-consumer overrides from config.
