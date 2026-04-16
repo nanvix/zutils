@@ -49,7 +49,6 @@ for editor validation.
     "defaults": {
         "checkout_strategy": "shallow",
         "repos_root": "~/repos",
-        "win_repos_root": null,
         "branch_pattern": "nanvix/v*"
     },
     "consumers": [

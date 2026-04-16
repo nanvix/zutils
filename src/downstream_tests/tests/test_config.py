@@ -117,7 +117,6 @@ def test_load_config_defaults(tmp_path: Path):
     data = load_config(cfg)
     defaults = data["defaults"]
     assert defaults["checkout_strategy"] == "shallow"
-    assert defaults["win_repos_root"] is None
     assert defaults["branch_pattern"] == "nanvix/v*"
     assert data["consumers"] == []
 

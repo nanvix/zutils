@@ -24,11 +24,6 @@
           "default": "~/repos",
           "description": "Root directory for consumer repo checkouts."
         },
-        "win_repos_root": {
-          "type": ["string", "null"],
-          "default": null,
-          "description": "Windows-side repos root for native NTFS perf. Null means auto-detect from %USERPROFILE%."
-        },
         "branch_pattern": {
           "type": "string",
           "default": "nanvix/v*",

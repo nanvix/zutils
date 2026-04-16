@@ -77,7 +77,6 @@ def ensure_config(
         "defaults": {
             "checkout_strategy": "shallow",
             "repos_root": "~/repos",
-            "win_repos_root": None,
             "branch_pattern": "nanvix/v*",
         },
         "consumers": [{"repo": r} for r in repos],
@@ -120,7 +119,6 @@ def load_config(config_path: Path) -> dict[str, Any]:
     defaults["repos_root"] = str(Path(repos_root).expanduser())
 
     defaults.setdefault("checkout_strategy", "shallow")
-    defaults.setdefault("win_repos_root", None)
     defaults.setdefault("branch_pattern", "nanvix/v*")
 
     raw.setdefault("consumers", [])

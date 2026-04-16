@@ -29,29 +29,6 @@ _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _SRC_DIR = _REPO_ROOT / "src"
 
 
-def _win_to_wsl_path(win_path: str) -> str:
-    """Convert a Windows path to its WSL /mnt/ equivalent.
-
-    Tries ``wsl wslpath -u`` first; falls back to manual conversion.
-    """
-    try:
-        r = subprocess.run(
-            ["wsl", "--", "wslpath", "-u", win_path],
-            capture_output=True,
-            text=True,
-        )
-        converted = r.stdout.strip()
-        if converted and r.returncode == 0:
-            return converted
-    except Exception:
-        pass
-    # Manual fallback: C:\foo\bar -> /mnt/c/foo/bar
-    if len(win_path) >= 2 and win_path[1] == ":":
-        drive = win_path[0].lower()
-        return f"/mnt/{drive}{win_path[2:].replace(chr(92), '/')}"
-    return win_path
-
-
 def _to_windows_path(posix_path: str) -> str:
     """Convert a POSIX/WSL path to a Windows path via wslpath."""
     r = subprocess.run(
@@ -97,55 +74,29 @@ def _default_platform() -> str:
     return "linux"
 
 
-def _resolve_repos_root(config_path: Path, *, for_windows: bool) -> str:
-    """Read the repos root from downstream.json for the target platform.
+def _resolve_repos_root(config_path: Path) -> str:
+    """Read the raw repos root string from downstream.json.
 
-    For Windows, uses ``win_repos_root`` from the config (auto-detecting
-    via ``cmd.exe`` if not set).  For Linux, uses ``repos_root``.
+    Returns the unexpanded value (e.g. ``~/repos``) so each target
+    platform can expand ``~`` to its own home directory.
 
     Args:
         config_path: Path to downstream.json.
-        for_windows: Whether to resolve the Windows repos root.
 
     Returns:
-        Resolved repos root path as a string.
+        Raw repos root string from config, or ``"~/repos"`` as default.
     """
     repos_root = "~/repos"
-    win_repos_root = ""
 
     if config_path.exists():
         try:
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             defaults = raw.get("defaults", {})
             repos_root = defaults.get("repos_root", "~/repos")
-            win_repos_root = defaults.get("win_repos_root") or ""
         except Exception as exc:
             print(f"warning: failed to read config: {exc}", file=sys.stderr)
 
-    if not for_windows:
-        return str(Path(repos_root).expanduser())
-
-    if win_repos_root:
-        return win_repos_root
-
-    # Auto-detect Windows repos root via cmd.exe.
-    try:
-        wp = subprocess.run(
-            ["cmd.exe", "/C", "echo %USERPROFILE%"],
-            capture_output=True,
-            text=True,
-        )
-        win_userprofile = wp.stdout.strip()
-        if win_userprofile:
-            # Keep as Windows-native path -- this will be passed to
-            # Python running on the Windows side via pwsh.exe.
-            # Use string concat (not Path) to preserve backslashes;
-            # on WSL, Path is PosixPath and would use forward slashes.
-            return win_userprofile.rstrip("\\") + "\\repos"
-    except Exception as exc:
-        print(f"warning: failed to detect Windows repos root: {exc}", file=sys.stderr)
-
-    return "~/repos"
+    return repos_root
 
 
 def _parse_wrapper_args(
@@ -192,7 +143,7 @@ def _run_linux(
     if not has_repos_root:
         extra = [
             "--repos-root",
-            _resolve_repos_root(config_path, for_windows=False),
+            _resolve_repos_root(config_path),
         ]
     env = _env_with_pythonpath(
         {"DOWNSTREAM_REPORT_FILE": warn_file} if warn_file else None
@@ -220,7 +171,7 @@ def _run_windows(
     if not has_repos_root:
         extra = [
             "--repos-root",
-            _resolve_repos_root(config_path, for_windows=True),
+            _resolve_repos_root(config_path),
         ]
 
     if sys.platform == "win32":
@@ -260,13 +211,31 @@ def _run_linux_from_windows(
     """Run downstream_tests for Linux from native Windows via wsl.exe."""
     extra: list[str] = []
     if not has_repos_root:
-        # Resolve the repos root and translate to a WSL path.
-        repos_root = _resolve_repos_root(config_path, for_windows=False)
-        extra = ["--repos-root", _win_to_wsl_path(repos_root)]
-
-    wsl_src = _win_to_wsl_path(str(_SRC_DIR))
+        extra = [
+            "--repos-root",
+            _resolve_repos_root(config_path),
+        ]
 
     # Build a bash command string so env vars survive the WSL launch.
+    # Use _SRC_DIR relative to repo root -- inside WSL, expanduser()
+    # will resolve ~ and Python will find downstream_tests under src/.
+    # We need the WSL-side absolute path to src/, so we ask WSL to
+    # resolve _REPO_ROOT via wslpath, then append /src.
+    wsl_repo_root = subprocess.run(
+        ["wsl", "--", "wslpath", "-u", str(_REPO_ROOT)],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if not wsl_repo_root:
+        # Fallback: manual conversion.
+        rr = str(_REPO_ROOT)
+        if len(rr) >= 2 and rr[1] == ":":
+            drive = rr[0].lower()
+            wsl_repo_root = f"/mnt/{drive}{rr[2:].replace(chr(92), '/')}"
+        else:
+            wsl_repo_root = rr
+    wsl_src = f"{wsl_repo_root}/src"
+
     env_exports = f"export PYTHONPATH='{wsl_src}'"
     if warn_file:
         env_exports += f"; export DOWNSTREAM_REPORT_FILE='{warn_file}'"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import types
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -102,58 +102,26 @@ def test_run_windows_no_comma_in_ps_args(wrapper: types.ModuleType) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regression: Windows repos root path separators
+# Regression: _resolve_repos_root returns raw unexpanded value
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_repos_root_windows_backslashes(
+def test_resolve_repos_root_default(wrapper: types.ModuleType, tmp_path: Path) -> None:
+    """With no config file, _resolve_repos_root returns ~/repos unexpanded."""
+    config_path = tmp_path / "downstream.json"
+
+    result: str = wrapper._resolve_repos_root(config_path)  # type: ignore[attr-defined]
+    assert result == "~/repos"
+
+
+def test_resolve_repos_root_from_config(
     wrapper: types.ModuleType, tmp_path: Path
 ) -> None:
-    """Windows repos root must use only backslashes, not mixed separators.
-
-    Regression: ``Path(win_userprofile) / "repos"`` on WSL produced
-    ``C:\\Users\\user/repos`` because Path is PosixPath on Linux/WSL.
-    """
+    """_resolve_repos_root reads repos_root from config without expanding."""
     config_path = tmp_path / "downstream.json"
-    # No config file -> will use auto-detect path
+    config_path.write_text(
+        '{"defaults": {"repos_root": "~/my-repos"}, "consumers": []}'
+    )
 
-    fake_userprofile = "C:\\Users\\testuser"
-
-    def fake_run(cmd: list[str], **kwargs: Any) -> MagicMock:
-        r = MagicMock()
-        r.stdout = fake_userprofile + "\n"
-        r.returncode = 0
-        return r
-
-    with patch.object(wrapper.subprocess, "run", side_effect=fake_run):  # type: ignore[attr-defined]
-        result: str = wrapper._resolve_repos_root(config_path, for_windows=True)  # type: ignore[attr-defined]
-
-    # Must be a pure-backslash Windows path
-    assert result == "C:\\Users\\testuser\\repos"
-    assert "/" not in result, f"Forward slash in Windows path: {result}"
-
-
-def test_resolve_repos_root_windows_trailing_backslash(
-    wrapper: types.ModuleType, tmp_path: Path
-) -> None:
-    """Trailing backslash on USERPROFILE should not produce double backslash."""
-    config_path = tmp_path / "downstream.json"
-
-    def fake_run(cmd: list[str], **kwargs: Any) -> MagicMock:
-        r = MagicMock()
-        r.stdout = "C:\\Users\\testuser\\\n"
-        r.returncode = 0
-        return r
-
-    with patch.object(wrapper.subprocess, "run", side_effect=fake_run):  # type: ignore[attr-defined]
-        result: str = wrapper._resolve_repos_root(config_path, for_windows=True)  # type: ignore[attr-defined]
-
-    assert result == "C:\\Users\\testuser\\repos"
-
-
-def test_resolve_repos_root_linux(wrapper: types.ModuleType, tmp_path: Path) -> None:
-    """Linux repos root uses expanduser, no Windows detection."""
-    config_path = tmp_path / "downstream.json"
-
-    result: str = wrapper._resolve_repos_root(config_path, for_windows=False)  # type: ignore[attr-defined]
-    assert result == str(Path("~/repos").expanduser())
+    result: str = wrapper._resolve_repos_root(config_path)  # type: ignore[attr-defined]
+    assert result == "~/my-repos"

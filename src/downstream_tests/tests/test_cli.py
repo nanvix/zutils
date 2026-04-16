@@ -72,7 +72,6 @@ def test_main_dry_run_integration(tmp_path: Path):
         "defaults": {
             "checkout_strategy": "shallow",
             "repos_root": str(tmp_path / "repos"),
-            "win_repos_root": None,
             "branch_pattern": "nanvix/v*",
         },
         "consumers": [{"repo": "nanvix/zlib"}],
@@ -119,7 +118,6 @@ def test_dry_run_subprocess_smoke(tmp_path: Path):
         "defaults": {
             "checkout_strategy": "shallow",
             "repos_root": str(tmp_path / "repos"),
-            "win_repos_root": None,
             "branch_pattern": "nanvix/v*",
         },
         "consumers": [{"repo": "nanvix/zlib"}],
