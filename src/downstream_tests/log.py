@@ -76,8 +76,6 @@ def print_warning_summary() -> None:
     if not _warnings:
         return
     print()
-    print(f"\033[1;33m{'=' * 64}\033[0m")
-    print(f"\033[1;33m  {len(_warnings)} warning(s)\033[0m")
-    print(f"\033[1;33m{'=' * 64}\033[0m")
+    print(f"\033[1;33mWARN\033[0m {len(_warnings)} warning(s):")
     for w in _warnings:
         print(f"  \033[33m- {w}\033[0m")

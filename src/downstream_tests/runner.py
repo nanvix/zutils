@@ -356,7 +356,7 @@ def run_consumers(
     print()
 
     if failed > 0:
-        fail(f"{failed} consumer(s) FAILED")
+        print(f"\033[1;31mFAIL\033[0m {failed} consumer(s) FAILED")
     else:
         ok("All consumers passed!")
 
