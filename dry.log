@@ -1,0 +1,240 @@
+[1;33m[dry-run][0m would build wheel from /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts -> /tmp/nanvix-downstream-test/wheel
+[1;34m>>>[0m === Downstream Test ===
+
+[1;34m>>>[0m Wheel: /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;34m>>>[0m Repos root: /home/v-phoenixman/repos
+[1;34m>>>[0m Consumers: nanvix/zlib, nanvix/bzip2, nanvix/sqlite, nanvix/libffi, nanvix/openssl, nanvix/cpython, nanvix/quickjs, nanvix/posix-tests
+[1;34m>>>[0m Setup only: False
+
+[1;34m>>>[0m --- Testing nanvix/zlib ---
+[1;34m>>>[0m   nanvix/zlib: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/zlib: strategy=bare branch=nanvix/v1.3.1
+[1;33m[dry-run][0m   nanvix/zlib: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/zlib: would fetch + update at /home/v-phoenixman/repos/nanvix/zlib
+[1;33m[dry-run][0m   nanvix/zlib: working directory -> /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1
+[1;33m[dry-run][0m   nanvix/zlib: would create venv at /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/zlib: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/bzip2 ---
+[1;34m>>>[0m   nanvix/bzip2: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/bzip2: strategy=bare branch=nanvix/v1.0.8
+[1;33m[dry-run][0m   nanvix/bzip2: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/bzip2: would fetch + update at /home/v-phoenixman/repos/nanvix/bzip2
+[1;33m[dry-run][0m   nanvix/bzip2: working directory -> /home/v-phoenixman/repos/nanvix/bzip2/nanvix/v1.0.8
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/bzip2/nanvix/v1.0.8
+[1;33m[dry-run][0m   nanvix/bzip2: would create venv at /home/v-phoenixman/repos/nanvix/bzip2/nanvix/v1.0.8/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/bzip2: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/sqlite ---
+[1;34m>>>[0m   nanvix/sqlite: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/sqlite: strategy=bare branch=nanvix/v3.49.0
+[1;33m[dry-run][0m   nanvix/sqlite: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/sqlite: would fetch + update at /home/v-phoenixman/repos/nanvix/sqlite
+[1;33m[dry-run][0m   nanvix/sqlite: working directory -> /home/v-phoenixman/repos/nanvix/sqlite/nanvix/v3.49.0
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/sqlite/nanvix/v3.49.0
+[1;33m[dry-run][0m   nanvix/sqlite: would create venv at /home/v-phoenixman/repos/nanvix/sqlite/nanvix/v3.49.0/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/sqlite: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/libffi ---
+[1;34m>>>[0m   nanvix/libffi: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/libffi: strategy=bare branch=nanvix/v3.4.6
+[1;33m[dry-run][0m   nanvix/libffi: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/libffi: would fetch + update at /home/v-phoenixman/repos/nanvix/libffi
+[1;33m[dry-run][0m   nanvix/libffi: working directory -> /home/v-phoenixman/repos/nanvix/libffi/nanvix/v3.4.6
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/libffi/nanvix/v3.4.6
+[1;33m[dry-run][0m   nanvix/libffi: would create venv at /home/v-phoenixman/repos/nanvix/libffi/nanvix/v3.4.6/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/libffi: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/openssl ---
+[1;34m>>>[0m   nanvix/openssl: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/openssl: strategy=bare branch=nanvix/v3.5.0
+[1;33m[dry-run][0m   nanvix/openssl: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/openssl: would fetch + update at /home/v-phoenixman/repos/nanvix/openssl
+[1;33m[dry-run][0m   nanvix/openssl: working directory -> /home/v-phoenixman/repos/nanvix/openssl/nanvix/v3.5.0
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/openssl/nanvix/v3.5.0
+[1;33m[dry-run][0m   nanvix/openssl: would create venv at /home/v-phoenixman/repos/nanvix/openssl/nanvix/v3.5.0/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/openssl: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/cpython ---
+[1;34m>>>[0m   nanvix/cpython: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/cpython: strategy=bare branch=nanvix/v3.12.3
+[1;33m[dry-run][0m   nanvix/cpython: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/cpython: would fetch + update at /home/v-phoenixman/repos/nanvix/cpython
+[1;33m[dry-run][0m   nanvix/cpython: working directory -> /home/v-phoenixman/repos/nanvix/cpython/nanvix/v3.12.3
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/cpython/nanvix/v3.12.3
+[1;33m[dry-run][0m   nanvix/cpython: would create venv at /home/v-phoenixman/repos/nanvix/cpython/nanvix/v3.12.3/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/cpython: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/quickjs ---
+[1;34m>>>[0m   nanvix/quickjs: overriding strategy 'shallow' -> 'clone' (repo exists)
+[1;34m>>>[0m   nanvix/quickjs: strategy=clone branch=nanvix/v2025.09.13
+[1;33m[dry-run][0m   nanvix/quickjs: would resolve via 'clone' strategy
+[1;33m[dry-run][0m   nanvix/quickjs: would fetch + update at /home/v-phoenixman/repos/nanvix/quickjs
+[1;33m[dry-run][0m   nanvix/quickjs: working directory -> /home/v-phoenixman/repos/nanvix/quickjs
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/quickjs
+[1;33m[dry-run][0m   nanvix/quickjs: would create venv at /home/v-phoenixman/repos/nanvix/quickjs/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/quickjs: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/posix-tests ---
+[1;34m>>>[0m   nanvix/posix-tests: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/posix-tests: strategy=bare branch=main
+[1;33m[dry-run][0m   nanvix/posix-tests: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/posix-tests: would fetch + update at /home/v-phoenixman/repos/nanvix/posix-tests
+[1;33m[dry-run][0m   nanvix/posix-tests: working directory -> /home/v-phoenixman/repos/nanvix/posix-tests/main
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/posix-tests/main
+[1;33m[dry-run][0m   nanvix/posix-tests: would create venv at /home/v-phoenixman/repos/nanvix/posix-tests/main/.nanvix/venv
+[1;33m[dry-run][0m   nanvix/posix-tests: would install wheel /tmp/nanvix-downstream-test/wheel/nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil test
+
+[1;34m>>>[0m === Results ===
+  nanvix/zlib: OK (dry-run)
+  nanvix/bzip2: OK (dry-run)
+  nanvix/sqlite: OK (dry-run)
+  nanvix/libffi: OK (dry-run)
+  nanvix/openssl: OK (dry-run)
+  nanvix/cpython: OK (dry-run)
+  nanvix/quickjs: OK (dry-run)
+  nanvix/posix-tests: OK (dry-run)
+
+[1;32m OK[0m All consumers passed!
+
+[1;32m OK[0m Overall: All consumers passed!
+[1;33m[dry-run][0m would build wheel from \\wsl.localhost\Ubuntu\home\v-phoenixman\repos\nanvix\zutils\feat\downstream-scripts -> C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel
+[1;34m>>>[0m === Downstream Test ===
+
+[1;34m>>>[0m Wheel: C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;34m>>>[0m Repos root: C:\Users\v-phoenixman\repos
+[1;34m>>>[0m Consumers: nanvix/zlib, nanvix/bzip2, nanvix/sqlite, nanvix/libffi, nanvix/openssl, nanvix/cpython, nanvix/quickjs, nanvix/posix-tests
+[1;34m>>>[0m Setup only: False
+
+[1;34m>>>[0m --- Testing nanvix/zlib ---
+[1;34m>>>[0m   nanvix/zlib: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/zlib: strategy=bare branch=nanvix/v1.3.1
+[1;33m[dry-run][0m   nanvix/zlib: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/zlib: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\zlib
+[1;33m[dry-run][0m   nanvix/zlib: working directory -> C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1
+[1;33m[dry-run][0m   nanvix/zlib: would create venv at C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/zlib: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/zlib: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/bzip2 ---
+[1;34m>>>[0m   nanvix/bzip2: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/bzip2: strategy=bare branch=nanvix/v1.0.8
+[1;33m[dry-run][0m   nanvix/bzip2: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/bzip2: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\bzip2
+[1;33m[dry-run][0m   nanvix/bzip2: working directory -> C:\Users\v-phoenixman\repos\nanvix\bzip2\nanvix\v1.0.8
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\bzip2\nanvix\v1.0.8
+[1;33m[dry-run][0m   nanvix/bzip2: would create venv at C:\Users\v-phoenixman\repos\nanvix\bzip2\nanvix\v1.0.8\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/bzip2: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/bzip2: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/sqlite ---
+[1;34m>>>[0m   nanvix/sqlite: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/sqlite: strategy=bare branch=nanvix/v3.49.0
+[1;33m[dry-run][0m   nanvix/sqlite: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/sqlite: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\sqlite
+[1;33m[dry-run][0m   nanvix/sqlite: working directory -> C:\Users\v-phoenixman\repos\nanvix\sqlite\nanvix\v3.49.0
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\sqlite\nanvix\v3.49.0
+[1;33m[dry-run][0m   nanvix/sqlite: would create venv at C:\Users\v-phoenixman\repos\nanvix\sqlite\nanvix\v3.49.0\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/sqlite: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/sqlite: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/libffi ---
+[1;34m>>>[0m   nanvix/libffi: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/libffi: strategy=bare branch=nanvix/v3.4.6
+[1;33m[dry-run][0m   nanvix/libffi: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/libffi: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\libffi
+[1;33m[dry-run][0m   nanvix/libffi: working directory -> C:\Users\v-phoenixman\repos\nanvix\libffi\nanvix\v3.4.6
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\libffi\nanvix\v3.4.6
+[1;33m[dry-run][0m   nanvix/libffi: would create venv at C:\Users\v-phoenixman\repos\nanvix\libffi\nanvix\v3.4.6\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/libffi: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/libffi: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/openssl ---
+[1;34m>>>[0m   nanvix/openssl: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/openssl: strategy=bare branch=nanvix/v3.5.0
+[1;33m[dry-run][0m   nanvix/openssl: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/openssl: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\openssl
+[1;33m[dry-run][0m   nanvix/openssl: working directory -> C:\Users\v-phoenixman\repos\nanvix\openssl\nanvix\v3.5.0
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\openssl\nanvix\v3.5.0
+[1;33m[dry-run][0m   nanvix/openssl: would create venv at C:\Users\v-phoenixman\repos\nanvix\openssl\nanvix\v3.5.0\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/openssl: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/openssl: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/cpython ---
+[1;34m>>>[0m   nanvix/cpython: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/cpython: strategy=bare branch=nanvix/v3.12.3
+[1;33m[dry-run][0m   nanvix/cpython: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/cpython: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\cpython
+[1;33m[dry-run][0m   nanvix/cpython: working directory -> C:\Users\v-phoenixman\repos\nanvix\cpython\nanvix\v3.12.3
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\cpython\nanvix\v3.12.3
+[1;33m[dry-run][0m   nanvix/cpython: would create venv at C:\Users\v-phoenixman\repos\nanvix\cpython\nanvix\v3.12.3\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/cpython: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/cpython: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/quickjs ---
+[1;34m>>>[0m   nanvix/quickjs: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/quickjs: strategy=bare branch=nanvix/v2025.09.13
+[1;33m[dry-run][0m   nanvix/quickjs: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/quickjs: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\quickjs
+[1;33m[dry-run][0m   nanvix/quickjs: working directory -> C:\Users\v-phoenixman\repos\nanvix\quickjs\nanvix\v2025.09.13
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\quickjs\nanvix\v2025.09.13
+[1;33m[dry-run][0m   nanvix/quickjs: would create venv at C:\Users\v-phoenixman\repos\nanvix\quickjs\nanvix\v2025.09.13\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/quickjs: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/quickjs: would run: nanvix-zutil test
+[1;34m>>>[0m --- Testing nanvix/posix-tests ---
+[1;34m>>>[0m   nanvix/posix-tests: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/posix-tests: strategy=bare branch=main
+[1;33m[dry-run][0m   nanvix/posix-tests: would resolve via 'bare' strategy
+[1;33m[dry-run][0m   nanvix/posix-tests: would fetch + update at C:\Users\v-phoenixman\repos\nanvix\posix-tests
+[1;33m[dry-run][0m   nanvix/posix-tests: working directory -> C:\Users\v-phoenixman\repos\nanvix\posix-tests\main
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\posix-tests\main
+[1;33m[dry-run][0m   nanvix/posix-tests: would create venv at C:\Users\v-phoenixman\repos\nanvix\posix-tests\main\.nanvix\venv
+[1;33m[dry-run][0m   nanvix/posix-tests: would install wheel C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-dry_run-py3-none-any.whl
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil setup
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil build
+[1;33m[dry-run][0m   nanvix/posix-tests: would run: nanvix-zutil test
+
+[1;34m>>>[0m === Results ===
+  nanvix/zlib: OK (dry-run)
+  nanvix/bzip2: OK (dry-run)
+  nanvix/sqlite: OK (dry-run)
+  nanvix/libffi: OK (dry-run)
+  nanvix/openssl: OK (dry-run)
+  nanvix/cpython: OK (dry-run)
+  nanvix/quickjs: OK (dry-run)
+  nanvix/posix-tests: OK (dry-run)
+
+[1;32m OK[0m All consumers passed!
+
+[1;32m OK[0m Overall: All consumers passed!
+
+================================================================
+
+> /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts/.venv/bin/python3 /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts/scripts/downstream/wrapper.py --dry-run

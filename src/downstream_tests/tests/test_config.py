@@ -8,7 +8,6 @@ import pytest
 
 from downstream_tests.config import ensure_config, load_config
 
-
 # ---------------------------------------------------------------------------
 # ensure_config
 # ---------------------------------------------------------------------------

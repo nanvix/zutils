@@ -10,7 +10,6 @@ import pytest
 from downstream_tests.fallback import export_fallback_env
 from downstream_tests.runner import run_consumer
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

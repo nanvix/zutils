@@ -164,8 +164,7 @@ def resolve_branch(
             try:
                 branches.sort(
                     key=lambda b: [
-                        int(x) if x.isdigit() else x
-                        for x in re.split(r"[\./]", b)
+                        int(x) if x.isdigit() else x for x in re.split(r"[\./]", b)
                     ]
                 )
             except Exception:
@@ -294,7 +293,8 @@ def _resolve_bare(
         was_dirty = _is_dirty(wt_dir)
         log(f"  {consumer}: updating worktree at {wt_dir}")
         subprocess.run(
-            ["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
+            ["git", "-C", str(wt_dir), "fetch", "origin"],
+            check=False,
             timeout=_GIT_TIMEOUT,
         )
         # Reset to the *resolved* branch, not whatever HEAD currently
@@ -311,8 +311,11 @@ def _resolve_bare(
     if wt_dir.is_dir():
         was_dirty = _is_dirty(wt_dir)
         log(f"  {consumer}: updating worktree at {wt_dir}")
-        subprocess.run(["git", "-C", str(wt_dir), "fetch", "origin"], check=False,
-                       timeout=_GIT_TIMEOUT)
+        subprocess.run(
+            ["git", "-C", str(wt_dir), "fetch", "origin"],
+            check=False,
+            timeout=_GIT_TIMEOUT,
+        )
         if was_dirty:
             warn(f"  {consumer}: skipping reset -- uncommitted changes in {wt_dir}")
         else:
@@ -349,8 +352,9 @@ def _resolve_clone(
     if not repo_path.is_dir():
         log(f"  {consumer}: cloning to {repo_path}")
         repo_path.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(["git", "clone", clone_url, str(repo_path)],
-                                timeout=_GIT_TIMEOUT)
+        result = subprocess.run(
+            ["git", "clone", clone_url, str(repo_path)], timeout=_GIT_TIMEOUT
+        )
         if result.returncode != 0:
             fail(f"  {consumer}: git clone failed")
             return None
@@ -359,7 +363,8 @@ def _resolve_clone(
     was_dirty = _is_dirty(repo_path)
     log(f"  {consumer}: fetching and checking out {branch}")
     subprocess.run(
-        ["git", "-C", str(repo_path), "fetch", "origin"], check=False,
+        ["git", "-C", str(repo_path), "fetch", "origin"],
+        check=False,
         timeout=_GIT_TIMEOUT,
     )
     co = subprocess.run(
@@ -472,7 +477,9 @@ def resolve_repo(
         # an existing bare+worktree checkout.
         detected = detect_strategy(repo_path)
         if detected != strategy:
-            log(f"  {consumer}: overriding strategy '{strategy}' -> '{detected}' (repo exists)")
+            log(
+                f"  {consumer}: overriding strategy '{strategy}' -> '{detected}' (repo exists)"
+            )
             strategy = detected
 
     if not branch:
@@ -491,7 +498,9 @@ def resolve_repo(
         target_dir = (repo_path / branch) if strategy == "bare" else repo_path
         dry(f"  {consumer}: would resolve via '{strategy}' strategy")
         if not repo_path.exists():
-            dry(f"  {consumer}: would clone https://github.com/{consumer}.git -> {repo_path}")
+            dry(
+                f"  {consumer}: would clone https://github.com/{consumer}.git -> {repo_path}"
+            )
         else:
             dry(f"  {consumer}: would fetch + update at {repo_path}")
         dry(f"  {consumer}: working directory -> {target_dir}")

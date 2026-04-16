@@ -186,7 +186,9 @@ def run_consumer(
     docker_flag: list[str] = []
     if with_docker:
         if not shutil.which("docker"):
-            log("  --with-docker requested but Docker not available -- skipping build/test")
+            log(
+                "  --with-docker requested but Docker not available -- skipping build/test"
+            )
             return consumer, "OK (setup, no docker)"
         docker_flag = ["--with-docker"]
 
@@ -351,7 +353,9 @@ def run_consumers(
     # ------------------------------------------------------------------
     heading("Results")
     for name, status in results:
-        marker = "\033[1;32m OK\033[0m" if "FAIL" not in status else "\033[1;31mFAIL\033[0m"
+        marker = (
+            "\033[1;32m OK\033[0m" if "FAIL" not in status else "\033[1;31mFAIL\033[0m"
+        )
         print(f"  {marker}  {name}: {status}")
     print()
 

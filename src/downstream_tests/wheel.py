@@ -59,9 +59,24 @@ def build_wheel(
 
     pip_cmd: Optional[list[str]] = None
     if shutil.which("pip"):
-        pip_cmd = ["pip", "wheel", "--no-deps", "--wheel-dir", str(wheel_dir), str(zutils_root)]
+        pip_cmd = [
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            str(wheel_dir),
+            str(zutils_root),
+        ]
     elif shutil.which("uv"):
-        pip_cmd = ["uv", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheel_dir), str(zutils_root)]
+        pip_cmd = [
+            "uv",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            str(wheel_dir),
+            str(zutils_root),
+        ]
     else:
         pip_cmd = [
             sys.executable,

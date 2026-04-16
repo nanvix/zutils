@@ -1,0 +1,198 @@
+
+[1;36m################################################################[0m
+[1;36m##                      Platform: Linux                       ##[0m
+[1;36m################################################################[0m
+
+Processing /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: nanvix-zutil
+  Building wheel for nanvix-zutil (pyproject.toml): started
+  Building wheel for nanvix-zutil (pyproject.toml): finished with status 'done'
+  Created wheel for nanvix-zutil: filename=nanvix_zutil-0.7.21-py3-none-any.whl size=70270 sha256=db8572b004df1b838e47a89443e04de34124921dc9c7dcffe6fac052c14bc712
+  Stored in directory: /home/v-phoenixman/.cache/pip/wheels/92/a4/8e/1a404a74460cface7ebab987dc52cc3fdaac47ca55b26c205f
+Successfully built nanvix-zutil
+HEAD is now at 76e4d06 Merge pull request #101 from nanvix/automation/update-zutils-version
+[1;34m>>>[0m Building nanvix-zutil wheel from /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts
+[1;32m OK[0m Built: nanvix_zutil-0.7.21-py3-none-any.whl
+[1;34m>>>[0m === Downstream Test ===
+
+[1;34m>>>[0m Wheel: /tmp/nanvix-downstream-test/wheel/nanvix_zutil-0.7.21-py3-none-any.whl
+[1;34m>>>[0m Repos root: /home/v-phoenixman/repos
+[1;34m>>>[0m Consumers: nanvix/zlib
+[1;34m>>>[0m Setup only: False
+
+[1m================================================================[0m
+[1m  Stage 1: Checkout / Update Repos[0m
+[1m================================================================[0m
+
+[1;34m>>>[0m --- nanvix/zlib ---
+[1;34m>>>[0m   nanvix/zlib: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/zlib: strategy=bare branch=nanvix/v1.3.1
+[1;34m>>>[0m   nanvix/zlib: fetching latest
+[1;34m>>>[0m   nanvix/zlib: updating worktree at /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1
+
+[1m================================================================[0m
+[1m  Stage 2: Run Consumer Tests[0m
+[1m================================================================[0m
+
+[1;34m>>>[0m --- nanvix/zlib ---
+[1;34m>>>[0m   Using: /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1
+[1;34m>>>[0m   Creating venv and installing local wheel...
+[1;34m>>>[0m   nanvix_zutil import: OK
+[1;34m>>>[0m   Running: nanvix-zutil setup
+[36minfo:[0m Sysroot already present at /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot
+[32msuccess:[0m Sysroot verification passed
+[32msuccess:[0m Setup complete
+[1;32m OK[0m   nanvix/zlib setup: OK
+[1;34m>>>[0m   Running: nanvix-zutil --with-docker build
+make: Nothing to be done for 'all'.
+[36minfo:[0m $ docker run --rm --user 1000:1000 -v /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1:/mnt/workspace -v /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot:/mnt/sysroot:ro -w /mnt/workspace -e HOME=/tmp nanvix/toolchain:latest-minimal make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb all
+[32msuccess:[0m Build complete
+[1;32m OK[0m   nanvix/zlib build: OK
+[1;34m>>>[0m   Running: nanvix-zutil --with-docker test
+=== zlib smoke tests ===
+  PASS: zlib smoke tests
+=== zlib integration tests ===
+  OK: example.elf (1490972 bytes)
+  OK: minigzip.elf (1522380 bytes)
+  PASS: zlib integration tests
+=== zlib functional tests ===
+  Running example.elf via nanvixd.elf standalone...
+"/home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot/bin/mkramfs.elf" -o /tmp/rootfs.img /tmp/nanvix-ramfs/
+[36minfo:[0m $ docker run --rm --user 1000:1000 -v /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1:/mnt/workspace -v /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot:/mnt/sysroot:ro -w /mnt/workspace -e HOME=/tmp nanvix/toolchain:latest-minimal make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb test
+/bin/sh: 1: /home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot/bin/mkramfs.elf: not found
+make: *** [.nanvix/Makefile.nanvix:190: test-functional] Error 127
+[31merror:[0m Command failed with exit code 2: make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/home/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb test
+[1;31mFAIL[0m   nanvix/zlib test failed
+
+[1m================================================================[0m
+[1m  Results[0m
+[1m================================================================[0m
+
+  [1;31mFAIL[0m  nanvix/zlib: FAIL (test)
+
+[1;31mFAIL[0m 1 consumer(s) FAILED
+
+[1;36m################################################################[0m
+[1;36m##                     Platform: Windows                      ##[0m
+[1;36m################################################################[0m
+
+Processing \\wsl.localhost\ubuntu\home\v-phoenixman\repos\nanvix\zutils\feat\downstream-scripts
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: nanvix-zutil
+  Building wheel for nanvix-zutil (pyproject.toml): started
+  Building wheel for nanvix-zutil (pyproject.toml): finished with status 'done'
+  Created wheel for nanvix-zutil: filename=nanvix_zutil-0.7.21-py3-none-any.whl size=70270 sha256=0d9e8a1c074ae225f5708346fd24f3dea97a627393e0bc668f4349ea1beaa5b1
+  Stored in directory: c:\users\v-phoenixman\appdata\local\packages\pythonsoftwarefoundation.python.3.12_qbz5n2kfra8p0\localcache\local\pip\cache\wheels\4b\7b\06\34f9f6eca91ae2e16e55755c605b60ae578a17ec8792de5773
+Successfully built nanvix-zutil
+
+[notice] A new release of pip is available: 25.0.1 -> 26.0.1
+[notice] To update, run: C:\Users\v-phoenixman\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\python.exe -m pip install --upgrade pip
+HEAD is now at 76e4d06 Merge pull request #101 from nanvix/automation/update-zutils-version
+[1;34m>>>[0m Building nanvix-zutil wheel from \\wsl.localhost\Ubuntu\home\v-phoenixman\repos\nanvix\zutils\feat\downstream-scripts
+[1;32m OK[0m Built: nanvix_zutil-0.7.21-py3-none-any.whl
+[1;34m>>>[0m === Downstream Test ===
+
+[1;34m>>>[0m Wheel: C:\Users\V-PHOE~1\AppData\Local\Temp\nanvix-downstream-test\wheel\nanvix_zutil-0.7.21-py3-none-any.whl
+[1;34m>>>[0m Repos root: C:\Users\v-phoenixman\repos
+[1;34m>>>[0m Consumers: nanvix/zlib
+[1;34m>>>[0m Setup only: False
+
+[1m================================================================[0m
+[1m  Stage 1: Checkout / Update Repos[0m
+[1m================================================================[0m
+
+[1;34m>>>[0m --- nanvix/zlib ---
+[1;34m>>>[0m   nanvix/zlib: overriding strategy 'shallow' -> 'bare' (repo exists)
+[1;34m>>>[0m   nanvix/zlib: strategy=bare branch=nanvix/v1.3.1
+[1;34m>>>[0m   nanvix/zlib: fetching latest
+[1;34m>>>[0m   nanvix/zlib: updating worktree at C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1
+
+[1m================================================================[0m
+[1m  Stage 2: Run Consumer Tests[0m
+[1m================================================================[0m
+
+[1;34m>>>[0m --- nanvix/zlib ---
+[1;34m>>>[0m   Using: C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1
+[1;34m>>>[0m   Creating venv and installing local wheel...
+[1;34m>>>[0m   nanvix_zutil import: OK
+[1;34m>>>[0m   Running: nanvix-zutil setup
+[36minfo:[0m Sysroot already present at C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot
+[32msuccess:[0m Sysroot verification passed
+[32msuccess:[0m Setup complete
+[1;32m OK[0m   nanvix/zlib setup: OK
+[1;34m>>>[0m   Running: nanvix-zutil --with-docker build
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o adler32.o adler32.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o crc32.o crc32.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o deflate.o deflate.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o infback.o infback.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inffast.o inffast.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inflate.o inflate.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inftrees.o inftrees.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o trees.o trees.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o zutil.o zutil.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o compress.o compress.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o uncompr.o uncompr.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzclose.o gzclose.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzlib.o gzlib.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzread.o gzread.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzwrite.o gzwrite.c
+/opt/nanvix/bin/i686-nanvix-ar rc libz.a adler32.o crc32.o deflate.o infback.o inffast.o inflate.o inftrees.o trees.o zutil.o compress.o uncompr.o gzclose.o gzlib.o gzread.o gzwrite.o
+[36minfo:[0m $ docker run --rm -v /c/Users/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1:/mnt/workspace -v /c/Users/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot:/mnt/sysroot:ro -w /tmp/build -e HOME=/tmp nanvix/toolchain:latest-minimal sh -c mkdir -p /tmp/build && tar -cf - -C /mnt/workspace --exclude=.git --exclude=.nanvix/venv --exclude=.nanvix/cache --exclude=.nanvix/sysroot --exclude=.nanvix/buildroot . | tar -xf - -C /tmp/build && cd /tmp/build && make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y 'NANVIX_HOME=C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot' NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb all; rc=$?; exit $rc
+[32msuccess:[0m Build complete
+[1;32m OK[0m   nanvix/zlib build: OK
+[1;34m>>>[0m   Running: nanvix-zutil --with-docker test
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o adler32.o adler32.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o crc32.o crc32.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o deflate.o deflate.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o infback.o infback.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inffast.o inffast.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inflate.o inflate.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o inftrees.o inftrees.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o trees.o trees.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o zutil.o zutil.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o compress.o compress.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o uncompr.o uncompr.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzclose.o gzclose.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzlib.o gzlib.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzread.o gzread.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -c -o gzwrite.o gzwrite.c
+/opt/nanvix/bin/i686-nanvix-ar rc libz.a adler32.o crc32.o deflate.o infback.o inffast.o inflate.o inftrees.o trees.o zutil.o compress.o uncompr.o gzclose.o gzlib.o gzread.o gzwrite.o
+=== zlib smoke tests ===
+  PASS: zlib smoke tests
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -I. -c -o test/example.o test/example.c
+/opt/nanvix/bin/i686-nanvix-gcc -O2 -Wall -D_GNU_SOURCE -msse2 -mfpmath=sse -T/tmp/build/C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot/lib/user.ld -static -Wl,-z,noexecstack -o example.elf test/example.o -L. -lz -Wl,--start-group /tmp/build/C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot/lib/libposix.a /opt/nanvix/i686-nanvix/lib/libc.a /opt/nanvix/i686-nanvix/lib/libm.a -Wl,--end-group
+[36minfo:[0m $ docker run --rm -v /c/Users/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1:/mnt/workspace -v /c/Users/v-phoenixman/repos/nanvix/zlib/nanvix/v1.3.1/.nanvix/sysroot:/mnt/sysroot:ro -w /tmp/build -e HOME=/tmp nanvix/toolchain:latest-minimal sh -c mkdir -p /tmp/build && tar -cf - -C /mnt/workspace --exclude=.git --exclude=.nanvix/venv --exclude=.nanvix/cache --exclude=.nanvix/sysroot --exclude=.nanvix/buildroot . | tar -xf - -C /tmp/build && cd /tmp/build && make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y 'NANVIX_HOME=C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot' NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb test; rc=$?; exit $rc
+/opt/nanvix/lib/gcc/i686-nanvix/12.4.0/../../../../i686-nanvix/bin/ld: cannot open linker script file /tmp/build/C:Usersv-phoenixmanreposnanvixzlibnanvixv1.3.1.nanvixsysroot/lib/user.ld: No such file or directory
+collect2: error: ld returned 1 exit status
+make: *** [.nanvix/Makefile.nanvix:142: example.elf] Error 1
+[31merror:[0m Command failed with exit code 2: make -f .nanvix/Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=C:\Users\v-phoenixman\repos\nanvix\zlib\nanvix\v1.3.1\.nanvix\sysroot NANVIX_TOOLCHAIN=/opt/nanvix PLATFORM=microvm PROCESS_MODE=standalone MEMORY_SIZE=256mb test
+[1;31mFAIL[0m   nanvix/zlib test failed
+
+[1m================================================================[0m
+[1m  Results[0m
+[1m================================================================[0m
+
+  [1;31mFAIL[0m  nanvix/zlib: FAIL (test)
+
+[1;31mFAIL[0m 1 consumer(s) FAILED
+
+[1m================================================================[0m
+[1m  Combined Summary[0m
+[1m================================================================[0m
+  [1;31mFAIL[0m  Linux: 1 failure(s), 1 error(s)
+  [1;31mFAIL[0m  Windows: 1 failure(s), 1 error(s)
+[1m================================================================[0m
+[1;31mFAIL[0m 2 total failure(s) across platforms
+
+> /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts/.venv/bin/python3 /home/v-phoenixman/repos/nanvix/zutils/feat/downstream-scripts/scripts/downstream/wrapper.py nanvix/zlib --with-docker

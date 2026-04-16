@@ -219,9 +219,7 @@ def _run_windows(
     if warn_file:
         win_warn = _to_windows_path(warn_file)
         warn_env = f"$env:DOWNSTREAM_REPORT_FILE='{win_warn}'; "
-    ps_cmd = (
-        f"{warn_env}$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
-    )
+    ps_cmd = f"{warn_env}$env:PYTHONPATH='{win_src}'; python -m downstream_tests {ps_args}".rstrip()
     return subprocess.call(["pwsh.exe", "-NoProfile", "-Command", ps_cmd])
 
 
@@ -294,9 +292,13 @@ def main() -> int:
         _print_platform_banner("Linux")
         report_file = _make_warn_file()
         if sys.platform == "win32":
-            rc = _run_linux_from_windows(config_path, has_repos_root, user_args, warn_file=report_file)
+            rc = _run_linux_from_windows(
+                config_path, has_repos_root, user_args, warn_file=report_file
+            )
         else:
-            rc = _run_linux(config_path, has_repos_root, user_args, warn_file=report_file)
+            rc = _run_linux(
+                config_path, has_repos_root, user_args, warn_file=report_file
+            )
         results.append(("Linux", rc))
         warns, errs = _read_warn_file(report_file)
         platform_warnings["Linux"] = len(warns)
@@ -305,7 +307,9 @@ def main() -> int:
     if run_windows:
         _print_platform_banner("Windows")
         report_file = _make_warn_file()
-        rc_win = _run_windows(config_path, has_repos_root, user_args, warn_file=report_file)
+        rc_win = _run_windows(
+            config_path, has_repos_root, user_args, warn_file=report_file
+        )
         results.append(("Windows", rc_win))
         warns, errs = _read_warn_file(report_file)
         platform_warnings["Windows"] = len(warns)
@@ -405,7 +409,9 @@ def _print_combined_summary(
         print(f"\033[1;32m OK\033[0m All platforms passed!")
     else:
         total_failures = sum(rc for _, rc in results)
-        print(f"\033[1;31mFAIL\033[0m {total_failures} total failure(s) across platforms")
+        print(
+            f"\033[1;31mFAIL\033[0m {total_failures} total failure(s) across platforms"
+        )
     print()
 
 

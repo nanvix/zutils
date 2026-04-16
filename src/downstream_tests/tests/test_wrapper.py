@@ -94,9 +94,9 @@ def test_run_windows_no_comma_in_ps_args(wrapper: types.ModuleType) -> None:
     # The pwsh.exe -Command string is the last element
     cmd_str = ps_cmd_arg[-1]
     # Must NOT contain ", " between arguments (comma-separated = PowerShell array)
-    assert "', '" not in cmd_str, (
-        f"PowerShell command uses comma-separated args (array literal): {cmd_str}"
-    )
+    assert (
+        "', '" not in cmd_str
+    ), f"PowerShell command uses comma-separated args (array literal): {cmd_str}"
     # Must contain space-separated single-quoted args
     assert "' '" in cmd_str or "--dry-run" in cmd_str
 
@@ -151,9 +151,7 @@ def test_resolve_repos_root_windows_trailing_backslash(
     assert result == "C:\\Users\\testuser\\repos"
 
 
-def test_resolve_repos_root_linux(
-    wrapper: types.ModuleType, tmp_path: Path
-) -> None:
+def test_resolve_repos_root_linux(wrapper: types.ModuleType, tmp_path: Path) -> None:
     """Linux repos root uses expanduser, no Windows detection."""
     config_path = tmp_path / "downstream.json"
 

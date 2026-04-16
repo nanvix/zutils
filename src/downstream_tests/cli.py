@@ -132,7 +132,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     all_consumers: list[dict[str, Any]] = config.get("consumers", [])
     if args.consumers:
         consumer_set = set(args.consumers)
-        consumers: list[dict[str, Any]] = [c for c in all_consumers if c.get("repo") in consumer_set]
+        consumers: list[dict[str, Any]] = [
+            c for c in all_consumers if c.get("repo") in consumer_set
+        ]
         # Also include any CLI-specified consumers not in config (they'll fail
         # validation downstream, giving a clear error message).
         config_repos = {c.get("repo") for c in all_consumers}
@@ -174,9 +176,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 lines.append(f"WARN: {w}")
             for e in get_errors():
                 lines.append(f"ERROR: {e}")
-            Path(report_file).write_text(
-                "\n".join(lines), encoding="utf-8"
-            )
+            Path(report_file).write_text("\n".join(lines), encoding="utf-8")
         except OSError:
             pass  # best-effort
 

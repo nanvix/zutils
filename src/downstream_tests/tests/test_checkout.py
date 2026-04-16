@@ -9,7 +9,6 @@ import pytest
 
 from downstream_tests.checkout import detect_strategy, resolve_branch, resolve_repo
 
-
 # ---------------------------------------------------------------------------
 # detect_strategy
 # ---------------------------------------------------------------------------
@@ -85,8 +84,7 @@ def test_resolve_branch_clone_ls_remote(tmp_path: Path):
     # Do NOT create this dir so strategy != bare existing
 
     ls_remote_output = (
-        "abc123\trefs/heads/nanvix/v1.0.0\n"
-        "def456\trefs/heads/nanvix/v2.0.0\n"
+        "abc123\trefs/heads/nanvix/v1.0.0\n" "def456\trefs/heads/nanvix/v2.0.0\n"
     )
     side_effects = [
         _make_run_result(ls_remote_output),  # ls-remote --heads
@@ -331,7 +329,8 @@ def test_is_dirty_clean_repo(tmp_path: Path):
     _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     assert _is_dirty(repo) is False
 
@@ -345,7 +344,8 @@ def test_is_dirty_with_modifications(tmp_path: Path):
     _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     (repo / "dirty.txt").write_text("uncommitted work")
     assert _is_dirty(repo) is True
@@ -360,12 +360,14 @@ def test_is_dirty_with_staged_changes(tmp_path: Path):
     _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     (repo / "staged.txt").write_text("staged content")
     _subprocess.run(
         ["git", "-C", str(repo), "add", "staged.txt"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     assert _is_dirty(repo) is True
 
@@ -381,7 +383,8 @@ def test_safe_reset_skips_dirty(
     _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     (repo / "dirty.txt").write_text("do not lose me")
 
@@ -397,7 +400,8 @@ def test_safe_reset_proceeds_when_clean(tmp_path: Path):
     _subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
 
     assert _is_dirty(repo) is False
@@ -420,25 +424,36 @@ def _make_bare_with_worktree(tmp_path: Path) -> tuple[Path, Path, str]:
     _subprocess.run(["git", "init", str(src)], check=True, capture_output=True)
     _subprocess.run(
         ["git", "-C", str(src), "commit", "--allow-empty", "-m", "init"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     _subprocess.run(
         ["git", "-C", str(src), "branch", "nanvix/v1.0.0"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     _subprocess.run(
         ["git", "clone", "--bare", str(src), str(bare)],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     _subprocess.run(
-        ["git", "-C", str(bare), "config", "remote.origin.fetch",
-         "+refs/heads/*:refs/remotes/origin/*"],
-        check=True, capture_output=True,
+        [
+            "git",
+            "-C",
+            str(bare),
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+        check=True,
+        capture_output=True,
     )
     wt = bare / "nanvix" / "v1.0.0"
     _subprocess.run(
         ["git", "-C", str(bare), "worktree", "add", str(wt), "nanvix/v1.0.0"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     return bare, wt, "nanvix/v1.0.0"
 
@@ -501,7 +516,8 @@ def test_resolve_bare_resets_to_resolved_branch_not_head(tmp_path: Path) -> None
     # Create a local branch "fix/old-branch" and switch the worktree to it.
     _subprocess.run(
         ["git", "-C", str(wt), "checkout", "-b", "fix/old-branch"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
 
     # Now resolve with the correct branch (nanvix/v1.0.0).
