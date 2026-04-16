@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # test-downstream.sh — Validate nanvix-zutil against downstream consumers.
 #
-# Builds a wheel from the current branch, resolves consumer repos from the
-# local bare-repo / worktree layout, installs the wheel into a fresh venv per
-# consumer, and runs setup / build / test.
+# Builds a wheel from the current branch, resolves consumer repos using
+# configurable checkout strategies (bare/clone/shallow), installs the wheel
+# into a fresh venv per consumer, and runs setup / build / test.
+#
+# Configuration is read from downstream.json (auto-generated on first run).
 #
 # Supports two platforms:
 #   linux   — runs natively by default; pass --with-docker to use Docker
@@ -16,9 +18,7 @@
 #   --platform linux|windows|both   Platform to test (default: both)
 #   --with-docker                   Run build/test inside Docker (Linux only;
 #                                   always used on Windows)
-#   --repos-root DIR                Local repos root (default: ~/repos/nanvix)
-#   --win-repos-root DIR            Windows-side repos root for native NTFS perf
-#                                   (default: auto-detected from %USERPROFILE%)
+#   --config FILE                   Path to downstream.json (default: scripts/downstream.json)
 #   --force-fallback                Force dependency version fallback (exit 7)
 #   --setup-only                    Only run setup
 #   --skip-build                    Skip wheel build (reuse existing)
@@ -46,20 +46,7 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 CONSUMERS_CACHE="$SCRIPT_DIR/consumer-repos.json"
 
 ZUTILS_ROOT="$(pwd)"
-REPOS_ROOT="${NANVIX_REPOS_ROOT:-$HOME/repos}"
-
-# Resolve the Windows user's home directory for the default WIN_REPOS_ROOT.
-# cmd.exe /C writes the value followed by \r\n; strip the carriage return.
-if [[ -z "${NANVIX_WIN_REPOS_ROOT:-}" ]]; then
-    _win_userprofile="$(cmd.exe /C 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r' || true)"
-    if [[ -n "$_win_userprofile" ]]; then
-        _win_home="$(wslpath -u "$_win_userprofile" 2>/dev/null || true)"
-    fi
-    WIN_REPOS_ROOT="${_win_home:-/mnt/c/Users/$USER}/repos"
-    unset _win_userprofile _win_home
-else
-    WIN_REPOS_ROOT="$NANVIX_WIN_REPOS_ROOT"
-fi
+CONFIG_FILE=""
 
 PLATFORM=""
 SETUP_ONLY=false
@@ -125,12 +112,8 @@ while [[ $# -gt 0 ]]; do
         PLATFORM="$2"
         shift 2
         ;;
-    --repos-root)
-        REPOS_ROOT="$2"
-        shift 2
-        ;;
-    --win-repos-root)
-        WIN_REPOS_ROOT="$2"
+    --config)
+        CONFIG_FILE="$2"
         shift 2
         ;;
     --setup-only)
@@ -162,18 +145,31 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ ${#CONSUMERS[@]} -eq 0 ]]; then
-    # Fetch consumer list from source of truth; cache locally.
-    if json=$(curl -fsSL "$CONSUMERS_URL" 2>/dev/null); then
-        echo "$json" > "$CONSUMERS_CACHE"
-    elif [[ -f "$CONSUMERS_CACHE" ]]; then
-        log "Using cached consumer list"
-        json=$(cat "$CONSUMERS_CACHE")
-    else
-        fail "Cannot fetch consumer list and no cache at $CONSUMERS_CACHE"
-        exit 1
+# Default config path.
+CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/downstream.json}"
+
+# Ensure config exists (auto-generate on first run).
+ensure_config "$CONFIG_FILE"
+
+# Read config.
+REPOS_ROOT=$(jq -r '.defaults.repos_root // "~/repos"' "$CONFIG_FILE")
+REPOS_ROOT="${REPOS_ROOT/#\~/$HOME}"
+WIN_REPOS_ROOT=$(jq -r '.defaults.win_repos_root // empty' "$CONFIG_FILE" 2>/dev/null || true)
+DEFAULT_STRATEGY=$(jq -r '.defaults.checkout_strategy // "shallow"' "$CONFIG_FILE")
+BRANCH_PATTERN=$(jq -r '.defaults.branch_pattern // "nanvix/v*"' "$CONFIG_FILE")
+
+# Auto-detect WIN_REPOS_ROOT if not set in config.
+if [[ -z "$WIN_REPOS_ROOT" ]]; then
+    _win_userprofile="$(cmd.exe /C 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r' || true)"
+    if [[ -n "$_win_userprofile" ]]; then
+        _win_home="$(wslpath -u "$_win_userprofile" 2>/dev/null || true)"
     fi
-    mapfile -t CONSUMERS < <(echo "$json" | jq -r '.[]')
+    WIN_REPOS_ROOT="${_win_home:-/mnt/c/Users/$USER}/repos"
+    unset _win_userprofile _win_home
+fi
+
+if [[ ${#CONSUMERS[@]} -eq 0 ]]; then
+    mapfile -t CONSUMERS < <(jq -r '.consumers[].repo' "$CONFIG_FILE")
 fi
 
 # Auto-detect platform if not specified
@@ -507,8 +503,22 @@ run_linux() {
     for consumer in "${CONSUMERS[@]}"; do
         log "--- Testing $consumer ---"
 
+        # Read per-consumer overrides from config.
+        local consumer_strategy
+        consumer_strategy=$(jq -r --arg c "$consumer" \
+            '.consumers[] | select(.repo == $c) | .strategy // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        local consumer_branch
+        consumer_branch=$(jq -r --arg c "$consumer" \
+            '.consumers[] | select(.repo == $c) | .branch // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        local consumer_path
+        consumer_path=$(jq -r --arg c "$consumer" \
+            '.consumers[] | select(.repo == $c) | .path // empty' "$CONFIG_FILE" 2>/dev/null || true)
+
         local repo_dir
-        if ! repo_dir=$(resolve_repo_dir "$consumer"); then
+        if [[ -n "$consumer_path" ]]; then
+            repo_dir="$consumer_path"
+        elif ! repo_dir=$(resolve_repo_dir "$consumer" "$REPOS_ROOT" \
+                "${consumer_strategy:-$DEFAULT_STRATEGY}" "$consumer_branch" "$BRANCH_PATTERN"); then
             results+=("$consumer: FAIL (not found)")
             failed=$((failed + 1))
             continue

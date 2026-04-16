@@ -3,9 +3,12 @@
 # Installs a local nanvix-zutil wheel into a fresh venv per consumer repo
 # and runs setup / build / test.
 #
+# Configuration is read from downstream.json (auto-generated on first run).
+# Supports bare/clone/shallow checkout strategies with auto-detection.
+#
 # Works in two modes:
-#   1. Standalone (native Windows) — resolves repos from $ReposRoot using
-#      the bare-repo / worktree layout, builds the wheel if needed.
+#   1. Standalone (native Windows) — resolves repos using downstream.json,
+#      builds the wheel if needed.
 #   2. WSL-launched — receives pre-resolved $RepoPaths and $WheelPath from
 #      test-downstream.sh via pwsh.exe.
 #
@@ -13,18 +16,18 @@
 #   # Standalone — resolve repos and build wheel automatically:
 #   pwsh test-downstream.ps1 -ZutilsRoot C:\path\to\zutils
 #
-#   # Standalone — setup only, specific consumer:
-#   pwsh test-downstream.ps1 -ZutilsRoot C:\path\to\zutils -Consumers sqlite -SetupOnly
+#   # Standalone with custom config:
+#   pwsh test-downstream.ps1 -ZutilsRoot C:\path\to\zutils -ConfigFile C:\path\to\downstream.json
 #
-#   # WSL-launched — paths pre-resolved:
-#   pwsh test-downstream.ps1 -WheelPath C:\tmp\wheel.whl -RepoPaths C:\repos\... -Consumers sqlite
+#   # WSL-launched — config file passed from bash:
+#   pwsh test-downstream.ps1 -WheelPath C:\tmp\wheel.whl -ConfigFile C:\config\downstream.json
 
 param(
     [string]$WheelPath,
     [string]$ZutilsRoot,
     [string[]]$Consumers,
     [string[]]$RepoPaths,
-    [string]$ReposRoot = (Join-Path $env:USERPROFILE "repos"),
+    [string]$ConfigFile,
     [string]$ResultsFile = (Join-Path $env:TEMP "nanvix-downstream-results.json"),
     [switch]$SetupOnly,
     [switch]$SkipBuild,
@@ -90,23 +93,22 @@ function Ensure-Config
     Write-Host "Generated $ConfigFile - customize as needed." -ForegroundColor Cyan
 }
 
-# --- Fetch consumer list ------------------------------------------------------
+# --- Read config --------------------------------------------------------------
 
-if (-not $Consumers) {
-    try {
-        $json = Invoke-RestMethod -Uri $ConsumersUrl -ErrorAction Stop
-        $json | ConvertTo-Json | Out-File -FilePath $ConsumersCache -Encoding utf8
-        $Consumers = @($json)
-    } catch {
-        if (Test-Path $ConsumersCache) {
-            Write-Host "Using cached consumer list" -ForegroundColor DarkGray
-            $Consumers = @(Get-Content $ConsumersCache | ConvertFrom-Json)
-        } else {
-            Write-Host "ERROR: Cannot fetch consumer list and no cache at $ConsumersCache" -ForegroundColor Red
-            exit 1
-        }
-    }
-} elseif ($Consumers.Count -eq 1 -and $Consumers[0] -match ',') {
+if (-not $ConfigFile) { $ConfigFile = Join-Path $PSScriptRoot "downstream.json" }
+Ensure-Config -ConfigFile $ConfigFile
+
+$config = Get-Content $ConfigFile | ConvertFrom-Json
+$ReposRoot = if ($config.defaults.repos_root) { $config.defaults.repos_root -replace '^~', $env:USERPROFILE } else { Join-Path $env:USERPROFILE "repos" }
+$DefaultStrategy = if ($config.defaults.checkout_strategy) { $config.defaults.checkout_strategy } else { "shallow" }
+$BranchPattern = if ($config.defaults.branch_pattern) { $config.defaults.branch_pattern } else { "nanvix/v*" }
+
+if (-not $Consumers)
+{
+    $Consumers = @($config.consumers | ForEach-Object { $_.repo })
+}
+elseif ($Consumers.Count -eq 1 -and $Consumers[0] -match ',')
+{
     # Comma-separated list passed from WSL bash — split it.
     $Consumers = $Consumers[0] -split ','
 }
@@ -460,14 +462,28 @@ if (-not $RepoPaths)
     $resolvedConsumers = @()
     foreach ($c in $Consumers)
     {
-        $dir = Resolve-RepoDir -Consumer $c -Root $ReposRoot
-        if ($dir)
+        # Read per-consumer overrides from config.
+        $consumerCfg = $config.consumers | Where-Object { $_.repo -eq $c } | Select-Object -First 1
+        $cStrategy = if ($consumerCfg.strategy) { $consumerCfg.strategy } else { $DefaultStrategy }
+        $cBranch = if ($consumerCfg.branch) { $consumerCfg.branch } else { "" }
+        $cPath = if ($consumerCfg.path) { $consumerCfg.path } else { "" }
+
+        if ($cPath)
         {
-            $resolvedPaths += $dir
+            $resolvedPaths += $cPath
             $resolvedConsumers += $c
-        } else
+        }
+        else
         {
-            $results[$c] = @{ status = "SKIP"; reason = "not found at $ReposRoot\$c" }
+            $dir = Resolve-RepoDir -Consumer $c -Root $ReposRoot -Strategy $cStrategy -Branch $cBranch -BranchPattern $BranchPattern
+            if ($dir)
+            {
+                $resolvedPaths += $dir
+                $resolvedConsumers += $c
+            } else
+            {
+                $results[$c] = @{ status = "SKIP"; reason = "not found at $ReposRoot\$c" }
+            }
         }
     }
     $RepoPaths = $resolvedPaths
