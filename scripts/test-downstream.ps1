@@ -111,14 +111,6 @@ if (-not $Consumers) {
     $Consumers = $Consumers[0] -split ','
 }
 
-# Ensure GnuWin32 Make is on PATH (common install location)
-$gnuwin32 = "C:\Program Files (x86)\GnuWin32\bin"
-if ((Test-Path $gnuwin32) -and ($env:PATH -notlike "*GnuWin32*"))
-{
-    $env:PATH = "$gnuwin32;$env:PATH"
-    Write-Host "Injected GnuWin32 into PATH: $gnuwin32" -ForegroundColor DarkGray
-}
-
 # --- Resolve-RepoDir (multi-strategy) -----------------------------------------
 
 # Detect-CheckoutStrategy <RepoPath>
