@@ -265,23 +265,61 @@ def main() -> int:
         print("error: cannot test windows from this environment (no WSL/pwsh.exe)")
         return 1
 
-    rc = 0
+    results: list[tuple[str, int]] = []
 
     if run_linux:
+        _print_platform_banner("Linux")
         if sys.platform == "win32":
             rc = _run_linux_from_windows(config_path, has_repos_root, user_args)
         else:
             rc = _run_linux(config_path, has_repos_root, user_args)
+        results.append(("Linux", rc))
 
     if run_windows:
-        if run_linux:
-            print()
-            print("=" * 64)
-            print()
+        _print_platform_banner("Windows")
         rc_win = _run_windows(config_path, has_repos_root, user_args)
-        rc = rc or rc_win
+        results.append(("Windows", rc_win))
 
-    return rc
+    # Combined summary when multiple platforms were tested.
+    if len(results) > 1:
+        _print_combined_summary(results)
+
+    return max(rc for _, rc in results) if results else 0
+
+
+def _print_platform_banner(platform_name: str) -> None:
+    """Print a prominent platform banner."""
+    banner = f"  Platform: {platform_name}  "
+    rule = "#" * max(64, len(banner) + 4)
+    print()
+    print(f"\033[1;36m{rule}\033[0m")
+    print(f"\033[1;36m##{banner:^{len(rule) - 4}}##\033[0m")
+    print(f"\033[1;36m{rule}\033[0m")
+    print()
+
+
+def _print_combined_summary(results: list[tuple[str, int]]) -> None:
+    """Print a combined summary across all platform runs."""
+    print()
+    rule = "=" * 64
+    print(f"\033[1m{rule}\033[0m")
+    print(f"\033[1m  Combined Summary\033[0m")
+    print(f"\033[1m{rule}\033[0m")
+    all_ok = True
+    for plat, rc in results:
+        if rc == 0:
+            marker = "\033[1;32m OK\033[0m"
+        else:
+            marker = "\033[1;31mFAIL\033[0m"
+            all_ok = False
+        print(f"  {marker}  {plat}: {'passed' if rc == 0 else f'{rc} failure(s)'}")
+    print(f"\033[1m{rule}\033[0m")
+    if all_ok:
+        print(f"\033[1;32m OK\033[0m All platforms passed!")
+    else:
+        total_failures = sum(rc for _, rc in results)
+        print(f"\033[1;31mFAIL\033[0m {total_failures} total failure(s) across platforms")
+    print()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,11 @@
 """log.py -- Logging helpers for downstream_tests."""
 
+from __future__ import annotations
+
+# Module-level warning accumulator.  Call ``warn()`` to record a warning
+# and ``get_warnings()`` / ``print_warning_summary()`` to retrieve them.
+_warnings: list[str] = []
+
 
 def log(msg: str) -> None:
     """Print an informational message with a blue bold prefix."""
@@ -22,5 +28,43 @@ def dry(msg: str) -> None:
 
 
 def warn(msg: str) -> None:
-    """Print a warning message with a yellow bold prefix."""
+    """Print a warning message with a yellow bold prefix and record it."""
     print(f"\033[1;33mWARN\033[0m {msg}")
+    _warnings.append(msg)
+
+
+def heading(msg: str) -> None:
+    """Print a bold section heading with a horizontal rule."""
+    rule = "=" * 64
+    print()
+    print(f"\033[1m{rule}\033[0m")
+    print(f"\033[1m  {msg}\033[0m")
+    print(f"\033[1m{rule}\033[0m")
+    print()
+
+
+def separator() -> None:
+    """Print a thin separator line."""
+    print(f"\033[2m{'-' * 64}\033[0m")
+
+
+def get_warnings() -> list[str]:
+    """Return a copy of the accumulated warnings."""
+    return list(_warnings)
+
+
+def clear_warnings() -> None:
+    """Clear the accumulated warnings."""
+    _warnings.clear()
+
+
+def print_warning_summary() -> None:
+    """Print a summary of accumulated warnings, if any."""
+    if not _warnings:
+        return
+    print()
+    print(f"\033[1;33m{'=' * 64}\033[0m")
+    print(f"\033[1;33m  {len(_warnings)} warning(s)\033[0m")
+    print(f"\033[1;33m{'=' * 64}\033[0m")
+    for w in _warnings:
+        print(f"  \033[33m- {w}\033[0m")

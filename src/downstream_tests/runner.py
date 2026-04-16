@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .fallback import export_fallback_env
-from .log import dry, fail, log, ok
+from .log import dry, fail, heading, log, ok, print_warning_summary
 from .validation import validate_consumer
 from .checkout import resolve_repo
 
@@ -274,21 +274,23 @@ def run_consumers(
     log(f"Repos root: {repos_root}")
     log(f"Consumers: {', '.join(c['repo'] for c in consumers)}")
     log(f"Setup only: {setup_only}")
-    print()
 
-    results: list[tuple[str, str]] = []
-    failed = 0
+    # ------------------------------------------------------------------
+    # Stage 1: Resolve repos (checkout / update)
+    # ------------------------------------------------------------------
+    heading("Stage 1: Checkout / Update Repos")
+
+    resolved: list[tuple[str, dict[str, Any], Optional[Path]]] = []
 
     for consumer_cfg in consumers:
         consumer: str = str(consumer_cfg["repo"])
 
         if not validate_consumer(consumer):
             fail(f"Invalid consumer name: '{consumer}' (must match owner/repo)")
-            results.append((consumer, "FAIL (invalid name)"))
-            failed += 1
+            resolved.append((consumer, consumer_cfg, None))
             continue
 
-        log(f"--- Testing {consumer} ---")
+        log(f"--- {consumer} ---")
 
         # Per-consumer overrides.
         c_strategy: str = str(consumer_cfg.get("strategy", "") or default_strategy)
@@ -307,11 +309,28 @@ def run_consumers(
                 dry_run=dry_run,
             )
 
+        resolved.append((consumer, consumer_cfg, repo_dir))
+
+    # ------------------------------------------------------------------
+    # Stage 2: Run lifecycle phases (setup / build / test)
+    # ------------------------------------------------------------------
+    heading("Stage 2: Run Consumer Tests")
+
+    results: list[tuple[str, str]] = []
+    failed = 0
+
+    for consumer, consumer_cfg, repo_dir in resolved:
+        if not validate_consumer(consumer):
+            results.append((consumer, "FAIL (invalid name)"))
+            failed += 1
+            continue
+
         if repo_dir is None:
             results.append((consumer, "FAIL (not found)"))
             failed += 1
             continue
 
+        log(f"--- {consumer} ---")
         log(f"  Using: {repo_dir}")
 
         _, status = run_consumer(
@@ -327,15 +346,20 @@ def run_consumers(
         if "FAIL" in status:
             failed += 1
 
-    print()
-    log("=== Results ===")
+    # ------------------------------------------------------------------
+    # Results summary
+    # ------------------------------------------------------------------
+    heading("Results")
     for name, status in results:
-        print(f"  {name}: {status}")
+        marker = "\033[1;32m OK\033[0m" if "FAIL" not in status else "\033[1;31mFAIL\033[0m"
+        print(f"  {marker}  {name}: {status}")
     print()
 
     if failed > 0:
         fail(f"{failed} consumer(s) FAILED")
     else:
         ok("All consumers passed!")
+
+    print_warning_summary()
 
     return failed
