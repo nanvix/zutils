@@ -61,16 +61,7 @@ def build_wheel(
         whl.unlink()
 
     pip_cmd: Optional[list[str]] = None
-    if shutil.which("pip"):
-        pip_cmd = [
-            "pip",
-            "wheel",
-            "--no-deps",
-            "--wheel-dir",
-            str(wheel_dir),
-            str(zutils_root),
-        ]
-    elif shutil.which("uv"):
+    if shutil.which("uv"):
         pip_cmd = [
             "uv",
             "pip",

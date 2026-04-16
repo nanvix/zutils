@@ -21,21 +21,24 @@ def _make_run_result(returncode: int = 0):
 # ---------------------------------------------------------------------------
 
 
-def test_build_wheel_with_pip(tmp_path: Path):
-    """When pip is available, build_wheel runs pip wheel and returns the .whl path."""
+def test_build_wheel_with_uv(tmp_path: Path):
+    """When uv is available, build_wheel runs uv pip wheel and returns the .whl path."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"
     wheel_dir = work_dir / "wheel"
 
     def mock_run(cmd: list[str], **kwargs: Any):
+        wheel_dir.mkdir(parents=True, exist_ok=True)
         (wheel_dir / "nanvix_zutil-1.0.0-py3-none-any.whl").touch()
         return _make_run_result(0)
 
-    with patch("shutil.which", return_value="/usr/bin/pip"):
-        with patch("subprocess.run", side_effect=mock_run):
+    with patch("shutil.which", return_value="/usr/bin/uv"):
+        with patch("subprocess.run", side_effect=mock_run) as mock_sub:
             result = build_wheel(zutils_root, work_dir)
 
+    called_cmd = mock_sub.call_args[0][0]
+    assert called_cmd[0] == "uv"
     assert result.suffix == ".whl"
     assert result.exists()
 
@@ -79,7 +82,7 @@ def test_build_wheel_dry_run(tmp_path: Path):
 
 
 def test_build_wheel_fallback_chain(tmp_path: Path):
-    """pip not found -> tries uv; uv not found -> falls back to python -m pip."""
+    """uv not found -> falls back to sys.executable -m pip."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"

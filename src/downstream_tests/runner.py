@@ -94,10 +94,19 @@ def run_consumer(
         fail(f"  {consumer}: venv creation failed")
         return consumer, "FAIL (venv)"
 
-    # Locate python inside the venv.
-    venv_python = venv_dir / "bin" / "python"
-    if not venv_python.exists():
-        venv_python = venv_dir / "Scripts" / "python"
+    # Locate python inside the venv (cross-platform).
+    venv_python_candidates = [
+        venv_dir / "bin" / "python",
+        venv_dir / "Scripts" / "python.exe",
+        venv_dir / "Scripts" / "python",
+    ]
+    venv_python = next(
+        (c for c in venv_python_candidates if c.exists()),
+        None,
+    )
+    if venv_python is None:
+        fail(f"  {consumer}: venv python not found under {venv_dir}")
+        return consumer, "FAIL (venv python)"
 
     # Install wheel.
     pip_r = subprocess.run(

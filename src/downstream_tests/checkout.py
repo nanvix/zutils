@@ -284,24 +284,36 @@ def _resolve_bare(
         timeout=_GIT_TIMEOUT,
     )
 
-    # Find existing worktrees via git worktree list.
+    # Find existing worktrees via git worktree list --porcelain.
+    # Parse blocks separated by blank lines; each block has lines like:
+    #   worktree /path
+    #   branch refs/heads/foo
     wt_result = subprocess.run(
         ["git", "-C", str(repo_path), "worktree", "list", "--porcelain"],
         capture_output=True,
         text=True,
         timeout=_GIT_TIMEOUT,
     )
-    worktrees: list[Path] = []
+    # Build a map from worktree path -> branch ref (if present).
+    wt_branch_map: dict[Path, str] = {}
+    current_wt_path: Optional[Path] = None
     for line in wt_result.stdout.splitlines():
         if line.startswith("worktree "):
-            wt_path = Path(line.removeprefix("worktree ").strip())
-            # Skip the bare repo itself (it shows up as a worktree entry).
-            if wt_path != repo_path:
-                worktrees.append(wt_path)
+            current_wt_path = Path(line.removeprefix("worktree ").strip())
+        elif line.startswith("branch ") and current_wt_path is not None:
+            wt_branch_map[current_wt_path] = line.removeprefix("branch ").strip()
+        elif line == "":
+            current_wt_path = None
 
-    if worktrees:
+    # Filter to worktrees on the requested branch, excluding the bare repo.
+    target_ref = f"refs/heads/{branch}"
+    matching_worktrees = [
+        p for p, ref in wt_branch_map.items() if p != repo_path and ref == target_ref
+    ]
+
+    if matching_worktrees:
         # Prefer the last worktree (sorted by path for determinism).
-        wt_dir = sorted(worktrees, key=lambda p: str(p))[-1]
+        wt_dir = sorted(matching_worktrees, key=lambda p: str(p))[-1]
         # Snapshot dirty state *before* we touch anything.  If the tree
         # was already dirty (e.g. user edits), warn and skip reset.  If
         # it was clean, any new untracked files (like .nanvix/ build
@@ -319,7 +331,8 @@ def _resolve_bare(
         if was_dirty:
             warn(f"  {consumer}: skipping reset -- uncommitted changes in {wt_dir}")
         else:
-            _force_reset(consumer, wt_dir, f"origin/{branch}")
+            if not _force_reset(consumer, wt_dir, f"origin/{branch}"):
+                return None
         return wt_dir
 
     wt_dir = repo_path / branch
@@ -335,7 +348,8 @@ def _resolve_bare(
         if was_dirty:
             warn(f"  {consumer}: skipping reset -- uncommitted changes in {wt_dir}")
         else:
-            _force_reset(consumer, wt_dir, f"origin/{branch}")
+            if not _force_reset(consumer, wt_dir, f"origin/{branch}"):
+                return None
         return wt_dir
 
     log(f"  {consumer}: creating worktree for {branch}")
@@ -404,7 +418,8 @@ def _resolve_clone(
     if was_dirty:
         warn(f"  {consumer}: skipping reset -- uncommitted changes in {repo_path}")
     else:
-        _force_reset(consumer, repo_path, f"origin/{branch}")
+        if not _force_reset(consumer, repo_path, f"origin/{branch}"):
+            return None
     return repo_path
 
 
