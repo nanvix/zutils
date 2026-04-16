@@ -29,6 +29,29 @@ _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _SRC_DIR = _REPO_ROOT / "src"
 
 
+def _win_to_wsl_path(win_path: str) -> str:
+    """Convert a Windows path to its WSL /mnt/ equivalent.
+
+    Tries ``wsl wslpath -u`` first; falls back to manual conversion.
+    """
+    try:
+        r = subprocess.run(
+            ["wsl", "--", "wslpath", "-u", win_path],
+            capture_output=True,
+            text=True,
+        )
+        converted = r.stdout.strip()
+        if converted and r.returncode == 0:
+            return converted
+    except Exception:
+        pass
+    # Manual fallback: C:\foo\bar -> /mnt/c/foo/bar
+    if len(win_path) >= 2 and win_path[1] == ":":
+        drive = win_path[0].lower()
+        return f"/mnt/{drive}{win_path[2:].replace(chr(92), '/')}"
+    return win_path
+
+
 def _to_windows_path(posix_path: str) -> str:
     """Convert a POSIX/WSL path to a Windows path via wslpath."""
     r = subprocess.run(
@@ -237,26 +260,11 @@ def _run_linux_from_windows(
     """Run downstream_tests for Linux from native Windows via wsl.exe."""
     extra: list[str] = []
     if not has_repos_root:
-        extra = [
-            "--repos-root",
-            _resolve_repos_root(config_path, for_windows=False),
-        ]
-    # Translate _SRC_DIR (a Windows path) to a WSL path so Linux Python
-    # can find the downstream_tests package.
-    wsl_src_result = subprocess.run(
-        ["wsl", "--", "wslpath", "-u", str(_SRC_DIR)],
-        capture_output=True,
-        text=True,
-    )
-    wsl_src = wsl_src_result.stdout.strip()
-    if not wsl_src or wsl_src_result.returncode != 0:
-        # Fallback: manually convert Windows path to /mnt/ form.
-        win_path = str(_SRC_DIR)
-        if len(win_path) >= 2 and win_path[1] == ":":
-            drive = win_path[0].lower()
-            wsl_src = f"/mnt/{drive}{win_path[2:].replace(chr(92), '/')}"
-        else:
-            wsl_src = str(_SRC_DIR)
+        # Resolve the repos root and translate to a WSL path.
+        repos_root = _resolve_repos_root(config_path, for_windows=False)
+        extra = ["--repos-root", _win_to_wsl_path(repos_root)]
+
+    wsl_src = _win_to_wsl_path(str(_SRC_DIR))
 
     # Build a bash command string so env vars survive the WSL launch.
     env_exports = f"export PYTHONPATH='{wsl_src}'"
