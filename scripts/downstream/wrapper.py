@@ -1,7 +1,9 @@
 """Downstream consumer test runner -- platform-aware dispatcher.
 
 Detects the current platform and dispatches ``python -m downstream_tests``
-with the correct ``--repos-root`` for each requested platform.
+for each requested platform.  The runner (``downstream_tests``) owns
+``--config`` and ``--repos-root``; this wrapper only understands
+``--platform``.
 
 Platform capabilities:
     Native Linux          -> can test linux only
@@ -19,7 +21,6 @@ Use --help for wrapper options, or -- --help for downstream_tests options.
 """
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
@@ -77,43 +78,17 @@ def _default_platform() -> str:
     return "linux"
 
 
-def _resolve_repos_root(config_path: Path) -> str:
-    """Read the raw repos root string from downstream.json.
-
-    Returns the unexpanded value (e.g. ``~/repos``) so each target
-    platform can expand ``~`` to its own home directory.
-
-    Args:
-        config_path: Path to downstream.json.
-
-    Returns:
-        Raw repos root string from config, or ``"~/repos"`` as default.
-    """
-    repos_root = "~/repos"
-
-    if config_path.exists():
-        try:
-            raw = json.loads(config_path.read_text(encoding="utf-8"))
-            defaults = raw.get("defaults", {})
-            repos_root = defaults.get("repos_root", "~/repos")
-        except Exception as exc:
-            print(f"warning: failed to read config: {exc}", file=sys.stderr)
-
-    return repos_root
-
-
 def _parse_wrapper_args(
     argv: list[str],
-) -> tuple[str, Path, bool, list[str]]:
-    """Extract wrapper-specific flags from argv.
+) -> tuple[str, list[str]]:
+    """Extract ``--platform`` from *argv*; forward the rest to downstream_tests.
 
     Everything before ``--`` is parsed as wrapper flags (unknown flags
     are rejected).  Everything after ``--`` is forwarded verbatim to
-    downstream_tests, along with ``--config`` and ``--repos-root``
-    which the wrapper always injects.
+    ``downstream_tests``.
 
     Returns:
-        (platform, config_path, has_repos_root, downstream_args)
+        (platform, downstream_args)
     """
     # Split on -- manually so unknown flags before it are truly rejected.
     if "--" in argv:
@@ -128,55 +103,28 @@ def _parse_wrapper_args(
         epilog="Use '-- --help' to see downstream_tests options.",
     )
     parser.add_argument("--platform", default="")
-    parser.add_argument("--config", default=str(_SCRIPT_DIR / "downstream.json"))
-    parser.add_argument("--repos-root", default=None)
 
     known = parser.parse_args(wrapper_argv)
 
-    config_path = Path(known.config)
-    has_repos_root = known.repos_root is not None
-
-    # Also detect --repos-root in passthrough so _run_* won't double-inject.
-    if not has_repos_root:
-        has_repos_root = any(
-            a == "--repos-root" or a.startswith("--repos-root=")
-            for a in passthrough
-        )
-
-    downstream: list[str] = ["--config", known.config]
-    if known.repos_root is not None:
-        downstream += ["--repos-root", known.repos_root]
-    downstream += passthrough
-
-    return known.platform, config_path, has_repos_root, downstream
+    return known.platform, passthrough
 
 
 def _run_linux(
-    config_path: Path,
-    has_repos_root: bool,
     user_args: list[str],
     *,
     warn_file: str = "",
 ) -> int:
     """Run downstream_tests for Linux."""
-    extra: list[str] = []
-    if not has_repos_root:
-        extra = [
-            "--repos-root",
-            _resolve_repos_root(config_path),
-        ]
     env = _env_with_pythonpath(
         {"DOWNSTREAM_REPORT_FILE": warn_file} if warn_file else None
     )
     return subprocess.call(
-        [sys.executable, "-m", "downstream_tests", *extra, *user_args],
+        [sys.executable, "-m", "downstream_tests", *user_args],
         env=env,
     )
 
 
 def _run_windows(
-    config_path: Path,
-    has_repos_root: bool,
     user_args: list[str],
     *,
     warn_file: str = "",
@@ -187,30 +135,22 @@ def _run_windows(
     From native Windows: runs directly.
     From native Windows with WSL requesting Linux: not called (see _run_linux).
     """
-    extra: list[str] = []
-    if not has_repos_root:
-        extra = [
-            "--repos-root",
-            _resolve_repos_root(config_path),
-        ]
-
     if sys.platform == "win32":
         # Native Windows -- run directly.
         env = _env_with_pythonpath(
             {"DOWNSTREAM_REPORT_FILE": warn_file} if warn_file else None
         )
         return subprocess.call(
-            [sys.executable, "-m", "downstream_tests", *extra, *user_args],
+            [sys.executable, "-m", "downstream_tests", *user_args],
             env=env,
         )
 
     # WSL -- shell out to pwsh.exe with PYTHONPATH set so Windows Python
     # can find the downstream_tests package in the WSL source tree.
     win_src = _to_windows_path(str(_SRC_DIR))
-    all_args = [*extra, *user_args]
     # Build a PowerShell command that sets PYTHONPATH and invokes python.
     # Use PowerShell array syntax to avoid injection via argument values.
-    ps_args = " ".join(f"'{a.replace(chr(39), chr(39) * 2)}'" for a in all_args)
+    ps_args = " ".join(f"'{a.replace(chr(39), chr(39) * 2)}'" for a in user_args)
     # For the warn file, convert the WSL path to Windows path so the
     # Windows Python child can write to it.
     warn_env = ""
@@ -222,20 +162,11 @@ def _run_windows(
 
 
 def _run_linux_from_windows(
-    config_path: Path,
-    has_repos_root: bool,
     user_args: list[str],
     *,
     warn_file: str = "",
 ) -> int:
     """Run downstream_tests for Linux from native Windows via wsl.exe."""
-    extra: list[str] = []
-    if not has_repos_root:
-        extra = [
-            "--repos-root",
-            _resolve_repos_root(config_path),
-        ]
-
     # Build a bash command string so env vars survive the WSL launch.
     # Use _SRC_DIR relative to repo root -- inside WSL, expanduser()
     # will resolve ~ and Python will find downstream_tests under src/.
@@ -259,17 +190,14 @@ def _run_linux_from_windows(
     env_exports = f"export PYTHONPATH='{wsl_src}'"
     if warn_file:
         env_exports += f"; export DOWNSTREAM_REPORT_FILE='{warn_file}'"
-    all_args = [*extra, *user_args]
-    bash_args = " ".join(f"'{a}'" for a in all_args)
+    bash_args = " ".join(f"'{a}'" for a in user_args)
     bash_cmd = f"{env_exports}; python3 -m downstream_tests {bash_args}".rstrip()
     return subprocess.call(["wsl", "--", "bash", "-c", bash_cmd])
 
 
 def main() -> int:
     """Entry point -- parse platform, validate capabilities, dispatch."""
-    platform, config_path, has_repos_root, user_args = _parse_wrapper_args(
-        list(sys.argv[1:])
-    )
+    platform, user_args = _parse_wrapper_args(list(sys.argv[1:]))
 
     if not platform:
         platform = _default_platform()
@@ -298,11 +226,11 @@ def main() -> int:
         report_file = _make_warn_file()
         if sys.platform == "win32":
             rc = _run_linux_from_windows(
-                config_path, has_repos_root, user_args, warn_file=report_file
+                user_args, warn_file=report_file
             )
         else:
             rc = _run_linux(
-                config_path, has_repos_root, user_args, warn_file=report_file
+                user_args, warn_file=report_file
             )
         results.append(("Linux", rc))
         warns, errs = _read_warn_file(report_file)
@@ -313,7 +241,7 @@ def main() -> int:
         _print_platform_banner("Windows")
         report_file = _make_warn_file()
         rc_win = _run_windows(
-            config_path, has_repos_root, user_args, warn_file=report_file
+            user_args, warn_file=report_file
         )
         results.append(("Windows", rc_win))
         warns, errs = _read_warn_file(report_file)
