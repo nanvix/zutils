@@ -22,7 +22,7 @@ def _make_run_result(returncode: int = 0):
 
 
 def test_build_wheel_with_uv(tmp_path: Path):
-    """When uv is available, build_wheel runs uv pip wheel and returns the .whl path."""
+    """When uv is available, build_wheel runs uv build --wheel and returns the .whl path."""
     zutils_root = tmp_path / "zutils"
     zutils_root.mkdir()
     work_dir = tmp_path / "work"

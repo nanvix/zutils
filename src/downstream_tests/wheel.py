@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 from .log import dry, fail, log, ok
 
@@ -26,7 +25,7 @@ def build_wheel(
 ) -> Path:
     """Build a nanvix-zutil wheel into ``work_dir/wheel/``.
 
-    Tries ``pip``, then ``uv pip``, then ``python -m pip`` in order.
+    Tries ``uv build --wheel``, then ``python -m pip wheel`` as fallback.
 
     Args:
         zutils_root: Root of the nanvix-zutil source tree.
@@ -60,19 +59,17 @@ def build_wheel(
     for whl in wheel_dir.glob("*.whl"):
         whl.unlink()
 
-    pip_cmd: Optional[list[str]] = None
     if shutil.which("uv"):
-        pip_cmd = [
+        build_cmd = [
             "uv",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "--wheel-dir",
+            "build",
+            "--wheel",
+            "--out-dir",
             str(wheel_dir),
             str(zutils_root),
         ]
     else:
-        pip_cmd = [
+        build_cmd = [
             sys.executable,
             "-m",
             "pip",
@@ -83,7 +80,7 @@ def build_wheel(
             str(zutils_root),
         ]
 
-    subprocess.run(pip_cmd, check=True, timeout=_BUILD_TIMEOUT)
+    subprocess.run(build_cmd, check=True, timeout=_BUILD_TIMEOUT)
 
     wheels = list(wheel_dir.glob("*.whl"))
     if not wheels:
