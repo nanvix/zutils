@@ -263,6 +263,116 @@ def test_run_consumer_with_docker(tmp_path: Path):
     assert len(cmds_with_docker) >= 2
 
 
+def test_run_consumer_flags_appended(tmp_path: Path):
+    """Per-consumer flags are correctly placed in subprocess commands."""
+    repo_dir = _make_venv(tmp_path)
+    wheel = tmp_path / "wheel.whl"
+    wheel.touch()
+
+    captured_cmds: list[list[str]] = []
+
+    def capture_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+        captured_cmds.append(list(cmd))
+        return _run_result(0)
+
+    flags = {
+        "global": ["--verbose"],
+        "setup": ["--no-cache"],
+        "build": ["--jobs=4"],
+        "test": ["--timeout=300"],
+    }
+
+    with patch("subprocess.run", side_effect=capture_run):
+        with patch("shutil.rmtree"):
+            with patch("shutil.which", return_value="/usr/bin/docker"):
+                _, status = run_consumer(
+                    "nanvix/zlib",
+                    repo_dir,
+                    wheel,
+                    setup_only=False,
+                    force_fallback=False,
+                    with_docker=False,
+                    dry_run=False,
+                    flags=flags,
+                )
+
+    assert status == "OK (setup,build,test)"
+
+    # Find the setup/build/test commands (skip venv create, pip install, import check)
+    phase_cmds = captured_cmds[3:]  # setup, build, test
+    assert len(phase_cmds) == 3
+
+    setup_cmd = phase_cmds[0]
+    build_cmd = phase_cmds[1]
+    test_cmd = phase_cmds[2]
+
+    # Global flag before command name, per-command flag after
+    setup_idx = setup_cmd.index("setup")
+    assert "--verbose" in setup_cmd[:setup_idx]
+    assert "--no-cache" in setup_cmd[setup_idx + 1 :]
+
+    build_idx = build_cmd.index("build")
+    assert "--verbose" in build_cmd[:build_idx]
+    assert "--jobs=4" in build_cmd[build_idx + 1 :]
+
+    test_idx = test_cmd.index("test")
+    assert "--verbose" in test_cmd[:test_idx]
+    assert "--timeout=300" in test_cmd[test_idx + 1 :]
+
+
+def test_run_consumer_no_flags_unchanged(tmp_path: Path):
+    """Without flags, commands are unchanged from baseline behavior."""
+    repo_dir = _make_venv(tmp_path)
+    wheel = tmp_path / "wheel.whl"
+    wheel.touch()
+
+    captured_cmds: list[list[str]] = []
+
+    def capture_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+        captured_cmds.append(list(cmd))
+        return _run_result(0)
+
+    with patch("subprocess.run", side_effect=capture_run):
+        with patch("shutil.rmtree"):
+            _, status = run_consumer(
+                "nanvix/zlib",
+                repo_dir,
+                wheel,
+                setup_only=True,
+                force_fallback=False,
+                with_docker=False,
+                dry_run=False,
+            )
+
+    assert status == "OK (setup)"
+    setup_cmd = captured_cmds[3]
+    # Command should end with just "setup", no extra flags
+    assert setup_cmd[-1] == "setup"
+
+
+def test_run_consumer_flags_dry_run(tmp_path: Path):
+    """Dry-run output reflects flags."""
+    repo_dir = tmp_path
+    wheel = tmp_path / "wheel.whl"
+
+    flags = {"global": ["--verbose"], "setup": ["--no-cache"]}
+
+    with patch("subprocess.run") as mock_run:
+        _, status = run_consumer(
+            "nanvix/zlib",
+            repo_dir,
+            wheel,
+            setup_only=True,
+            force_fallback=False,
+            with_docker=False,
+            dry_run=True,
+            flags=flags,
+        )
+        mock_run.assert_not_called()
+
+    assert status == "OK (dry-run)"
+
+
 # ---------------------------------------------------------------------------
 # export_fallback_env
 # ---------------------------------------------------------------------------

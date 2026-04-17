@@ -41,6 +41,7 @@ def run_consumer(
     force_fallback: bool,
     with_docker: bool,
     dry_run: bool,
+    flags: dict[str, list[str]] | None = None,
 ) -> tuple[str, str]:
     """Run setup / build / test phases for one consumer.
 
@@ -57,12 +58,18 @@ def run_consumer(
         force_fallback: Force dependency fallback and assert it is triggered.
         with_docker:    Pass ``--with-docker`` to build / test phases.
         dry_run:        Print what would happen without executing.
+        flags:          Per-consumer CLI flags.  ``"global"`` flags are
+                        inserted before the command name; per-command keys
+                        (``"setup"``, ``"build"``, ``"test"``) are appended
+                        after it.
 
     Returns:
         A ``(consumer, status)`` tuple where *status* is a human-readable
         result string, e.g. ``"OK (setup,build,test)"`` or
         ``"FAIL (setup)"``.
     """
+    _flags = flags or {}
+    global_flags = _flags.get("global", [])
     venv_dir = repo_dir / ".nanvix" / "venv"
 
     if dry_run:
@@ -70,11 +77,15 @@ def run_consumer(
         dry(f"  {consumer}: would install wheel {wheel_path}")
         if force_fallback:
             dry(f"  {consumer}: would force dependency fallback")
-        dry(f"  {consumer}: would run: nanvix-zutil setup")
+        g = (" " + " ".join(global_flags)) if global_flags else ""
+        s = (" " + " ".join(_flags.get("setup", []))) if _flags.get("setup") else ""
+        dry(f"  {consumer}: would run: nanvix-zutil{g} setup{s}")
         if not setup_only:
-            docker_str = "--with-docker " if with_docker else ""
-            dry(f"  {consumer}: would run: nanvix-zutil {docker_str}build")
-            dry(f"  {consumer}: would run: nanvix-zutil {docker_str}test")
+            docker_str = " --with-docker" if with_docker else ""
+            b = (" " + " ".join(_flags.get("build", []))) if _flags.get("build") else ""
+            t = (" " + " ".join(_flags.get("test", []))) if _flags.get("test") else ""
+            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} build{b}")
+            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} test{t}")
         return consumer, "OK (dry-run)"
 
     # --- venv creation ---------------------------------------------------------
@@ -158,7 +169,9 @@ def run_consumer(
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
+        *global_flags,
         "setup",
+        *_flags.get("setup", []),
     ]
 
     setup_result = subprocess.run(
@@ -209,8 +222,10 @@ def run_consumer(
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
+        *global_flags,
         *docker_flag,
         "build",
+        *_flags.get("build", []),
     ]
 
     log(f"  Running: nanvix-zutil {' '.join(docker_flag)} build".rstrip())
@@ -232,8 +247,10 @@ def run_consumer(
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
+        *global_flags,
         *docker_flag,
         "test",
+        *_flags.get("test", []),
     ]
 
     log(f"  Running: nanvix-zutil {' '.join(docker_flag)} test".rstrip())
@@ -355,6 +372,7 @@ def run_consumers(
             force_fallback=force_fallback,
             with_docker=with_docker,
             dry_run=dry_run,
+            flags=consumer_cfg.get("flags"),
         )
         results.append((consumer, status))
         if "FAIL" in status:

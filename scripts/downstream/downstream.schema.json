@@ -56,6 +56,33 @@
           "branch": {
             "type": "string",
             "description": "Per-repo branch override — skips branch_pattern resolution."
+          },
+          "flags": {
+            "type": "object",
+            "description": "Extra CLI flags passed to nanvix-zutil for this consumer. 'global' flags are inserted before the command name; per-command flags are appended after it.",
+            "properties": {
+              "global": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Flags inserted before every command name (e.g. ['--verbose'])."
+              },
+              "setup": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Flags appended after 'setup'."
+              },
+              "build": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Flags appended after 'build'."
+              },
+              "test": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Flags appended after 'test'."
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false

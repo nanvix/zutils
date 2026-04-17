@@ -62,6 +62,29 @@ The `defaults` section sets the checkout strategy, repos root, and branch
 pattern for all consumers.  Individual consumers can override `strategy`,
 `branch`, or provide an absolute `path` to skip resolution entirely.
 
+### Per-consumer flags
+
+Each consumer can specify extra CLI flags via the `flags` object:
+
+```json
+{
+    "repo": "nanvix/cpython",
+    "flags": {
+        "global": ["--verbose"],
+        "setup": ["--no-cache"],
+        "build": ["--jobs=4"],
+        "test": ["--timeout=300"]
+    }
+}
+```
+
+- **`global`** -- flags inserted *before* the command name (e.g.
+  `nanvix-zutil --verbose setup`).
+- **`setup`**, **`build`**, **`test`** -- flags appended *after* the
+  respective command name (e.g. `nanvix-zutil setup --no-cache`).
+
+All keys are optional.  Omitted keys produce zero extra arguments.
+
 When a repo already exists on disk, the runner auto-detects its type
 (bare+worktree vs clone) and overrides the configured strategy.  This
 means `"checkout_strategy": "shallow"` works as a CI default while still
