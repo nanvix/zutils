@@ -20,7 +20,7 @@ Or via tasks.py:
 Pass --config and --repos-root after ``--`` (they belong to downstream_tests):
     python scripts/downstream/wrapper.py -- --config custom.json --repos-root ~/repos
 
-Use --help for wrapper options, or -- --help for downstream_tests options.
+Use --help to see all options (wrapper + downstream_tests).
 """
 
 import argparse
@@ -81,6 +81,24 @@ def _default_platform() -> str:
     return "linux"
 
 
+def _get_downstream_help() -> str:
+    """Capture ``downstream_tests --help`` output for use as epilog."""
+    try:
+        env = _env_with_pythonpath()
+        result = subprocess.run(
+            [sys.executable, "-m", "downstream_tests", "--help"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return "(downstream_tests help unavailable)"
+
+
 def _parse_wrapper_args(
     argv: list[str],
 ) -> tuple[str, list[str]]:
@@ -100,10 +118,17 @@ def _parse_wrapper_args(
     else:
         wrapper_argv, passthrough = argv, []
 
+    needs_help = "-h" in wrapper_argv or "--help" in wrapper_argv
+    epilog = ""
+    if needs_help:
+        downstream_help = _get_downstream_help()
+        epilog = f"downstream_tests options (pass after --):\n\n{downstream_help}"
+
     parser = argparse.ArgumentParser(
         prog="wrapper.py",
         description="Downstream consumer test dispatcher.",
-        epilog="Use '-- --help' to see downstream_tests options.",
+        epilog=epilog or None,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--platform", default="")
 
