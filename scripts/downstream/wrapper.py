@@ -17,6 +17,9 @@ Can be invoked directly:
 Or via tasks.py:
     uv run tasks.py downstream --platform linux -- nanvix/cpython --with-docker
 
+Pass --config and --repos-root after ``--`` (they belong to downstream_tests):
+    python scripts/downstream/wrapper.py -- --config custom.json --repos-root ~/repos
+
 Use --help for wrapper options, or -- --help for downstream_tests options.
 """
 

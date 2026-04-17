@@ -37,54 +37,40 @@ def wrapper() -> types.ModuleType:
 
 
 def test_parse_platform_flag(wrapper: types.ModuleType) -> None:
-    platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+    platform, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
         ["--platform", "windows", "--", "--dry-run"]
     )
     assert platform == "windows"
     assert "--dry-run" in remaining
-    assert "--config" in remaining
-    # --platform should NOT appear in remaining
     assert "--platform" not in remaining
 
 
 def test_parse_platform_equals_form(wrapper: types.ModuleType) -> None:
-    platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+    platform, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
         ["--platform=linux", "--", "--dry-run"]
     )
     assert platform == "linux"
     assert "--dry-run" in remaining
-    assert "--config" in remaining
     assert "--platform" not in remaining
     assert "--platform=linux" not in remaining
 
 
-def test_parse_repos_root_detected(wrapper: types.ModuleType) -> None:
-    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
-        ["--repos-root", "/tmp/repos"]
-    )
-    assert has_repos_root is True
-    assert "--config" in remaining
-    assert "--repos-root" in remaining
-
-
-def test_parse_repos_root_equals_form(wrapper: types.ModuleType) -> None:
-    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
-        ["--repos-root=/tmp/repos"]
-    )
-    assert has_repos_root is True
-    assert "--config" in remaining
-    assert "--repos-root" in remaining
-
-
 def test_parse_double_dash_passthrough(wrapper: types.ModuleType) -> None:
     """Everything after -- is forwarded verbatim."""
-    platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+    platform, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
         ["--platform", "linux", "--", "nanvix/cpython", "--with-docker"]
     )
     assert platform == "linux"
-    assert "nanvix/cpython" in remaining
-    assert "--with-docker" in remaining
-    assert "--config" in remaining
+    assert remaining == ["nanvix/cpython", "--with-docker"]
+
+
+def test_parse_downstream_flags_pass_through(wrapper: types.ModuleType) -> None:
+    """--config and --repos-root after -- survive unchanged."""
+    platform, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+        ["--platform", "linux", "--", "--config", "custom.json", "--repos-root", "/tmp"]
+    )
+    assert platform == "linux"
+    assert remaining == ["--config", "custom.json", "--repos-root", "/tmp"]
 
 
 def test_parse_unknown_wrapper_flag_errors(wrapper: types.ModuleType) -> None:
@@ -101,17 +87,18 @@ def test_parse_help_before_separator(wrapper: types.ModuleType) -> None:
     assert exc_info.value.code == 0
 
 
-def test_parse_repos_root_after_separator_detected(
-    wrapper: types.ModuleType,
-) -> None:
-    """--repos-root in passthrough still sets has_repos_root to prevent double injection."""
-    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
-        ["--platform", "linux", "--", "--repos-root", "/custom", "repo/foo"]
-    )
-    assert has_repos_root is True
-    assert "--repos-root" in remaining
-    assert "/custom" in remaining
-    assert "repo/foo" in remaining
+def test_parse_empty_args(wrapper: types.ModuleType) -> None:
+    """No args returns empty platform and empty passthrough."""
+    platform, remaining = wrapper._parse_wrapper_args([])  # type: ignore[attr-defined]
+    assert platform == ""
+    assert remaining == []
+
+
+def test_parse_only_separator(wrapper: types.ModuleType) -> None:
+    """Just -- returns empty platform and empty passthrough."""
+    platform, remaining = wrapper._parse_wrapper_args(["--"])  # type: ignore[attr-defined]
+    assert platform == ""
+    assert remaining == []
 
 
 # ---------------------------------------------------------------------------
@@ -131,16 +118,12 @@ def test_run_windows_no_comma_in_ps_args(wrapper: types.ModuleType) -> None:
         captured_cmds.append(cmd)
         return 0
 
-    config_path = Path("/tmp/fake.json")
-
     with patch.object(wrapper.subprocess, "call", side_effect=fake_call):  # type: ignore[attr-defined]
         with patch.object(wrapper, "_to_windows_path", return_value="C:\\src"):  # type: ignore[attr-defined]
             with patch.object(wrapper, "sys") as mock_sys:  # type: ignore[attr-defined]
                 mock_sys.platform = "linux"
                 wrapper._run_windows(  # type: ignore[attr-defined]
-                    config_path,
-                    has_repos_root=False,
-                    user_args=["--dry-run"],
+                    ["--dry-run"],
                 )
 
     assert len(captured_cmds) == 1
@@ -153,29 +136,3 @@ def test_run_windows_no_comma_in_ps_args(wrapper: types.ModuleType) -> None:
     ), f"PowerShell command uses comma-separated args (array literal): {cmd_str}"
     # Must contain space-separated single-quoted args
     assert "' '" in cmd_str or "--dry-run" in cmd_str
-
-
-# ---------------------------------------------------------------------------
-# Regression: _resolve_repos_root returns raw unexpanded value
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_repos_root_default(wrapper: types.ModuleType, tmp_path: Path) -> None:
-    """With no config file, _resolve_repos_root returns ~/repos unexpanded."""
-    config_path = tmp_path / "downstream.json"
-
-    result: str = wrapper._resolve_repos_root(config_path)  # type: ignore[attr-defined]
-    assert result == "~/repos"
-
-
-def test_resolve_repos_root_from_config(
-    wrapper: types.ModuleType, tmp_path: Path
-) -> None:
-    """_resolve_repos_root reads repos_root from config without expanding."""
-    config_path = tmp_path / "downstream.json"
-    config_path.write_text(
-        '{"defaults": {"repos_root": "~/my-repos"}, "consumers": []}'
-    )
-
-    result: str = wrapper._resolve_repos_root(config_path)  # type: ignore[attr-defined]
-    assert result == "~/my-repos"
