@@ -203,9 +203,10 @@ def downstream() -> int:
     arguments.
 
     Usage:
-        uv run tasks.py downstream                     # auto-detect platform
-        uv run tasks.py downstream --platform linux    # override platform
-        uv run tasks.py downstream --setup-only sqlite # forward flags
+        uv run tasks.py downstream                                       # auto-detect
+        uv run tasks.py downstream --platform linux                      # override platform
+        uv run tasks.py downstream --platform=linux -- --setup-only sqlite  # forward flags
+        uv run tasks.py downstream -- --help                             # downstream_tests help
     """
     script = _REPO_ROOT / "scripts" / "downstream" / "wrapper.py"
     if not script.exists():
