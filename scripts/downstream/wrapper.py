@@ -10,12 +10,15 @@ Platform capabilities:
     Native Windows        -> can test windows only
 
 Can be invoked directly:
-    python scripts/downstream/wrapper.py [--platform linux|windows|both] [args...]
+    python scripts/downstream/wrapper.py --platform linux -- [downstream args...]
 
 Or via tasks.py:
-    uv run tasks.py downstream [--platform linux] [args...]
+    uv run tasks.py downstream --platform linux -- nanvix/cpython --with-docker
+
+Use --help for wrapper options, or -- --help for downstream_tests options.
 """
 
+import argparse
 import json
 import os
 import shutil
@@ -104,31 +107,48 @@ def _parse_wrapper_args(
 ) -> tuple[str, Path, bool, list[str]]:
     """Extract wrapper-specific flags from argv.
 
-    Consumes ``--platform`` (wrapper-only) and peeks at ``--config`` and
-    ``--repos-root`` without consuming them.
+    Everything before ``--`` is parsed as wrapper flags (unknown flags
+    are rejected).  Everything after ``--`` is forwarded verbatim to
+    downstream_tests, along with ``--config`` and ``--repos-root``
+    which the wrapper always injects.
 
     Returns:
-        (platform, config_path, has_repos_root, remaining_args)
+        (platform, config_path, has_repos_root, downstream_args)
     """
-    platform = ""
-    config_path = _SCRIPT_DIR / "downstream.json"
-    has_repos_root = False
-    remaining: list[str] = []
+    # Split on -- manually so unknown flags before it are truly rejected.
+    if "--" in argv:
+        sep = argv.index("--")
+        wrapper_argv, passthrough = argv[:sep], argv[sep + 1 :]
+    else:
+        wrapper_argv, passthrough = argv, []
 
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--platform" and i + 1 < len(argv):
-            platform = argv[i + 1]
-            i += 2
-        else:
-            if argv[i] == "--config" and i + 1 < len(argv):
-                config_path = Path(argv[i + 1])
-            if argv[i] == "--repos-root" or argv[i].startswith("--repos-root="):
-                has_repos_root = True
-            remaining.append(argv[i])
-            i += 1
+    parser = argparse.ArgumentParser(
+        prog="wrapper.py",
+        description="Downstream consumer test dispatcher.",
+        epilog="Use '-- --help' to see downstream_tests options.",
+    )
+    parser.add_argument("--platform", default="")
+    parser.add_argument("--config", default=str(_SCRIPT_DIR / "downstream.json"))
+    parser.add_argument("--repos-root", default=None)
 
-    return platform, config_path, has_repos_root, remaining
+    known = parser.parse_args(wrapper_argv)
+
+    config_path = Path(known.config)
+    has_repos_root = known.repos_root is not None
+
+    # Also detect --repos-root in passthrough so _run_* won't double-inject.
+    if not has_repos_root:
+        has_repos_root = any(
+            a == "--repos-root" or a.startswith("--repos-root=")
+            for a in passthrough
+        )
+
+    downstream: list[str] = ["--config", known.config]
+    if known.repos_root is not None:
+        downstream += ["--repos-root", known.repos_root]
+    downstream += passthrough
+
+    return known.platform, config_path, has_repos_root, downstream
 
 
 def _run_linux(
@@ -250,14 +270,6 @@ def main() -> int:
     platform, config_path, has_repos_root, user_args = _parse_wrapper_args(
         list(sys.argv[1:])
     )
-
-    # Short-circuit: if --help or -h is in args, run once locally and exit.
-    # No need to dispatch to both platforms for help text.
-    if "-h" in user_args or "--help" in user_args:
-        env = _env_with_pythonpath()
-        return subprocess.call(
-            [sys.executable, "-m", "downstream_tests", "--help"], env=env
-        )
 
     if not platform:
         platform = _default_platform()
