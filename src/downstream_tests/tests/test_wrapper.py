@@ -38,26 +38,80 @@ def wrapper() -> types.ModuleType:
 
 def test_parse_platform_flag(wrapper: types.ModuleType) -> None:
     platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
-        ["--platform", "windows", "--dry-run"]
+        ["--platform", "windows", "--", "--dry-run"]
     )
     assert platform == "windows"
     assert "--dry-run" in remaining
+    assert "--config" in remaining
     # --platform should NOT appear in remaining
     assert "--platform" not in remaining
 
 
+def test_parse_platform_equals_form(wrapper: types.ModuleType) -> None:
+    platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+        ["--platform=linux", "--", "--dry-run"]
+    )
+    assert platform == "linux"
+    assert "--dry-run" in remaining
+    assert "--config" in remaining
+    assert "--platform" not in remaining
+    assert "--platform=linux" not in remaining
+
+
 def test_parse_repos_root_detected(wrapper: types.ModuleType) -> None:
-    _, _, has_repos_root, _ = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
         ["--repos-root", "/tmp/repos"]
     )
     assert has_repos_root is True
+    assert "--config" in remaining
+    assert "--repos-root" in remaining
 
 
 def test_parse_repos_root_equals_form(wrapper: types.ModuleType) -> None:
-    _, _, has_repos_root, _ = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
         ["--repos-root=/tmp/repos"]
     )
     assert has_repos_root is True
+    assert "--config" in remaining
+    assert "--repos-root" in remaining
+
+
+def test_parse_double_dash_passthrough(wrapper: types.ModuleType) -> None:
+    """Everything after -- is forwarded verbatim."""
+    platform, _, _, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+        ["--platform", "linux", "--", "nanvix/cpython", "--with-docker"]
+    )
+    assert platform == "linux"
+    assert "nanvix/cpython" in remaining
+    assert "--with-docker" in remaining
+    assert "--config" in remaining
+
+
+def test_parse_unknown_wrapper_flag_errors(wrapper: types.ModuleType) -> None:
+    """Unknown flags before -- are rejected by argparse."""
+    with pytest.raises(SystemExit) as exc_info:
+        wrapper._parse_wrapper_args(["--bogus"])  # type: ignore[attr-defined]
+    assert exc_info.value.code != 0
+
+
+def test_parse_help_before_separator(wrapper: types.ModuleType) -> None:
+    """--help (without --) shows wrapper help and exits."""
+    with pytest.raises(SystemExit) as exc_info:
+        wrapper._parse_wrapper_args(["--help"])  # type: ignore[attr-defined]
+    assert exc_info.value.code == 0
+
+
+def test_parse_repos_root_after_separator_detected(
+    wrapper: types.ModuleType,
+) -> None:
+    """--repos-root in passthrough still sets has_repos_root to prevent double injection."""
+    _, _, has_repos_root, remaining = wrapper._parse_wrapper_args(  # type: ignore[attr-defined]
+        ["--platform", "linux", "--", "--repos-root", "/custom", "repo/foo"]
+    )
+    assert has_repos_root is True
+    assert "--repos-root" in remaining
+    assert "/custom" in remaining
+    assert "repo/foo" in remaining
 
 
 # ---------------------------------------------------------------------------
