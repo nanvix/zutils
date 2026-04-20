@@ -39,6 +39,9 @@ jobs:
       - name: Type check (basedpyright)
         run: uv run basedpyright src/ tests/
 
+      - name: Type check downstream_tests
+        run: uv run basedpyright src/downstream_tests/ scripts/downstream/wrapper.py
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -63,6 +66,11 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ -v
 
+      - name: Run downstream_tests unit tests
+        run: uv run pytest src/downstream_tests/tests/ -v
+        env:
+          PYTHONPATH: src
+
   test-windows:
     name: Tests (Windows)
     runs-on: windows-latest
@@ -83,3 +91,8 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest tests/ -v
+
+      - name: Run downstream_tests unit tests
+        run: uv run pytest src/downstream_tests/tests/ -v
+        env:
+          PYTHONPATH: src
