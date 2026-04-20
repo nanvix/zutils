@@ -12,15 +12,18 @@ Commands:
   format        Fix code formatting with black
   typecheck     Run strict type checking with basedpyright
   test          Run the test suite with pytest
+  test-downstream  Run the downstream_tests unit tests
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean         Remove Python bytecode caches and build artifacts
   release       Build distribution artifacts (wheel + sdist) for release
+  downstream    Run downstream consumer tests (auto-detects platform)
   version       Bump version across pyproject.toml and templates
   shell-lint    Check shell script formatting and correctness
   shell-format  Auto-fix shell script formatting with shfmt
   yaml-lint     Lint YAML files with yamllint
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -83,6 +86,17 @@ def typecheck() -> int:
 def test() -> int:
     """Run the test suite with pytest."""
     return _run(sys.executable, "-m", "pytest", "tests/", "-v")
+
+
+def test_downstream() -> int:
+    """Run the downstream_tests unit tests with pytest."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    src = str(_REPO_ROOT / "src")
+    env["PYTHONPATH"] = f"{src}{os.pathsep}{existing}" if existing else src
+    cmd = [sys.executable, "-m", "pytest", "src/downstream_tests/tests/", "-v"]
+    print(f"> {' '.join(cmd)}")
+    return subprocess.call(cmd, env=env)
 
 
 def clean() -> int:
@@ -178,6 +192,27 @@ def release() -> int:
         for f in artifacts:
             print(f"  {f}")
     return 0
+
+
+def downstream() -> int:
+    """Run downstream consumer tests (auto-detects platform).
+
+    Delegates to the Python wrapper at scripts/downstream/wrapper.py,
+    which auto-detects the platform (Windows / WSL / Linux) and
+    dispatches to the appropriate downstream runner with translated
+    arguments.
+
+    Usage:
+        uv run tasks.py downstream                                       # auto-detect
+        uv run tasks.py downstream --platform linux                      # override platform
+        uv run tasks.py downstream --platform=linux -- --setup-only sqlite  # forward flags
+        uv run tasks.py downstream -- --help                             # downstream_tests help
+    """
+    script = _REPO_ROOT / "scripts" / "downstream" / "wrapper.py"
+    if not script.exists():
+        print(f"error: downstream runner not found at {script}")
+        return 1
+    return _run(sys.executable, str(script), *sys.argv[2:])
 
 
 def _find_bash_scripts() -> list[str]:
@@ -447,12 +482,14 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "format": (format_code, "Fix code formatting with black"),
     "typecheck": (typecheck, "Run strict type checking with basedpyright"),
     "test": (test, "Run the test suite with pytest"),
+    "test-downstream": (test_downstream, "Run the downstream_tests unit tests"),
     "ci": (
         ci,
         "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
     ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
     "release": (release, "Build distribution artifacts (wheel and sdist)"),
+    "downstream": (downstream, "Run downstream consumer tests (auto-detects platform)"),
     "version": (version, "Bump version across pyproject.toml and templates"),
     "shell-lint": (shell_lint, "Check shell script formatting and correctness"),
     "shell-format": (shell_format, "Auto-fix shell script formatting with shfmt"),
