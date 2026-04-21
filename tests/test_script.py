@@ -641,15 +641,19 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
 
     def test_base_files_always_present(self) -> None:
         """Core files are required regardless of deployment mode."""
+        import sys
+
+        nanvixd = "bin/nanvixd.exe" if sys.platform == "win32" else "bin/nanvixd.elf"
+        mkramfs = "bin/mkramfs.exe" if sys.platform == "win32" else "bin/mkramfs.elf"
         for mode in ("multi-process", "single-process", "standalone"):
             os.environ["NANVIX_DEPLOYMENT_MODE"] = mode
             script = ZScript(Path(self._tmpdir.name))
             files = script.sysroot_required_files()
             self.assertIn("lib/libposix.a", files, f"missing in {mode}")
             self.assertIn("lib/user.ld", files, f"missing in {mode}")
-            self.assertIn("bin/nanvixd.elf", files, f"missing in {mode}")
+            self.assertIn(nanvixd, files, f"missing in {mode}")
             self.assertIn("bin/kernel.elf", files, f"missing in {mode}")
-            self.assertIn("bin/mkramfs.elf", files, f"missing in {mode}")
+            self.assertIn(mkramfs, files, f"missing in {mode}")
 
     def test_default_deployment_mode_is_standalone(self) -> None:
         """Default (no env override) should be standalone."""
