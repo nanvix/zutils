@@ -79,6 +79,7 @@ from nanvix_zutil.docker import (
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
+    EXIT_DEGRADED_SETUP,
     EXIT_GENERAL_ERROR,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
@@ -129,6 +130,7 @@ __all__ = [
     "Dependency",
     "DockerConfig",
     "EXIT_BUILD_FAILURE",
+    "EXIT_DEGRADED_SETUP",
     "EXIT_GENERAL_ERROR",
     "EXIT_INVALID_ARGS",
     "EXIT_MISSING_DEP",

@@ -3,11 +3,13 @@
 
 """Tests for nanvix_zutil.script (ZScript)."""
 
+import json
 import os
 import subprocess as sp
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -869,6 +871,203 @@ class TestZScriptCleanWindows(unittest.TestCase):
         """clean() is a no-op on Linux (base class)."""
         script = ZScript(Path(self._tmpdir.name))
         script.clean()  # Should not raise.
+
+
+class TestZScriptSetupFallbackReporting(unittest.TestCase):
+    """setup() reports fallback state correctly."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_setup_returns_false_when_no_fallback(self) -> None:
+        """setup() returns False when all deps resolve exactly."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.1.0"}
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, None),  # None = no fallback
+            ),
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            result = script.setup()
+
+        self.assertFalse(result)
+
+    def test_setup_returns_true_when_fallback_used(self) -> None:
+        """setup() returns True when a dep falls back to a different version."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.0.9"}
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.0.9"),  # non-None = fallback used
+            ),
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            result = script.setup()
+
+        self.assertTrue(result)
+
+    def test_setup_no_deps_returns_false(self) -> None:
+        """setup() returns False when there are no dependencies."""
+        write_manifest(Path(self._tmpdir.name))  # default manifest, no deps
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            result = script.setup()
+
+        self.assertFalse(result)
+
+    def test_setup_fallback_logs_warning(self) -> None:
+        """setup() logs at warning level when fallback is used."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        fake_buildroot = MagicMock()
+        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.0.9"}
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
+            patch(
+                "nanvix_zutil.script.resolve_release_with_fallback",
+                return_value=(fake_release, "0.0.9"),
+            ),
+            patch("nanvix_zutil.script.log") as mock_log,
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        # Verify warning was called (not info) for fallback message.
+        warning_calls = [
+            call
+            for call in mock_log.warning.call_args_list
+            if "fallback" in str(call).lower()
+        ]
+        self.assertTrue(warning_calls, "Expected a warning log for fallback")
+
+        # Verify info was NOT called for fallback (regression guard).
+        info_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if "fallback" in str(call).lower()
+        ]
+        self.assertFalse(info_calls, "Fallback should use warning, not info")
+
+
+class TestZScriptMainDegradedExit(unittest.TestCase):
+    """main() exits with EXIT_DEGRADED_SETUP when setup uses fallback."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_exit_degraded_setup_value(self) -> None:
+        """EXIT_DEGRADED_SETUP has the expected value of 7."""
+        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
+
+        self.assertEqual(EXIT_DEGRADED_SETUP, 7)
+
+    def test_main_exits_7_on_fallback_setup(self) -> None:
+        """main() with setup subcommand exits 7 when fallback was used."""
+        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
+
+        def _setup_with_fallback(self_inner: ZScript) -> bool:
+            self_inner._used_fallback = True  # pyright: ignore[reportPrivateUsage]
+            return True
+
+        with (
+            patch("sys.argv", ["z.py", "setup"]),
+            patch.object(ZScript, "setup", _setup_with_fallback),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main(repo_root=Path(self._tmpdir.name))
+
+        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
+
+    def test_main_exits_7_on_return_only_fallback_setup(self) -> None:
+        """main() honors setup() returning True without touching private state."""
+        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
+
+        with (
+            patch("sys.argv", ["z.py", "setup"]),
+            patch.object(ZScript, "setup", return_value=True),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main(repo_root=Path(self._tmpdir.name))
+
+        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
+
+    def test_main_exits_0_on_clean_setup(self) -> None:
+        """main() with setup subcommand completes normally when no fallback."""
+        with (
+            patch("sys.argv", ["z.py", "setup"]),
+            patch.object(ZScript, "setup", return_value=False),
+            patch("nanvix_zutil.script.log") as mock_log,
+        ):
+            # Should not raise SystemExit.
+            ZScript.main(repo_root=Path(self._tmpdir.name))
+
+        # Verify success log was emitted.
+        success_calls = [
+            call
+            for call in mock_log.success.call_args_list
+            if "complete" in str(call).lower()
+        ]
+        self.assertTrue(success_calls, "Expected a success log on clean setup")
+
+    def test_main_json_warning_includes_degraded_code(self) -> None:
+        """main() emits a warning JSON object with code on degraded setup."""
+        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
+
+        buf = StringIO()
+        original_stderr = sys.stderr
+        log_mod.set_json_mode(True)
+        sys.stderr = buf
+        try:
+            with (
+                patch("sys.argv", ["z.py", "--json", "setup"]),
+                patch.object(ZScript, "setup", return_value=True),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                ZScript.main(repo_root=Path(self._tmpdir.name))
+        finally:
+            sys.stderr = original_stderr
+            log_mod.set_json_mode(False)
+
+        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
+        json_lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith("{")]
+        self.assertTrue(json_lines, "Expected JSON output on stderr")
+        obj = json.loads(json_lines[-1])
+        self.assertEqual(obj["level"], "warning")
+        self.assertEqual(obj["code"], EXIT_DEGRADED_SETUP)
 
 
 if __name__ == "__main__":

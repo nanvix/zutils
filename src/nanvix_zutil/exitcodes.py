@@ -28,3 +28,6 @@ EXIT_BUILD_FAILURE: int = 5
 
 EXIT_TEST_FAILURE: int = 6
 """One or more tests failed."""
+
+EXIT_DEGRADED_SETUP: int = 7
+"""Setup completed but one or more dependencies used fallback versions."""

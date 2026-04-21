@@ -200,6 +200,13 @@ class TestBuildResult(unittest.TestCase):
         self.assertEqual(result.error, "build failed")
         self.assertEqual(result.duration_seconds, 0.3)
 
+    def test_used_fallback_defaults_false(self) -> None:
+        """used_fallback defaults to False when not specified."""
+        combo = BuildCombo(platform="microvm", mode="standalone", memory="256mb")
+        result = BuildResult(combo=combo, success=True, duration_seconds=1.0)
+
+        self.assertFalse(result.used_fallback)
+
 
 class TestRunAllBuilds(unittest.TestCase):
     """Tests for :func:`run_all_builds`."""
@@ -228,8 +235,9 @@ class TestRunAllBuilds(unittest.TestCase):
             def clean(self) -> None:
                 _Stub.hook_log.append("clean")
 
-            def setup(self) -> None:
+            def setup(self) -> bool:
                 _Stub.hook_log.append("setup")
+                return False
 
         self._stub_cls = _Stub
         _Stub.hook_log = []
@@ -290,8 +298,8 @@ class TestRunAllBuilds(unittest.TestCase):
         from nanvix_zutil.script import ZScript
 
         class _Failing(ZScript):
-            def setup(self) -> None:
-                pass
+            def setup(self) -> bool:
+                return False
 
             def build(self) -> None:
                 raise SystemExit(5)
@@ -419,8 +427,8 @@ class TestRunAllBuilds(unittest.TestCase):
         from nanvix_zutil.script import ZScript
 
         class _Failing(ZScript):
-            def setup(self) -> None:
-                pass
+            def setup(self) -> bool:
+                return False
 
             def build(self) -> None:
                 raise SystemExit(5)
@@ -448,6 +456,80 @@ class TestRunAllBuilds(unittest.TestCase):
             builds_dir.exists() and any(builds_dir.iterdir()),
             "Per-combo workspaces should be cleaned up even on failure",
         )
+
+    def test_setup_fallback_propagated_to_result(self) -> None:
+        """run_all_builds sets used_fallback=True when setup sets _used_fallback."""
+        from nanvix_zutil.matrix import run_all_builds
+        from nanvix_zutil.script import ZScript
+
+        class _FallbackStub(ZScript):
+            def setup(self) -> bool:
+                self._used_fallback = True
+                return True
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=_FallbackStub,
+            combos=combos,
+            hook="setup",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        result = results[combos[0]]
+        self.assertTrue(result.success)
+        self.assertTrue(result.used_fallback)
+
+    def test_no_fallback_result_has_false(self) -> None:
+        """run_all_builds sets used_fallback=False when setup() returns False."""
+        from nanvix_zutil.matrix import run_all_builds
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=self._stub_cls,
+            combos=combos,
+            hook="setup",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        result = results[combos[0]]
+        self.assertTrue(result.success)
+        self.assertFalse(result.used_fallback)
+
+    def test_setup_return_value_propagated_to_result(self) -> None:
+        """run_all_builds honors setup() returning True without mutating state."""
+        from nanvix_zutil.matrix import run_all_builds
+        from nanvix_zutil.script import ZScript
+
+        class _ReturnOnlyFallback(ZScript):
+            def setup(self) -> bool:
+                return True
+
+        combos = [
+            BuildCombo(platform="microvm", mode="standalone", memory="256mb"),
+        ]
+
+        results = run_all_builds(
+            script_cls=_ReturnOnlyFallback,
+            combos=combos,
+            hook="setup",
+            targets=[],
+            docker_image=None,
+            repo_root=self._repo_root,
+        )
+
+        result = results[combos[0]]
+        self.assertTrue(result.success)
+        self.assertTrue(result.used_fallback)
 
 
 class TestUnsupportedAllBuilds(unittest.TestCase):
@@ -485,6 +567,81 @@ class TestUnsupportedAllBuilds(unittest.TestCase):
 
         sys.argv = ["z.py", "distclean", "--all-builds"]
         with self.assertRaises(SystemExit):
+            ZScript.main(repo_root=self._repo_root)
+
+
+class TestAllBuildsFallbackExit(unittest.TestCase):
+    """--all-builds exits EXIT_DEGRADED_SETUP when any combo used fallback."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from tests.testutils import MANIFEST_WITH_BUILDS, write_manifest
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._repo_root = Path(self._tmpdir)
+        write_manifest(self._repo_root, content=MANIFEST_WITH_BUILDS)
+
+    def tearDown(self) -> None:
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_all_builds_exits_7_when_any_combo_used_fallback(self) -> None:
+        """--all-builds setup exits EXIT_DEGRADED_SETUP on fallback."""
+        from unittest.mock import patch
+
+        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
+        from nanvix_zutil.script import ZScript
+
+        combo = BuildCombo(platform="hyperlight", mode="multi-process", memory="128mb")
+        fake_results = {
+            combo: BuildResult(
+                combo=combo,
+                success=True,
+                duration_seconds=1.0,
+                used_fallback=True,
+            ),
+        }
+
+        with (
+            patch("sys.argv", ["z.py", "--all-builds", "setup"]),
+            patch(
+                "nanvix_zutil.script.run_all_builds",
+                return_value=fake_results,
+            ),
+            patch("nanvix_zutil.script.print_summary"),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main(repo_root=self._repo_root)
+
+        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
+
+    def test_all_builds_succeeds_when_no_fallback(self) -> None:
+        """--all-builds setup exits cleanly when no combo used fallback."""
+        from unittest.mock import patch
+
+        from nanvix_zutil.script import ZScript
+
+        combo = BuildCombo(platform="hyperlight", mode="multi-process", memory="128mb")
+        fake_results = {
+            combo: BuildResult(
+                combo=combo,
+                success=True,
+                duration_seconds=1.0,
+                used_fallback=False,
+            ),
+        }
+
+        with (
+            patch("sys.argv", ["z.py", "--all-builds", "setup"]),
+            patch(
+                "nanvix_zutil.script.run_all_builds",
+                return_value=fake_results,
+            ),
+            patch("nanvix_zutil.script.print_summary"),
+        ):
+            # Should not raise SystemExit.
             ZScript.main(repo_root=self._repo_root)
 
 

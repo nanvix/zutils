@@ -367,11 +367,8 @@ def _parse_dependencies(
     for name, raw_value in section.items():
         ref = _parse_version_field(raw_value, f"{section_name}.{name}", path)
 
-        env_key = f"NANVIX_VERSION_{name.upper()}"
-        env_val = os.environ.get(env_key)
-        if env_val is not None:
-            ref = Ref(kind=ref.kind, value=env_val)
-
+        # Manifest values must not include the nanvix suffix — it is
+        # derived automatically from nanvix-version.
         if (
             ref.kind == RefKind.VERSION
             and isinstance(ref.value, str)
@@ -385,6 +382,13 @@ def _parse_dependencies(
                 " — the nanvix version is derived automatically from"
                 " nanvix-version.",
             )
+
+        env_key = f"NANVIX_VERSION_{name.upper()}"
+        env_val = os.environ.get(env_key)
+        if env_val is not None:
+            # Env overrides MAY include "-nanvix-" for full control.
+            # suffix_dep() will skip values that already contain it.
+            ref = Ref(kind=ref.kind, value=env_val)
 
         deps.append(Dependency(name=name, repo=f"nanvix/{name}", ref=ref))
     return deps
@@ -521,6 +525,8 @@ def load_manifest(path: Path) -> Manifest:
         version_suffix = sysroot_ref.value.removeprefix("v")
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+                if "-nanvix-" in dep.ref.value:
+                    continue
                 dep.ref = Ref(
                     kind=dep.ref.kind,
                     value=f"{dep.ref.value}-nanvix-{version_suffix}",
