@@ -84,7 +84,7 @@ jobs:
 
   release:
     name: Build & Publish
-    needs: [lint-and-typecheck, test]
+    needs: [lint-and-typecheck, test, test-windows]
     runs-on: ubuntu-latest
     environment: release
     concurrency:
