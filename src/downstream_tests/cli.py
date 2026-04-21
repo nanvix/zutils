@@ -151,12 +151,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     zutils_root = Path.cwd()
     work_dir = Path(tempfile.gettempdir()) / "nanvix-downstream-test"
 
-    wheel_path = build_wheel(
-        zutils_root,
-        work_dir,
-        skip_build=args.skip_build,
-        dry_run=args.dry_run,
-    )
+    try:
+        wheel_path = build_wheel(
+            zutils_root,
+            work_dir,
+            skip_build=args.skip_build,
+            dry_run=args.dry_run,
+        )
+    except RuntimeError as exc:
+        fail(str(exc))
+        return 1
 
     failure_count = run_consumers(
         consumers,

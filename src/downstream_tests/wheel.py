@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .log import dry, fail, log, ok
+from .log import dry, log, ok
 
 # Timeout in seconds for wheel build subprocess calls.
 _BUILD_TIMEOUT = 300
@@ -38,7 +38,7 @@ def build_wheel(
         Path to the wheel file.
 
     Raises:
-        SystemExit: On failure to build or find a wheel.
+        RuntimeError: On failure to build or find a wheel.
     """
     wheel_dir = work_dir / "wheel"
 
@@ -51,8 +51,9 @@ def build_wheel(
         if existing:
             ok(f"Reusing: {existing[0].name}")
             return existing[0]
-        fail(f"No wheel found in {wheel_dir}. Run without --skip-build first.")
-        sys.exit(1)
+        raise RuntimeError(
+            f"No wheel found in {wheel_dir}. Run without --skip-build first."
+        )
 
     log(f"Building nanvix-zutil wheel from {zutils_root}")
     wheel_dir.mkdir(parents=True, exist_ok=True)
@@ -84,8 +85,7 @@ def build_wheel(
 
     wheels = list(wheel_dir.glob("*.whl"))
     if not wheels:
-        fail("Wheel build produced no .whl file")
-        sys.exit(1)
+        raise RuntimeError("Wheel build produced no .whl file")
 
     ok(f"Built: {wheels[0].name}")
     return wheels[0]

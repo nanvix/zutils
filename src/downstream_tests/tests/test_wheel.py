@@ -58,14 +58,14 @@ def test_build_wheel_skip_reuses(tmp_path: Path):
 
 
 def test_build_wheel_skip_no_wheel(tmp_path: Path):
-    """With skip_build=True and no wheel file, SystemExit is raised."""
+    """With skip_build=True and no wheel file, RuntimeError is raised."""
     zutils_root = tmp_path / "zutils"
     work_dir = tmp_path / "work"
     wheel_dir = work_dir / "wheel"
     wheel_dir.mkdir(parents=True)
     # No .whl file present
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError, match="No wheel found"):
         build_wheel(zutils_root, work_dir, skip_build=True)
 
 
