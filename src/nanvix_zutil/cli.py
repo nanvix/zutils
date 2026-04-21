@@ -39,8 +39,10 @@ SUBCOMMANDS: tuple[str, ...] = (
     "help",
 )
 
-#: Subcommands that accept Docker flags.
-DOCKER_SUBCOMMANDS: tuple[str, ...] = ("build", "release")
+#: Default subcommands that accept Docker flags.  ``ZScript.DOCKER_SUBCOMMANDS``
+#: (a class attribute) is the canonical override point; this constant is used as
+#: the default when ``build_parser()`` is called without an explicit value.
+DEFAULT_DOCKER_SUBCOMMANDS: tuple[str, ...] = ("build", "release")
 
 #: Human-readable descriptions for each subcommand.
 _SUBCOMMAND_HELP: dict[str, str] = {
@@ -59,6 +61,7 @@ _SUBCOMMAND_HELP: dict[str, str] = {
 def build_parser(
     prog: str | None = None,
     available: tuple[str, ...] | None = None,
+    docker_subcommands: tuple[str, ...] = DEFAULT_DOCKER_SUBCOMMANDS,
 ) -> argparse.ArgumentParser:
     """Build and return the top-level argument parser.
 
@@ -68,6 +71,10 @@ def build_parser(
         available: Subset of :data:`SUBCOMMANDS` to register.  When
             ``None`` all subcommands are registered (backwards-compatible
             default used by tests and the minimal pre-parser).
+        docker_subcommands: Subcommands that accept Docker flags.
+            Defaults to :data:`DEFAULT_DOCKER_SUBCOMMANDS`.  Pass
+            ``ZScript.DOCKER_SUBCOMMANDS`` (or a subclass override) to
+            honour consumer customisation.
 
     Returns:
         Fully configured :class:`argparse.ArgumentParser`.
@@ -149,7 +156,7 @@ def build_parser(
                 default=False,
                 help="Resolve only direct dependencies (skip transitive discovery)",
             )
-        if name in DOCKER_SUBCOMMANDS:
+        if name in docker_subcommands:
             docker_group = sub.add_mutually_exclusive_group()
             docker_group.add_argument(
                 "--with-docker",
@@ -157,14 +164,16 @@ def build_parser(
                 default=False,
                 dest="with_docker",
                 help="Run commands inside the project's default Docker image"
-                f" (default: {DEFAULT_DOCKER_IMAGE})",
+                " (overridable via docker_image(); falls back to"
+                f" {DEFAULT_DOCKER_IMAGE})",
             )
             docker_group.add_argument(
                 "--with-minimal-docker",
                 action="store_true",
                 default=False,
                 dest="with_minimal_docker",
-                help=f"Run commands inside {DEFAULT_DOCKER_IMAGE}",
+                help="Run commands inside the fixed minimal image"
+                f" ({DEFAULT_DOCKER_IMAGE})",
             )
             docker_group.add_argument(
                 "--docker-image",

@@ -288,5 +288,63 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
             log_mod.set_json_mode(False)
 
 
+class TestIntegrationDockerSubcommands(unittest.TestCase):
+    """DOCKER_SUBCOMMANDS class attribute flows through main() to the parser."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._repo_root = Path(self._tmpdir.name)
+        write_manifest(self._repo_root)
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_subclass_override_exposes_docker_on_test(self) -> None:
+        """A subclass with DOCKER_SUBCOMMANDS including 'test' accepts --with-docker on test."""
+
+        class _DockerTestConsumer(_MockConsumer):
+            DOCKER_SUBCOMMANDS = ("build", "release", "test")
+
+        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        argv = [fake_script, "test", "--with-docker"]
+
+        created: list[_DockerTestConsumer] = []
+        original_init = _DockerTestConsumer.__init__
+
+        def capturing_init(self_: _DockerTestConsumer, repo_root: Path) -> None:
+            original_init(self_, repo_root)
+            created.append(self_)
+
+        with (
+            patch.object(_DockerTestConsumer, "__init__", capturing_init),
+            patch("sys.argv", argv),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
+        ):
+            _DockerTestConsumer.main()
+
+        instance = created[0]
+        self.assertIn("test", instance.called)
+        # Docker should have been activated.
+        self.assertIsNotNone(instance.docker)
+
+    def test_default_subcommands_reject_docker_on_test(self) -> None:
+        """Default DOCKER_SUBCOMMANDS rejects --with-docker on test via argparse."""
+        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        argv = [fake_script, "test", "--with-docker"]
+
+        with (
+            patch("sys.argv", argv),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            _MockConsumer.main()
+
+        self.assertEqual(ctx.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

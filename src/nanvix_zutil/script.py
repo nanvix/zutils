@@ -40,7 +40,7 @@ from nanvix_zutil.buildroot import (
     extract_nanvix_version_base,
     suffix_dep,
 )
-from nanvix_zutil.cli import build_parser
+from nanvix_zutil.cli import DEFAULT_DOCKER_SUBCOMMANDS, build_parser
 from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -134,6 +134,14 @@ class ZScript:
         "release",
         "clean",
     )
+
+    #: Subcommands that accept Docker CLI flags (``--with-docker``,
+    #: ``--with-minimal-docker``, ``--docker-image``).  Override in a
+    #: subclass to expose Docker flags on additional subcommands.
+    #:
+    #: ``benchmark`` is intentionally excluded — benchmarks should run
+    #: natively for accurate results.
+    DOCKER_SUBCOMMANDS: tuple[str, ...] = DEFAULT_DOCKER_SUBCOMMANDS
 
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current deployment mode.
@@ -657,8 +665,15 @@ class ZScript:
         )
         if help_requested:
             # Build a full static parser (all subcommands) for help display.
-            build_parser().parse_args(framework_argv)  # --help/-h → sys.exit(0)
-            build_parser().print_help()  # 'help' subcommand or no args
+            docker_subs = cls.DOCKER_SUBCOMMANDS
+            build_parser(
+                docker_subcommands=docker_subs,
+            ).parse_args(
+                framework_argv
+            )  # --help/-h → sys.exit(0)
+            build_parser(
+                docker_subcommands=docker_subs,
+            ).print_help()  # 'help' subcommand or no args
             return
 
         # Infer repo root: the parent of the .nanvix/ directory.
@@ -683,7 +698,10 @@ class ZScript:
 
         # Build the parser dynamically: auto hooks are always registered;
         # consumer hooks only appear when the subclass overrides them.
-        parser = build_parser(available=instance.available_subcommands())
+        parser = build_parser(
+            available=instance.available_subcommands(),
+            docker_subcommands=cls.DOCKER_SUBCOMMANDS,
+        )
         args = parser.parse_args(framework_argv)
 
         # ------------------------------------------------------------------
@@ -692,8 +710,14 @@ class ZScript:
         docker_image: str | None = None
 
         # Subcommand-level flags (only present for build/release).
-        if getattr(args, "docker_image", None) is not None:
-            docker_image = args.docker_image
+        raw_docker_image = getattr(args, "docker_image", None)
+        if raw_docker_image is not None:
+            if not raw_docker_image.strip():
+                log.fatal(
+                    "--docker-image requires a non-empty image name.",
+                    code=EXIT_INVALID_ARGS,
+                )
+            docker_image = raw_docker_image
         elif getattr(args, "with_minimal_docker", False):
             docker_image = DEFAULT_DOCKER_IMAGE
         elif getattr(args, "with_docker", False):

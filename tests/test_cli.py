@@ -5,7 +5,7 @@
 
 import unittest
 
-from nanvix_zutil.cli import SUBCOMMANDS, build_parser
+from nanvix_zutil.cli import DEFAULT_DOCKER_SUBCOMMANDS, SUBCOMMANDS, build_parser
 
 
 class TestBuildParser(unittest.TestCase):
@@ -58,9 +58,10 @@ class TestBuildParser(unittest.TestCase):
         for cmd in ("setup", "distclean", "build", "help"):
             args = parser.parse_args([cmd])
             self.assertEqual(args.subcommand, cmd)
-        # Unregistered command raises SystemExit.
-        with self.assertRaises(SystemExit):
+        # Unregistered command raises SystemExit with code 2 (argparse error).
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(["test"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_available_none_registers_all(self) -> None:
         """available=None (default) registers every subcommand."""
@@ -103,20 +104,23 @@ class TestDockerFlags(unittest.TestCase):
 
     def test_with_docker_and_with_minimal_docker_mutually_exclusive(self) -> None:
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(["build", "--with-docker", "--with-minimal-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_with_docker_and_docker_image_mutually_exclusive(self) -> None:
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(["build", "--with-docker", "--docker-image", "img"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_with_minimal_docker_and_docker_image_mutually_exclusive(self) -> None:
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(
                 ["build", "--with-minimal-docker", "--docker-image", "img"]
             )
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_docker_flags_on_release_subcommand(self) -> None:
         """Docker flags are accepted on the release subcommand."""
@@ -128,14 +132,39 @@ class TestDockerFlags(unittest.TestCase):
     def test_docker_flags_rejected_on_test(self) -> None:
         """test subcommand does not accept Docker flags."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(["test", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_docker_flags_rejected_on_setup(self) -> None:
         """setup subcommand does not accept Docker flags."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             parser.parse_args(["setup", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_custom_docker_subcommands(self) -> None:
+        """docker_subcommands= exposes flags on specified subcommands."""
+        parser = build_parser(docker_subcommands=("build", "test"))
+        # Docker flags parse on test when overridden.
+        args = parser.parse_args(["test", "--with-docker"])
+        self.assertTrue(args.with_docker)
+        self.assertEqual(args.subcommand, "test")
+        # Docker flags should NOT appear on release (excluded from override).
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["release", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_empty_docker_subcommands(self) -> None:
+        """docker_subcommands=() disables Docker flags on all subcommands."""
+        parser = build_parser(docker_subcommands=())
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["build", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_default_docker_subcommands_constant(self) -> None:
+        """DEFAULT_DOCKER_SUBCOMMANDS matches expected default."""
+        self.assertEqual(DEFAULT_DOCKER_SUBCOMMANDS, ("build", "release"))
 
 
 class TestAllBuildsFlags(unittest.TestCase):
