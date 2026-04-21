@@ -132,18 +132,18 @@ def success(msg: str) -> None:
         print(f"\033[32msuccess:\033[0m {msg}", file=sys.stderr, flush=True)
 
 
-def warning(msg: str) -> None:
+def warning(msg: str, code: int | None = None) -> None:
     """Emit a warning message.
 
     Args:
         msg: The message text.
+        code: Optional process exit code associated with the warning.
     """
     if _json_mode:
-        print(
-            json.dumps({"level": "warning", "message": msg}),
-            file=sys.stderr,
-            flush=True,
-        )
+        obj: dict[str, object] = {"level": "warning", "message": msg}
+        if code is not None:
+            obj["code"] = code
+        print(json.dumps(obj), file=sys.stderr, flush=True)
     else:
         print(f"\033[33mwarning:\033[0m {msg}", file=sys.stderr, flush=True)
 

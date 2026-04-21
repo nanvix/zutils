@@ -95,6 +95,19 @@ class TestWarning(unittest.TestCase):
         obj = json.loads(buf.getvalue().strip())
         self.assertEqual(obj["level"], "warning")
 
+    def test_json_mode_with_code(self) -> None:
+        log_mod.set_json_mode(True)
+        buf = StringIO()
+        sys.stderr = buf
+        try:
+            log_mod.warning("degraded", code=7)
+        finally:
+            sys.stderr = sys.__stderr__
+            log_mod.set_json_mode(False)
+        obj = json.loads(buf.getvalue().strip())
+        self.assertEqual(obj["level"], "warning")
+        self.assertEqual(obj["code"], 7)
+
 
 class TestError(unittest.TestCase):
     """Tests for log.error."""

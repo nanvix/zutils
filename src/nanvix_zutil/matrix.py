@@ -70,6 +70,8 @@ class BuildResult:
     success: bool
     duration_seconds: float
     error: str | None = None
+    #: ``True`` when ``setup()`` resolved one or more deps via version fallback.
+    used_fallback: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +244,7 @@ def run_all_builds(
         builds_dir = repo_root / ".nanvix" / _BUILDS_DIR
         builds_dir.mkdir(parents=True, exist_ok=True)
         combo_workspace = builds_dir / combo_slug
+        used_fallback = False
 
         try:
             # Create an isolated workspace copy so parallel Docker
@@ -306,7 +309,13 @@ def run_all_builds(
             for step in hook_chain:
                 method = getattr(instance, step, None)
                 if callable(method):
-                    method()
+                    result = method()
+                    if step == "setup":
+                        used_fallback = (
+                            used_fallback
+                            or instance._used_fallback  # pyright: ignore[reportPrivateUsage]
+                            or bool(result)
+                        )
 
         except SystemExit as exc:
             elapsed = time.monotonic() - start
@@ -334,6 +343,7 @@ def run_all_builds(
             combo=combo,
             success=True,
             duration_seconds=time.monotonic() - start,
+            used_fallback=used_fallback,
         )
 
     results: dict[BuildCombo, BuildResult] = {}

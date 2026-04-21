@@ -697,6 +697,54 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
         self.assertEqual(m.sysroot_ref.value, "env_nanvix")
         self.assertEqual(m.dependencies[0].ref.value, "env_zlib-nanvix-env_nanvix")
 
+    def test_env_override_with_nanvix_suffix_skips_auto_suffix(self) -> None:
+        """NANVIX_VERSION_<NAME> with -nanvix- suffix bypasses auto-suffixing."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.410"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "1.3.1-nanvix-99.99.99"}):
+            m = load_manifest(path)
+
+        # The env override already has the suffix — must NOT be double-suffixed.
+        self.assertEqual(m.dependencies[0].ref.value, "1.3.1-nanvix-99.99.99")
+
+    def test_env_override_without_suffix_still_gets_suffixed(self) -> None:
+        """NANVIX_VERSION_<NAME> without -nanvix- still gets auto-suffixed."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.410"\n'
+            "[dependencies]\n"
+            'zlib = "1.3.1"\n'
+            "\n"
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "2.0.0"}):
+            m = load_manifest(path)
+
+        # Plain base version override still gets the nanvix suffix.
+        self.assertEqual(m.dependencies[0].ref.value, "2.0.0-nanvix-0.12.410")
+
 
 class TestLoadManifestAutoSuffix(unittest.TestCase):
     """Only VERSION refs are auto-suffixed with the nanvix version."""

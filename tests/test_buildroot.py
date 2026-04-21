@@ -19,6 +19,7 @@ from nanvix_zutil.buildroot import (
     extract_nanvix_version,
     extract_nanvix_version_base,
     parse_semver_tuple,
+    suffix_dep,
 )
 
 
@@ -379,6 +380,38 @@ class TestBuildrootInstallDep(unittest.TestCase):
 
         self.assertTrue((br.path / "lib" / "libz.a").exists())
         self.assertTrue((br.path / "include" / "zlib.h").exists())
+
+
+class TestSuffixDep(unittest.TestCase):
+    """Tests for suffix_dep()."""
+
+    def test_suffixes_version_ref(self) -> None:
+        """VERSION ref gets the nanvix suffix appended."""
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.VERSION, value="1.3.1"),
+        )
+        result = suffix_dep(dep, "0.12.410")
+        self.assertEqual(result.ref.value, "1.3.1-nanvix-0.12.410")
+
+    def test_skips_non_version_ref(self) -> None:
+        """TAG ref is returned unchanged."""
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.3.1")
+        )
+        result = suffix_dep(dep, "0.12.410")
+        self.assertEqual(result.ref.value, "v1.3.1")
+
+    def test_skips_already_suffixed(self) -> None:
+        """VERSION ref that already contains -nanvix- is not double-suffixed."""
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.VERSION, value="1.3.1-nanvix-99.99.99"),
+        )
+        result = suffix_dep(dep, "0.12.410")
+        self.assertEqual(result.ref.value, "1.3.1-nanvix-99.99.99")
 
 
 class TestExtractNanvixVersion(unittest.TestCase):

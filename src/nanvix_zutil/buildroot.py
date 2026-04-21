@@ -122,7 +122,8 @@ class Dependency:
 def suffix_dep(dep: Dependency, version: str) -> Dependency:
     """Return a copy of *dep* with its VERSION ref suffixed with *version*.
 
-    If *dep* has a non-VERSION ref kind, it is returned unchanged.
+    If *dep* has a non-VERSION ref kind, or its value already contains
+    ``-nanvix-`` (e.g. from an env-var override), it is returned unchanged.
 
     Args:
         dep: The dependency to suffix.
@@ -134,6 +135,8 @@ def suffix_dep(dep: Dependency, version: str) -> Dependency:
         original if no suffixing is needed.
     """
     if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+        if "-nanvix-" in dep.ref.value:
+            return dep
         return _dc_replace(
             dep,
             ref=Ref(

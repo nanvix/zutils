@@ -55,6 +55,7 @@ from nanvix_zutil.docker import (
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
+    EXIT_DEGRADED_SETUP,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
     EXIT_TEST_FAILURE,
@@ -163,6 +164,7 @@ class ZScript:
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
         self.combo_env: dict[str, str] | None = None
+        self._used_fallback: bool = False
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -277,7 +279,7 @@ class ZScript:
     # Lifecycle hooks — auto-implemented
     # ------------------------------------------------------------------
 
-    def setup(self) -> None:
+    def setup(self) -> bool:
         """Prepare the build environment.
 
         The base implementation automatically downloads the Nanvix sysroot
@@ -287,10 +289,18 @@ class ZScript:
         Subclasses may override this to perform additional setup steps.
         Call ``super().setup()`` to retain the automatic download behaviour::
 
-            def setup(self) -> None:
-                super().setup()
+            def setup(self) -> bool:
+                used_fallback = super().setup()
                 # extra verification or configuration here
+                return used_fallback
+
+        Returns:
+            ``True`` if any dependency was resolved via version fallback,
+            ``False`` if all dependencies matched their exact requested
+            versions.
         """
+        self._used_fallback = False
+
         self.sysroot = Sysroot.download(
             machine=self.config.machine,
             deployment_mode=self.config.deployment_mode,
@@ -338,8 +348,9 @@ class ZScript:
                         # fb_ver is None when the exact tag was found;
                         # non-None means a fallback release was used.
                         if fb_ver is not None:
+                            self._used_fallback = True
                             requested_ver = extract_nanvix_version(str(dep.ref.value))
-                            log.info(
+                            log.warning(
                                 f"Version fallback for {dep.name}: "
                                 f"requested nanvix-{requested_ver}, "
                                 f"resolved nanvix-{fb_ver}"
@@ -367,6 +378,7 @@ class ZScript:
                     raise
 
         self.config.save()
+        return self._used_fallback
 
     def distclean(self) -> None:
         """Remove all transient ``.nanvix/`` artifacts.
@@ -753,6 +765,19 @@ class ZScript:
                     f"{failed}/{len(results)} build(s) failed",
                     code=failure_code,
                 )
+                return  # log.fatal exits, but be explicit
+
+            any_fallback = any(r.used_fallback for r in results.values())
+            if any_fallback:
+                n_fb = sum(1 for r in results.values() if r.used_fallback)
+                log.warning(
+                    f"All {len(results)} build(s) passed, but "
+                    f"{n_fb} used fallback dependencies",
+                    code=EXIT_DEGRADED_SETUP,
+                )
+                sys.exit(EXIT_DEGRADED_SETUP)
+                return  # sys.exit raises, but be explicit
+
             log.success(f"All {len(results)} build(s) passed")
             return
 
@@ -779,7 +804,20 @@ class ZScript:
 
         handler = dispatch.get(subcommand) if subcommand is not None else None
         if callable(handler) and subcommand is not None:
-            handler()
-            log.success(f"{subcommand.capitalize()} complete")
+            handler_result = handler()
+            if subcommand == "setup":
+                used_fallback = instance._used_fallback or bool(handler_result)
+                instance._used_fallback = used_fallback
+            else:
+                used_fallback = False
+
+            if subcommand == "setup" and used_fallback:
+                log.warning(
+                    f"{subcommand.capitalize()} complete with fallback dependencies",
+                    code=EXIT_DEGRADED_SETUP,
+                )
+                sys.exit(EXIT_DEGRADED_SETUP)
+            else:
+                log.success(f"{subcommand.capitalize()} complete")
         else:
             log.fatal(f"Unknown subcommand: {subcommand}", code=EXIT_INVALID_ARGS)
