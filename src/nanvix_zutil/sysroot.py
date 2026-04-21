@@ -30,6 +30,11 @@ _DEFAULT_SYSROOT_DIR = Path(".nanvix") / "sysroot"
 
 _SYSROOT_REPO = "nanvix/nanvix"
 _SYSROOT_ASSET_PREFIX = "nanvix-{target}-{machine}-{mode}-release-{mem}"
+_WINDOWS_SYSROOT_ASSET_PREFIX = "nanvix-windows-{target}-{machine}-{mode}-release-{mem}"
+
+# Host binaries needed from the Windows release to run VMs on Windows.
+# kernel.elf is a *guest* binary (i686) — nanvixd.exe loads it directly.
+WINDOWS_HOST_BINARIES = ("nanvixd.exe", "mkramfs.exe", "kernel.elf")
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +147,95 @@ class Sysroot:
             config.set("sysroot_tag", resolved_tag)
             config.save()
         return Sysroot(sysroot_dir.resolve(), tag=resolved_tag)
+
+    # ------------------------------------------------------------------
+    # Windows host binaries
+    # ------------------------------------------------------------------
+
+    def download_windows_binaries(
+        self,
+        machine: str,
+        deployment_mode: str,
+        memory_size: str,
+        gh_token: str | None = None,
+        target: str = DEFAULT_TARGET,
+    ) -> None:
+        """Download Windows host binaries from the Nanvix release.
+
+        On Windows, the sysroot from :meth:`download` contains only
+        Linux ELF binaries.  This method downloads the matching Windows
+        release asset (``.zip``) and extracts ``nanvixd.exe``,
+        ``mkramfs.exe``, and ``kernel.elf`` into the sysroot ``bin/``
+        directory.
+
+        Skips silently if all required binaries are already present.
+        """
+        import zipfile
+
+        bin_dir = self.path / "bin"
+        if all((bin_dir / b).is_file() for b in WINDOWS_HOST_BINARIES):
+            log.info("Windows host binaries already present in sysroot")
+            return
+
+        tag = self.tag
+        if not tag:
+            log.warning("No sysroot tag available — cannot download Windows binaries")
+            return
+
+        asset_prefix = _WINDOWS_SYSROOT_ASSET_PREFIX.format(
+            target=target,
+            machine=machine,
+            mode=deployment_mode,
+            mem=memory_size,
+        )
+
+        release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
+
+        cache_dir = self.path.parent / "cache"
+        asset_path = github.download_release_asset(
+            repo=_SYSROOT_REPO,
+            version_specifier=tag,
+            asset_name=asset_prefix,
+            dest=cache_dir,
+            gh_token=gh_token,
+            match_prefix=True,
+            semver=True,
+            _release=release,
+            allow_missing=True,
+        )
+        if asset_path is None:
+            log.fatal(
+                f"Windows asset matching '{asset_prefix}' not found in release {tag}",
+                code=EXIT_MISSING_DEP,
+                hint="Check that the Nanvix release includes Windows assets.",
+            )
+
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        wanted = set(WINDOWS_HOST_BINARIES)
+        with zipfile.ZipFile(asset_path) as zf:
+            for entry in zf.namelist():
+                basename = Path(entry).name
+                if basename in wanted:
+                    dest = bin_dir / basename
+                    with zf.open(entry) as src, open(dest, "wb") as dst:
+                        import shutil
+
+                        shutil.copyfileobj(src, dst)
+                    log.info(f"Extracted {basename} to sysroot/bin/")
+
+        missing = [b for b in WINDOWS_HOST_BINARIES if not (bin_dir / b).is_file()]
+        if missing:
+            log.fatal(
+                f"Windows binaries missing after download: {', '.join(missing)}",
+                code=EXIT_MISSING_DEP,
+                hint=(
+                    "Delete `.nanvix/sysroot` and run `./z setup` again, or "
+                    "check that the Windows release asset contains the expected "
+                    "host binaries."
+                ),
+            )
+        else:
+            log.success("Windows host binaries installed")
 
     # ------------------------------------------------------------------
     # Verification

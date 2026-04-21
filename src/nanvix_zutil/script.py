@@ -116,6 +116,14 @@ class ZScript:
         "bin/mkramfs.elf",
     )
 
+    SYSROOT_REQUIRED_FILES_WINDOWS: tuple[str, ...] = (
+        "lib/libposix.a",
+        "lib/user.ld",
+        "bin/nanvixd.exe",
+        "bin/kernel.elf",
+        "bin/mkramfs.exe",
+    )
+
     SYSROOT_MULTI_PROCESS_FILES: tuple[str, ...] = (
         "bin/linuxd.elf",
         "bin/uservm.elf",
@@ -136,13 +144,18 @@ class ZScript:
     )
 
     def sysroot_required_files(self) -> list[str]:
-        """Return the sysroot files required for the current deployment mode.
+        """Return the sysroot files required for the current platform and mode.
 
-        Multi-process mode additionally requires ``linuxd.elf`` and
-        ``uservm.elf``.  Subclasses can extend by overriding the class
-        attributes or this method.
+        Uses Windows binary names (``nanvixd.exe``, ``mkramfs.exe``) on
+        Windows; Linux names on other platforms.  Multi-process mode
+        additionally requires ``linuxd.elf`` and ``uservm.elf``.
+        Subclasses can extend by overriding the class attributes or
+        this method.
         """
-        files = list(self.SYSROOT_REQUIRED_FILES)
+        if is_windows():
+            files = list(self.SYSROOT_REQUIRED_FILES_WINDOWS)
+        else:
+            files = list(self.SYSROOT_REQUIRED_FILES)
         if self.config.deployment_mode == "multi-process":
             files.extend(self.SYSROOT_MULTI_PROCESS_FILES)
         return files
@@ -310,8 +323,20 @@ class ZScript:
             dest=self.nanvix_dir / "sysroot",
             config=self.config,
         )
-        self.sysroot.verify(self.sysroot_required_files())
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
+
+        # On Windows, download host-native binaries (nanvixd.exe, mkramfs.exe)
+        # BEFORE verifying required files — the base sysroot from
+        # Sysroot.download() only has Linux .elf binaries.
+        if is_windows():
+            self.sysroot.download_windows_binaries(
+                machine=self.config.machine,
+                deployment_mode=self.config.deployment_mode,
+                memory_size=self.config.memory_size,
+                gh_token=self.config.get(CFG_GH_TOKEN),
+            )
+
+        self.sysroot.verify(self.sysroot_required_files())
 
         # Deferred auto-suffix: when sysroot is "latest", load_manifest()
         # skips suffixing because the real version isn't known yet.  Now
