@@ -44,6 +44,10 @@ pyrightconfig.json
 *.swp
 *~
 
+# Downstream test artifacts (generated per-user)
+scripts/downstream/downstream.json
+scripts/downstream/consumer-repos.json
+
 # OS
 .DS_Store
 Thumbs.db
