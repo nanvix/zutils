@@ -2,12 +2,18 @@
 
 # pyright: reportPrivateUsage=false
 
+import subprocess as _subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from downstream_tests.checkout import detect_strategy, resolve_branch, resolve_repo
+from downstream_tests.checkout import (
+    ResetResult,
+    detect_strategy,
+    resolve_branch,
+    resolve_repo,
+)
 
 # ---------------------------------------------------------------------------
 # detect_strategy
@@ -84,7 +90,7 @@ def test_resolve_branch_clone_ls_remote(tmp_path: Path):
     # Do NOT create this dir so strategy != bare existing
 
     ls_remote_output = (
-        "abc123\trefs/heads/nanvix/v1.0.0\n" "def456\trefs/heads/nanvix/v2.0.0\n"
+        "abc123\trefs/heads/nanvix/v1.0.0\ndef456\trefs/heads/nanvix/v2.0.0\n"
     )
     side_effects = [
         _make_run_result(ls_remote_output),  # ls-remote --heads
@@ -317,8 +323,6 @@ def test_resolve_repo_no_override_when_strategy_matches(tmp_path: Path):
 # _is_dirty / _safe_reset
 # ---------------------------------------------------------------------------
 
-import subprocess as _subprocess
-
 
 def _git_init(repo: Path) -> None:
     """Initialise a git repo with user config so commits work on CI."""
@@ -391,7 +395,7 @@ def test_safe_reset_skips_dirty(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """_is_dirty returns True for dirty tree; callers should skip reset."""
-    from downstream_tests.checkout import _is_dirty
+    from downstream_tests.checkout import _is_dirty, _try_reset
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -404,11 +408,12 @@ def test_safe_reset_skips_dirty(
     (repo / "dirty.txt").write_text("do not lose me")
 
     assert _is_dirty(repo) is True
+    assert _try_reset("nanvix/test", repo, "HEAD") is ResetResult.SKIPPED
 
 
 def test_safe_reset_proceeds_when_clean(tmp_path: Path):
     """_force_reset resets a clean working tree."""
-    from downstream_tests.checkout import _force_reset, _is_dirty
+    from downstream_tests.checkout import _is_dirty, _try_reset
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -420,7 +425,7 @@ def test_safe_reset_proceeds_when_clean(tmp_path: Path):
     )
 
     assert _is_dirty(repo) is False
-    _force_reset("nanvix/test", repo, "HEAD")
+    assert _try_reset("nanvix/test", repo, "HEAD") is ResetResult.SUCCESS
 
 
 # ---------------------------------------------------------------------------
