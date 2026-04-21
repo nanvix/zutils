@@ -4,14 +4,14 @@
 """Hello-world example — cross-compiles a C program for Nanvix.
 
 Demonstrates the full lifecycle with a real Nanvix build.  Docker mode is
-supported via the ``--with-docker`` / ``--with-minimal-docker`` /
-``--docker-image`` flags; the build script itself never references Docker
-directly — it calls :meth:`~nanvix_zutil.ZScript.run` and Docker wrapping
-is transparent::
+supported on ``build`` and ``release`` via the ``--with-docker`` /
+``--with-minimal-docker`` / ``--docker-image`` flags; the build script itself
+never references Docker directly — it calls :meth:`~nanvix_zutil.ZScript.run`
+and Docker wrapping is transparent::
 
     nanvix-zutil setup                     # download Nanvix sysroot (host)
     nanvix-zutil build --with-docker       # cross-compile inside Docker container
-    nanvix-zutil test  --with-docker       # run tests (smoke + integration + functional)
+    nanvix-zutil test                      # run tests natively (smoke + integration + functional)
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 

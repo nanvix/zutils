@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil.lockfile import get_zutil_version
+from nanvix_zutil.docker import DEFAULT_DOCKER_IMAGE
 
 # ---------------------------------------------------------------------------
 # Version helper
@@ -37,6 +38,9 @@ SUBCOMMANDS: tuple[str, ...] = (
     "lock",
     "help",
 )
+
+#: Subcommands that accept Docker flags.
+DOCKER_SUBCOMMANDS: tuple[str, ...] = ("build", "release")
 
 #: Human-readable descriptions for each subcommand.
 _SUBCOMMAND_HELP: dict[str, str] = {
@@ -86,30 +90,6 @@ def build_parser(
         "--version",
         action="version",
         version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
-    )
-
-    docker_group = parser.add_mutually_exclusive_group()
-    docker_group.add_argument(
-        "--with-docker",
-        action="store_true",
-        default=False,
-        dest="with_docker",
-        help="Run build/test commands inside the default Docker image"
-        f" (nanvix/toolchain:latest-minimal)",
-    )
-    docker_group.add_argument(
-        "--with-minimal-docker",
-        action="store_true",
-        default=False,
-        dest="with_minimal_docker",
-        help="Run build/test commands inside nanvix/toolchain:latest-minimal",
-    )
-    docker_group.add_argument(
-        "--docker-image",
-        metavar="IMAGE",
-        default=None,
-        dest="docker_image",
-        help="Run build/test commands inside the specified Docker image",
     )
 
     parser.add_argument(
@@ -168,6 +148,30 @@ def build_parser(
                 action="store_true",
                 default=False,
                 help="Resolve only direct dependencies (skip transitive discovery)",
+            )
+        if name in DOCKER_SUBCOMMANDS:
+            docker_group = sub.add_mutually_exclusive_group()
+            docker_group.add_argument(
+                "--with-docker",
+                action="store_true",
+                default=False,
+                dest="with_docker",
+                help="Run commands inside the project's default Docker image"
+                f" (default: {DEFAULT_DOCKER_IMAGE})",
+            )
+            docker_group.add_argument(
+                "--with-minimal-docker",
+                action="store_true",
+                default=False,
+                dest="with_minimal_docker",
+                help=f"Run commands inside {DEFAULT_DOCKER_IMAGE}",
+            )
+            docker_group.add_argument(
+                "--docker-image",
+                metavar="IMAGE",
+                default=None,
+                dest="docker_image",
+                help="Run commands inside the specified Docker image",
             )
 
     return parser

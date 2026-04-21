@@ -80,8 +80,9 @@ nanvix-zutil lock --shallow    # resolve direct deps only (for CI release assets
 
 ## Docker Integration
 
-Consumer build scripts can run `build`, `test`, and other commands inside a
-Docker container by passing one of the three mutually exclusive Docker flags:
+Consumer build scripts can run `build` and `release` commands inside a
+Docker container by passing one of the three mutually exclusive Docker flags
+**after the subcommand**:
 
 | Flag | Image used |
 | --- | --- |
@@ -89,15 +90,17 @@ Docker container by passing one of the three mutually exclusive Docker flags:
 | `--with-minimal-docker` | `nanvix/toolchain:latest-minimal` |
 | `--docker-image <name>` | Custom image |
 
-`setup()` always runs on the host (downloads sysroot/deps).  Every subsequent
-`self.run()` call is transparently wrapped in `docker run`.
+Docker flags are only available on `build` and `release` subcommands.
+`setup()` always runs on the host, and `test` runs natively (with optional
+KVM access).
 
 ```bash
 nanvix-zutil setup                          # download sysroot on host
 nanvix-zutil build --with-docker            # cross-compile inside Docker
-nanvix-zutil test  --with-minimal-docker    # run tests inside Docker
+nanvix-zutil test                           # run tests natively (KVM available)
 nanvix-zutil clean                          # clean (host)
 ```
+
 
 ### How it works
 

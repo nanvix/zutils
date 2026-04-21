@@ -690,7 +690,9 @@ class ZScript:
         # Resolve Docker image from CLI flags.
         # ------------------------------------------------------------------
         docker_image: str | None = None
-        if getattr(args, "docker_image", None):
+
+        # Subcommand-level flags (only present for build/release).
+        if getattr(args, "docker_image", None) is not None:
             docker_image = args.docker_image
         elif getattr(args, "with_minimal_docker", False):
             docker_image = DEFAULT_DOCKER_IMAGE
