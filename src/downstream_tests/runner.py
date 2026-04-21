@@ -56,7 +56,10 @@ def run_consumer(
         wheel_path:     Path to the nanvix-zutil wheel to install.
         setup_only:     Skip build and test phases.
         force_fallback: Force dependency fallback and assert it is triggered.
-        with_docker:    Pass ``--with-docker`` to build / test phases.
+        with_docker:    Pass ``--with-docker`` to the build phase only.
+                        ``test`` runs natively under the new CLI surface
+                        (Docker flags moved to subcommand-level on
+                        ``build`` / ``release`` only).
         dry_run:        Print what would happen without executing.
         flags:          Per-consumer CLI flags.  ``"global"`` flags are
                         inserted before the command name; per-command keys
@@ -84,8 +87,8 @@ def run_consumer(
             docker_str = " --with-docker" if with_docker else ""
             b = (" " + " ".join(_flags.get("build", []))) if _flags.get("build") else ""
             t = (" " + " ".join(_flags.get("test", []))) if _flags.get("test") else ""
-            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} build{b}")
-            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} test{t}")
+            dry(f"  {consumer}: would run: nanvix-zutil{g} build{docker_str}{b}")
+            dry(f"  {consumer}: would run: nanvix-zutil{g} test{t}")
         return consumer, "OK (dry-run)"
 
     # --- venv creation ---------------------------------------------------------
@@ -208,14 +211,17 @@ def run_consumer(
         return consumer, "OK (setup)"
 
     # --- Docker availability check ---------------------------------------------
-    docker_flag: list[str] = []
+    # Docker flags moved to subcommand-level on the new CLI surface and are
+    # only registered on ``build`` / ``release``.  ``test`` runs natively
+    # (KVM-friendly), so we never forward ``--with-docker`` to it.
+    build_docker_flag: list[str] = []
     if with_docker:
         if not shutil.which("docker"):
             log(
                 "  --with-docker requested but Docker not available -- skipping build/test"
             )
             return consumer, "OK (setup, no docker)"
-        docker_flag = ["--with-docker"]
+        build_docker_flag = ["--with-docker"]
 
     # --- Phase 2: build --------------------------------------------------------
     build_cmd = [
@@ -223,12 +229,12 @@ def run_consumer(
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
         *global_flags,
-        *docker_flag,
         "build",
+        *build_docker_flag,
         *_flags.get("build", []),
     ]
 
-    log(f"  Running: nanvix-zutil {' '.join(docker_flag)} build".rstrip())
+    log(f"  Running: nanvix-zutil build {' '.join(build_docker_flag)}".rstrip())
     build_result = subprocess.run(
         build_cmd,
         capture_output=True,
@@ -243,17 +249,17 @@ def run_consumer(
     ok(f"  {consumer} build: OK")
 
     # --- Phase 3: test ---------------------------------------------------------
+    # ``test`` runs natively -- no Docker flags are forwarded here.
     test_cmd = [
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
         *global_flags,
-        *docker_flag,
         "test",
         *_flags.get("test", []),
     ]
 
-    log(f"  Running: nanvix-zutil {' '.join(docker_flag)} test".rstrip())
+    log("  Running: nanvix-zutil test")
     test_result = subprocess.run(
         test_cmd,
         capture_output=True,
@@ -293,7 +299,9 @@ def run_consumers(
         wheel_path:       Path to the built wheel.
         setup_only:       Skip build and test phases.
         force_fallback:   Force dependency fallback for all consumers.
-        with_docker:      Pass ``--with-docker`` to build / test commands.
+        with_docker:      Pass ``--with-docker`` to the ``build`` command
+                          only.  ``test`` runs natively (Docker flags are
+                          subcommand-level on ``build`` / ``release``).
         dry_run:          Skip real operations; print what would happen.
 
     Returns:

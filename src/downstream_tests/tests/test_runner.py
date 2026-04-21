@@ -234,7 +234,7 @@ def test_run_consumer_dry_run(tmp_path: Path):
 
 
 def test_run_consumer_with_docker(tmp_path: Path):
-    """with_docker=True: --with-docker flag forwarded to build/test commands."""
+    """with_docker=True: --with-docker forwarded to build only, after the subcommand."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -258,9 +258,29 @@ def test_run_consumer_with_docker(tmp_path: Path):
                     dry_run=False,
                 )
 
-    # Find the build and test commands (they should include --with-docker)
-    cmds_with_docker = [c for c in captured_cmds if "--with-docker" in c]
-    assert len(cmds_with_docker) >= 2
+    # Locate the build and test commands -- they are the last two phase
+    # invocations (after venv create, pip install, import check, setup).
+    build_cmds = [c for c in captured_cmds if "build" in c]
+    test_cmds = [c for c in captured_cmds if "test" in c]
+    assert len(build_cmds) == 1, f"expected 1 build cmd, got {len(build_cmds)}"
+    assert len(test_cmds) == 1, f"expected 1 test cmd, got {len(test_cmds)}"
+
+    build_cmd = build_cmds[0]
+    test_cmd = test_cmds[0]
+
+    # --with-docker present on build, positioned *after* the "build" token.
+    assert "--with-docker" in build_cmd, "build cmd missing --with-docker"
+    build_idx = build_cmd.index("build")
+    docker_idx = build_cmd.index("--with-docker")
+    assert docker_idx > build_idx, (
+        f"--with-docker must appear after 'build' "
+        f"(build at {build_idx}, --with-docker at {docker_idx}): {build_cmd}"
+    )
+
+    # --with-docker absent from test (test runs natively).
+    assert (
+        "--with-docker" not in test_cmd
+    ), f"test cmd must not contain --with-docker: {test_cmd}"
 
 
 def test_run_consumer_flags_appended(tmp_path: Path):
