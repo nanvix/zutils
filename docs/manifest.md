@@ -11,6 +11,11 @@ build-time / runtime dependencies.
 name = "hello-world"
 version = "0.1.0"
 nanvix-version = "0.12.257"
+
+[builds.matrix]
+platforms = ["microvm"]
+modes = ["standalone"]
+memory = ["256mb"]
 ```
 
 ## `[package]`
@@ -38,6 +43,7 @@ name (e.g. `zlib`); the repo is inferred as `nanvix/<name>`.
 | `dep = { tag = "v1.0" }` | `TAG` | no | Tag `v1.0` (exact) |
 | `dep = { commitish = "abc1234" }` | `COMMITISH` | no | Search `target_commitish` |
 | `dep = { id = 12345678 }` | `ID` | no | `GET /releases/12345678` |
+| *(via `NANVIX_DEP_PATH_<NAME>`)* | `LOCAL` | no | Local filesystem path |
 
 Only **one** specifier key is allowed per table.
 
@@ -59,23 +65,70 @@ the resolver falls back to `1.2.3-nanvix-{hash}` (e.g.
 `TAG`, `COMMITISH`, and `ID` refs are never suffixed — they resolve
 exactly as written.
 
+When `NANVIX_SYSROOT_PATH` is set (sysroot ref is `LOCAL`),
+auto-suffixing is skipped entirely — there is no sysroot version
+string to append.
+
 Refs that already contain `-nanvix-` are rejected to prevent accidental
 double-suffixing.
 
+## `[builds]`
+
+Required section that declares the build matrix.
+
+```toml
+[builds.matrix]
+platforms = ["hyperlight", "microvm"]
+modes = ["multi-process", "standalone"]
+memory = ["128mb"]
+
+[[builds.exclude]]
+platform = "hyperlight"
+mode = "standalone"
+```
+
+| Key | Required | Description |
+|---|---|---|
+| `[builds.matrix]` | yes | Table of dimension names → lists of values. |
+| `platforms` | yes | Target platforms (e.g. `"hyperlight"`, `"microvm"`). |
+| `modes` | yes | Deployment modes (e.g. `"multi-process"`, `"standalone"`). |
+| `memory` | yes | Memory sizes (e.g. `"128mb"`). |
+| `[[builds.exclude]]` | no | List of dimension combinations to exclude. |
+
+Each exclude entry must reference valid dimension keys from the matrix.
+
 ## Environment variable overrides
+
+### Version overrides
 
 | Variable | Overrides |
 |---|---|
 | `NANVIX_VERSION` | `nanvix-version` (sysroot ref value) |
 | `NANVIX_VERSION_<NAME>` | Dependency `<name>` ref value (uppercase) |
 
-Overrides replace the **value** but keep the `RefKind` from the
+Version overrides replace the **value** but keep the `RefKind` from the
 manifest.  `NANVIX_VERSION` bypasses semver validation (intended for
 development use).
 
-## Full example
+### Local path overrides
 
-The `nanvix/cpython` consumer manifest:
+| Variable | Effect |
+|---|---|
+| `NANVIX_SYSROOT_PATH` | Point sysroot at a local directory (`RefKind.LOCAL`) |
+| `NANVIX_DEP_PATH_<NAME>` | Point dependency `<name>` at a local directory (`RefKind.LOCAL`) |
+
+Local path overrides set `RefKind.LOCAL` — the value is taken as-is
+with no suffix appended.  This is useful for inner-loop development
+(using pre-built local artifacts instead of downloading from GitHub).
+
+### Mutual exclusivity
+
+`NANVIX_VERSION` and `NANVIX_SYSROOT_PATH` are **mutually exclusive**.
+`NANVIX_VERSION_<NAME>` and `NANVIX_DEP_PATH_<NAME>` are **mutually
+exclusive** for the same dependency.  Setting both is a fatal error
+(exit code 2).
+
+## Full example
 
 ```toml
 [package]
@@ -88,4 +141,9 @@ zlib = "1.2.3"
 bzip2 = "1.0.0"
 
 [system-dependencies]
+
+[builds.matrix]
+platforms = ["microvm"]
+modes = ["standalone"]
+memory = ["256mb"]
 ```
