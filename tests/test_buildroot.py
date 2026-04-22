@@ -80,6 +80,17 @@ class TestDependency(unittest.TestCase):
         )
         self.assertEqual(dep.artifact_pattern, "{name}.tar.bz2")
 
+    def test_local_dep_not_suffixed_by_suffix_dep(self) -> None:
+        """suffix_dep() leaves LOCAL deps unchanged."""
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value="/home/me/zlib-build"),
+        )
+        result = suffix_dep(dep, "0.12.257")
+        self.assertEqual(result.ref.kind, RefKind.LOCAL)
+        self.assertEqual(result.ref.value, "/home/me/zlib-build")
+
 
 class TestBuildrootCreate(unittest.TestCase):
     """Buildroot.create() sets up the expected directory layout."""

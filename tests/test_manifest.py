@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
-from nanvix_zutil.manifest import load_manifest
 from tests.testutils import MANIFEST_WITH_BUILDS
+from nanvix_zutil.manifest import load_manifest
 
 
 class TestLoadManifestFileNotFound(unittest.TestCase):
@@ -1229,6 +1229,234 @@ class TestLoadManifestBuildsSection(unittest.TestCase):
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestLoadManifestLocalOverride(unittest.TestCase):
+    """NANVIX_DEP_PATH_<NAME> and NANVIX_SYSROOT_PATH produce RefKind.LOCAL."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_dep_path_override(self) -> None:
+        """NANVIX_DEP_PATH_ZLIB=/path/to/zlib -> RefKind.LOCAL."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_DEP_PATH_ZLIB": "/home/me/zlib-build"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "/home/me/zlib-build")
+
+    def test_version_override_not_local(self) -> None:
+        """NANVIX_VERSION_ZLIB (version string) preserves original RefKind."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "env_sha"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.VERSION)
+
+    def test_sysroot_path_override(self) -> None:
+        """NANVIX_SYSROOT_PATH=/path/to/sysroot -> RefKind.LOCAL sysroot."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_SYSROOT_PATH": "/opt/nanvix/sysroot"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.sysroot_ref.value, "/opt/nanvix/sysroot")
+
+    def test_sysroot_version_override_not_local(self) -> None:
+        """NANVIX_VERSION (version string) preserves original RefKind."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "override_sha"}):
+            m = load_manifest(path)
+
+        # Sysroot uses RefKind.TAG (not VERSION) — the original kind
+        # from _parse_nanvix_version().
+        self.assertEqual(m.sysroot_ref.kind, RefKind.TAG)
+        self.assertEqual(m.sysroot_ref.value, "override_sha")
+
+    def test_local_dep_not_suffixed(self) -> None:
+        """LOCAL deps skip suffix; adjacent VERSION deps are suffixed."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+            'openssl = "2.0.0"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_DEP_PATH_ZLIB": "/home/me/zlib-build"}):
+            m = load_manifest(path)
+
+        # LOCAL ref value must be the raw path — no suffix appended.
+        zlib = next(d for d in m.dependencies if d.name == "zlib")
+        self.assertEqual(zlib.ref.kind, RefKind.LOCAL)
+        self.assertEqual(zlib.ref.value, "/home/me/zlib-build")
+        self.assertNotIn("-nanvix-", str(zlib.ref.value))
+        # Adjacent VERSION dep IS suffixed normally.
+        openssl = next(d for d in m.dependencies if d.name == "openssl")
+        self.assertEqual(openssl.ref.kind, RefKind.VERSION)
+        self.assertEqual(openssl.ref.value, "2.0.0-nanvix-0.12.257")
+
+    def test_local_sysroot_skips_suffix_loop(self) -> None:
+        """When NANVIX_SYSROOT_PATH is set, VERSION deps are NOT suffixed."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "4.5.6"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(os.environ, {"NANVIX_SYSROOT_PATH": "/opt/nanvix/sysroot"}):
+            m = load_manifest(path)
+
+        # Sysroot is LOCAL — suffix loop must be skipped entirely.
+        # Without the guard, deps would get "-nanvix-/opt/nanvix/sysroot".
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.VERSION)
+        self.assertEqual(m.dependencies[0].ref.value, "4.5.6")
+
+
+class TestLoadManifestMutualExclusivity(unittest.TestCase):
+    """Setting both version and path env vars for same target is fatal."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_dep_both_version_and_path_exits_2(self) -> None:
+        """NANVIX_VERSION_ZLIB + NANVIX_DEP_PATH_ZLIB -> exit 2."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[dependencies]\n"
+            'zlib = "1.0.0"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "NANVIX_VERSION_ZLIB": "1.2.3",
+                "NANVIX_DEP_PATH_ZLIB": "/home/me/zlib",
+            },
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                load_manifest(path)
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_sysroot_both_version_and_path_exits_2(self) -> None:
+        """NANVIX_VERSION + NANVIX_SYSROOT_PATH -> exit 2."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            "[package]\n"
+            'name = "myapp"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.12.257"\n'
+            "[builds]\n"
+            "[builds.matrix]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["multi-process"]\n'
+            'memory = ["128mb"]\n'
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "NANVIX_VERSION": "0.12.258",
+                "NANVIX_SYSROOT_PATH": "/opt/nanvix/sysroot",
+            },
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                load_manifest(path)
 
         self.assertEqual(ctx.exception.code, 2)
 
