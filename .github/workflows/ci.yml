@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |
           uv run tasks.py downstream --platform=linux \
-            -- --repos-root "${{ runner.temp }}/consumers" --setup-only
+            -- --repos-root "${{ runner.temp }}/consumers"
 
       - name: Clean up git credential rewrite
         if: always()
@@ -210,7 +210,7 @@ jobs:
         shell: bash
         run: |
           uv run tasks.py downstream --platform=windows \
-            -- --repos-root "${{ runner.temp }}/consumers" --setup-only
+            -- --repos-root "${{ runner.temp }}/consumers"
 
       - name: Clean up git credential rewrite
         if: always()
