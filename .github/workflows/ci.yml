@@ -111,7 +111,6 @@ jobs:
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
-      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -135,11 +134,7 @@ jobs:
       - name: Configure git auth for consumer checkouts
         shell: bash
         run: |
-          set -euo pipefail
-          TOKEN="${DISPATCH_TOKEN:-$GH_TOKEN}"
-          git config --global \
-            url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
-            "https://github.com/"
+          gh auth setup-git
 
       - name: Cache consumer checkouts
         uses: actions/cache@v4
@@ -155,14 +150,6 @@ jobs:
           uv run tasks.py downstream --platform=linux \
             -- --repos-root "${{ runner.temp }}/consumers"
 
-      - name: Clean up git credential rewrite
-        if: always()
-        shell: bash
-        run: |
-          git config --global --unset-all \
-            url."https://x-access-token:${DISPATCH_TOKEN:-$GH_TOKEN}@github.com/".insteadOf \
-            || true
-
   test-downstream-windows:
     name: Downstream Consumers (Windows)
     runs-on: windows-latest
@@ -171,7 +158,6 @@ jobs:
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
-      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -195,11 +181,7 @@ jobs:
       - name: Configure git auth for consumer checkouts
         shell: bash
         run: |
-          set -euo pipefail
-          TOKEN="${DISPATCH_TOKEN:-$GH_TOKEN}"
-          git config --global \
-            url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
-            "https://github.com/"
+          gh auth setup-git
 
       - name: Cache consumer checkouts
         uses: actions/cache@v4
@@ -214,11 +196,3 @@ jobs:
         run: |
           uv run tasks.py downstream --platform=windows \
             -- --repos-root "${{ runner.temp }}/consumers"
-
-      - name: Clean up git credential rewrite
-        if: always()
-        shell: bash
-        run: |
-          git config --global --unset-all \
-            url."https://x-access-token:${DISPATCH_TOKEN:-$GH_TOKEN}@github.com/".insteadOf \
-            || true
