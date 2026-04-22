@@ -123,7 +123,7 @@ jobs:
       - name: Pre-fetch consumer list (best-effort)
         shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           curl -fsSL \
             https://raw.githubusercontent.com/nanvix/workflows/refs/heads/main/consumer-repos.json \
             -o scripts/downstream/consumer-repos.json || \
@@ -132,7 +132,7 @@ jobs:
       - name: Configure git auth for consumer checkouts
         shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           TOKEN="${DISPATCH_TOKEN:-$GH_TOKEN}"
           git config --global \
             url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
@@ -151,6 +151,14 @@ jobs:
         run: |
           uv run tasks.py downstream --platform=linux \
             -- --repos-root "${{ runner.temp }}/consumers" --setup-only
+
+      - name: Clean up git credential rewrite
+        if: always()
+        shell: bash
+        run: |
+          git config --global --unset-all \
+            url."https://x-access-token:${DISPATCH_TOKEN:-$GH_TOKEN}@github.com/".insteadOf \
+            || true
 
   test-downstream-windows:
     name: Downstream Consumers (Windows)
@@ -175,7 +183,7 @@ jobs:
       - name: Pre-fetch consumer list (best-effort)
         shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           curl -fsSL \
             https://raw.githubusercontent.com/nanvix/workflows/refs/heads/main/consumer-repos.json \
             -o scripts/downstream/consumer-repos.json || \
@@ -184,7 +192,7 @@ jobs:
       - name: Configure git auth for consumer checkouts
         shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           TOKEN="${DISPATCH_TOKEN:-$GH_TOKEN}"
           git config --global \
             url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
@@ -203,3 +211,11 @@ jobs:
         run: |
           uv run tasks.py downstream --platform=windows \
             -- --repos-root "${{ runner.temp }}/consumers" --setup-only
+
+      - name: Clean up git credential rewrite
+        if: always()
+        shell: bash
+        run: |
+          git config --global --unset-all \
+            url."https://x-access-token:${DISPATCH_TOKEN:-$GH_TOKEN}@github.com/".insteadOf \
+            || true
