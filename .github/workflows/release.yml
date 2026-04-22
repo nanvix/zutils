@@ -14,8 +14,8 @@ on:
         type: string
 
 permissions:
-  contents: write # create tags and GitHub releases
-  id-token: write # OIDC trusted publishing to PyPI
+  contents: write  # create tags and GitHub releases
+  id-token: write  # OIDC trusted publishing to PyPI
 
 jobs:
   release:

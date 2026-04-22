@@ -122,6 +122,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Install gh
+        run: |
+          VERSION=2.91.0
+          URL=https://github.com/cli/cli/releases/download/v${VERSION}/gh_${VERSION}_linux_arm64.tar.gz
+          curl -fsSL ${URL} | tar -xz -C /usr/local/bin --strip-components=1
+
       - name: Pre-fetch consumer list (best-effort)
         shell: bash
         run: |
@@ -130,6 +136,19 @@ jobs:
             https://raw.githubusercontent.com/nanvix/workflows/refs/heads/main/consumer-repos.json \
             -o scripts/downstream/consumer-repos.json || \
             echo "::warning::Failed to pre-fetch consumer-repos.json; runner will fall back"
+
+      - name: Install GitHub CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          GH_VERSION="2.91.0"
+          TARBALL="gh_${GH_VERSION}_linux_amd64.tar.gz"
+          URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${TARBALL}"
+          curl -fsSL "$URL" -o "/tmp/${TARBALL}"
+          tar -xzf "/tmp/${TARBALL}" -C /tmp
+          install -m 755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+          rm -rf "/tmp/${TARBALL}" "/tmp/gh_${GH_VERSION}_linux_amd64"
+          gh --version
 
       - name: Configure git auth for consumer checkouts
         shell: bash
