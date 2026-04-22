@@ -103,6 +103,9 @@ jobs:
   test-downstream-linux:
     name: Downstream Consumers (Linux)
     runs-on: ubuntu-latest
+    container:
+      image: nanvix/toolchain:latest-minimal
+      options: --device /dev/kvm
     timeout-minutes: 15
     permissions:
       contents: read
