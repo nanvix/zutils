@@ -9,9 +9,24 @@ or the literal ``"latest"``.  Dependency version fields accept a plain
 string (``version`` specifier), or a table with one of ``version``,
 ``tag``, ``commitish``, or ``id``.
 
-Environment variables ``NANVIX_VERSION`` (for the sysroot) and
-``NANVIX_VERSION_<NAME>`` (for individual dependencies) override the
-versions declared in the manifest.
+Environment variables override the versions declared in the manifest:
+
+- ``NANVIX_VERSION`` — override the sysroot version (value is a version
+  string, tag, or commitish).
+- ``NANVIX_VERSION_<NAME>`` — override a dependency version (same value
+  types).
+- ``NANVIX_SYSROOT_PATH`` — point the sysroot at a local filesystem
+  path instead of downloading from GitHub.  Sets ``RefKind.LOCAL``.
+- ``NANVIX_DEP_PATH_<NAME>`` — point a dependency at a local filesystem
+  path.  Sets ``RefKind.LOCAL``.
+
+``NANVIX_VERSION`` and ``NANVIX_SYSROOT_PATH`` are mutually exclusive.
+``NANVIX_VERSION_<NAME>`` and ``NANVIX_DEP_PATH_<NAME>`` are mutually
+exclusive for the same dependency.  Setting both is a fatal error.
+
+When ``NANVIX_SYSROOT_PATH`` is set (i.e. the sysroot ref is LOCAL),
+auto-suffixing of ``VERSION`` dependency refs is skipped entirely —
+there is no sysroot version string to append.
 
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
@@ -30,9 +45,9 @@ from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import log
-from nanvix_zutil.utils import SEMVER_RE
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
+from nanvix_zutil.utils import SEMVER_RE
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -79,7 +94,6 @@ class Manifest:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
 # We are intentionally keeping the semver matching simple for now.
 _SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
@@ -353,6 +367,44 @@ def parse_builds_section(
     return BuildMatrix(dimensions=dimensions, exclude=exclude)
 
 
+def _resolve_env_override(
+    path: Path,
+    ver_key: str,
+    path_key: str,
+    label: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Read a (version, local-path) env override pair, enforcing mutual exclusion.
+
+    Args:
+        path: Manifest file path, used for the error message context.
+        ver_key: Name of the version-override env var (e.g.
+            ``NANVIX_VERSION`` or ``NANVIX_VERSION_<NAME>``).
+        path_key: Name of the local-path-override env var (e.g.
+            ``NANVIX_SYSROOT_PATH`` or ``NANVIX_DEP_PATH_<NAME>``).
+        label: Dependency name for per-dep overrides; ``None`` for the
+            sysroot.  Used to disambiguate the error message.
+
+    Returns:
+        A tuple ``(env_ver, env_path)`` where at most one element is
+        non-``None``.  Either element may be ``None`` if the corresponding
+        env var is unset.
+
+    Raises:
+        SystemExit: With exit code ``2`` if both env vars are set.
+    """
+    env_ver = os.environ.get(ver_key)
+    env_path = os.environ.get(path_key)
+    if env_ver is not None and env_path is not None:
+        subject = f" for dependency '{label}'" if label is not None else ""
+        log.fatal(
+            f"{path}: both {ver_key} and {path_key} are set{subject}",
+            code=EXIT_INVALID_ARGS,
+            hint=f"Set only one of {ver_key} (version override)"
+            f" or {path_key} (local path override).",
+        )
+    return env_ver, env_path
+
+
 def _parse_dependencies(
     section: dict[str, object],
     path: Path,
@@ -383,12 +435,20 @@ def _parse_dependencies(
                 " nanvix-version.",
             )
 
-        env_key = f"NANVIX_VERSION_{name.upper()}"
-        env_val = os.environ.get(env_key)
-        if env_val is not None:
-            # Env overrides MAY include "-nanvix-" for full control.
-            # suffix_dep() will skip values that already contain it.
-            ref = Ref(kind=ref.kind, value=env_val)
+        # Env overrides: explicit version vs path keys (mutually exclusive).
+        # Env version values MAY include "-nanvix-" for full control;
+        # suffix_dep() will skip values that already contain it.
+        env_ver, env_path = _resolve_env_override(
+            path,
+            f"NANVIX_VERSION_{name.upper()}",
+            f"NANVIX_DEP_PATH_{name.upper()}",
+            label=name,
+        )
+
+        if env_path is not None:
+            ref = Ref(kind=RefKind.LOCAL, value=env_path)
+        elif env_ver is not None:
+            ref = Ref(kind=ref.kind, value=env_ver)
 
         deps.append(Dependency(name=name, repo=f"nanvix/{name}", ref=ref))
     return deps
@@ -409,6 +469,8 @@ def load_manifest(path: Path) -> Manifest:
 
     Environment variables ``NANVIX_VERSION`` (sysroot) and
     ``NANVIX_VERSION_<NAME>`` (per dependency) override manifest values.
+    ``NANVIX_SYSROOT_PATH`` and ``NANVIX_DEP_PATH_<NAME>`` provide
+    local filesystem path overrides (producing ``RefKind.LOCAL`` refs).
 
     Args:
         path: Path to the ``nanvix.toml`` file.
@@ -473,12 +535,19 @@ def load_manifest(path: Path) -> Manifest:
         )
 
     sysroot_ref = _parse_nanvix_version(raw_nanvix_version, path)
-    env_sysroot = os.environ.get("NANVIX_VERSION")
-    if env_sysroot is not None:
+    env_sysroot_ver, env_sysroot_path = _resolve_env_override(
+        path,
+        "NANVIX_VERSION",
+        "NANVIX_SYSROOT_PATH",
+    )
+
+    if env_sysroot_path is not None:
+        sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot_path)
+    elif env_sysroot_ver is not None:
         # NOTE: NANVIX_VERSION intentionally bypasses semver validation.
         # This is a development escape hatch — CI may pass with a non-semver
         # sysroot version if this env var is set.
-        sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
+        sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot_ver)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})
@@ -521,7 +590,11 @@ def load_manifest(path: Path) -> Manifest:
     # (which resolves the sysroot first and knows the actual version).
     # Strip the leading "v" from the sysroot version to match the release
     # tag format used by nanvix-zutil (e.g. "1.3.1-nanvix-0.12.291").
-    if sysroot_ref.value != "latest" and isinstance(sysroot_ref.value, str):
+    if (
+        sysroot_ref.kind != RefKind.LOCAL
+        and sysroot_ref.value != "latest"
+        and isinstance(sysroot_ref.value, str)
+    ):
         version_suffix = sysroot_ref.value.removeprefix("v")
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):

@@ -5,7 +5,8 @@
 
 :class:`Buildroot` manages a directory that collects headers and static
 libraries required to compile a consumer repository.  :class:`Dependency`
-describes a single library fetched from a GitHub release.
+describes a single library fetched from a GitHub release or resolved
+from a local filesystem path (when ``NANVIX_DEP_PATH_<NAME>`` is set).
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ class RefKind(Enum):
     COMMITISH = "commitish"
     ID = "id"
     VERSION = "version"
+    LOCAL = "local"
 
 
 @dataclass
@@ -79,9 +81,11 @@ class Ref:
     Attributes:
         kind: The specifier type — :attr:`RefKind.TAG` (exact tag match),
             :attr:`RefKind.COMMITISH` (match ``target_commitish``),
-            :attr:`RefKind.ID` (direct release fetch), or
-            :attr:`RefKind.VERSION` (suffixed with nanvix version).
-        value: The version string, tag name, commitish, or release ID.
+            :attr:`RefKind.ID` (direct release fetch),
+            :attr:`RefKind.VERSION` (suffixed with nanvix version), or
+            :attr:`RefKind.LOCAL` (filesystem path, set via env var).
+        value: The version string, tag name, commitish, release ID, or
+            filesystem path.
     """
 
     kind: RefKind
@@ -95,13 +99,17 @@ class Ref:
 
 @dataclass
 class Dependency:
-    """A library dependency fetched from a GitHub release.
+    """A library dependency resolved from a GitHub release or local path.
+
+    When ``NANVIX_DEP_PATH_<NAME>`` is set, the ref kind is
+    ``RefKind.LOCAL`` and the value is the filesystem path.
 
     Attributes:
         name: Short library name (e.g. ``"zlib"``).
         repo: GitHub repository in ``owner/name`` format
             (e.g. ``"nanvix/zlib"``).
-        ref: Version reference — one of tag, commitish, ID, or version.
+        ref: Version reference — one of tag, commitish, ID, version,
+            or local.
         artifact_pattern: ``str.format``-style template for the asset file
             name.  Interpolated keys: ``{name}``, ``{machine}``,
             ``{mode}``, ``{mem}``.
