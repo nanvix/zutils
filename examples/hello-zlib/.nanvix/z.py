@@ -3,14 +3,13 @@
 
 """Hello-zlib example — cross-compiles a C program that uses zlib for Nanvix.
 
-Demonstrates dependency downloading with nanvix.toml.  Docker mode is
-supported via the ``--with-docker`` / ``--with-minimal-docker`` /
-``--docker-image`` flags.  The buildroot is automatically mounted at
-``/mnt/buildroot`` when Docker is active::
+Demonstrates dependency downloading with nanvix.toml.  Run with ``--help``
+to see available subcommands and Docker flags::
 
-    nanvix-zutil setup                     # download sysroot + zlib (host)
-    nanvix-zutil build --with-docker       # cross-compile inside Docker container
-    nanvix-zutil test  --with-docker       # run tests (smoke + integration + functional)
+    nanvix-zutil setup --with-docker       # download sysroot + zlib + enable Docker (default)
+    nanvix-zutil setup --with-docker IMG   # download sysroot + zlib + enable Docker (custom)
+    nanvix-zutil build                     # cross-compile inside Docker container (auto)
+    nanvix-zutil test                      # run tests inside Docker (auto)
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 

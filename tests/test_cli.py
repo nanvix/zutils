@@ -71,58 +71,50 @@ class TestBuildParser(unittest.TestCase):
 
 
 class TestDockerFlags(unittest.TestCase):
-    """Tests for Docker CLI flags."""
+    """Tests for Docker CLI flags (subcommand-level)."""
 
     def test_with_docker_flag(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["--with-docker", "build"])
+        args = parser.parse_args(["setup", "--with-docker"])
         self.assertTrue(args.with_docker)
-        self.assertFalse(args.with_minimal_docker)
-        self.assertIsNone(args.docker_image)
 
-    def test_with_minimal_docker_flag(self) -> None:
+    def test_with_docker_custom_image(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["--with-minimal-docker", "build"])
-        self.assertFalse(args.with_docker)
-        self.assertTrue(args.with_minimal_docker)
-        self.assertIsNone(args.docker_image)
-
-    def test_docker_image_flag(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["--docker-image", "my/image:tag", "build"])
-        self.assertFalse(args.with_docker)
-        self.assertFalse(args.with_minimal_docker)
-        self.assertEqual(args.docker_image, "my/image:tag")
+        args = parser.parse_args(["setup", "--with-docker", "my/image:tag"])
+        self.assertEqual(args.with_docker, "my/image:tag")
 
     def test_docker_flags_default_to_off(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["build"])
-        self.assertFalse(args.with_docker)
-        self.assertFalse(args.with_minimal_docker)
-        self.assertIsNone(args.docker_image)
+        args = parser.parse_args(["setup"])
+        self.assertIsNone(args.with_docker)
 
-    def test_with_docker_and_with_minimal_docker_mutually_exclusive(self) -> None:
+    def test_docker_flags_rejected_on_build(self) -> None:
+        """build subcommand does not accept Docker flags (moved to setup)."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["--with-docker", "--with-minimal-docker", "build"])
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["build", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
-    def test_with_docker_and_docker_image_mutually_exclusive(self) -> None:
+    def test_docker_flags_rejected_on_release(self) -> None:
+        """release subcommand does not accept Docker flags (moved to setup)."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["--with-docker", "--docker-image", "img", "build"])
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["release", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
-    def test_with_minimal_docker_and_docker_image_mutually_exclusive(self) -> None:
+    def test_docker_flags_rejected_on_test(self) -> None:
+        """test subcommand does not accept Docker flags."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(
-                ["--with-minimal-docker", "--docker-image", "img", "build"]
-            )
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["test", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
-    def test_docker_flags_before_subcommand(self) -> None:
+    def test_legacy_docker_before_subcommand_rejected(self) -> None:
+        """Legacy ordering (--with-docker build) is rejected after migration."""
         parser = build_parser()
-        args = parser.parse_args(["--with-docker", "test"])
-        self.assertTrue(args.with_docker)
-        self.assertEqual(args.subcommand, "test")
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["--with-docker", "build"])
+        self.assertEqual(ctx.exception.code, 2)
 
 
 class TestAllBuildsFlags(unittest.TestCase):
@@ -157,10 +149,10 @@ class TestAllBuildsFlags(unittest.TestCase):
 
     def test_all_builds_with_docker(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["--all-builds", "--with-docker", "build"])
+        args = parser.parse_args(["--all-builds", "setup", "--with-docker"])
         self.assertTrue(args.all_builds)
         self.assertTrue(args.with_docker)
-        self.assertEqual(args.subcommand, "build")
+        self.assertEqual(args.subcommand, "setup")
 
 
 if __name__ == "__main__":

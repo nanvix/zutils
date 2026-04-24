@@ -276,7 +276,7 @@ class TestHelloTransitiveCli(unittest.TestCase):
 
     def test_json_mode(self) -> None:
         """``--json`` produces parseable JSON on stderr."""
-        r = self._run_z("--json", "clean")
+        r = self._run_z("--json", "distclean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "expected at least one JSON line on stderr")

@@ -122,6 +122,25 @@ class TestConfigGetSet(unittest.TestCase):
         cfg.set("MY_KEY", "my_value")
         self.assertEqual(cfg.get("MY_KEY"), "my_value")
 
+    def test_delete_removes_key(self) -> None:
+        cfg = Config(self._nanvix_dir)
+        cfg.set("MY_KEY", "my_value")
+        cfg.delete("MY_KEY")
+        self.assertIsNone(cfg.get("MY_KEY"))
+
+    def test_delete_missing_key_is_noop(self) -> None:
+        cfg = Config(self._nanvix_dir)
+        cfg.delete("NONEXISTENT_KEY")  # should not raise
+
+    def test_delete_persists_after_save(self) -> None:
+        cfg = Config(self._nanvix_dir)
+        cfg.set("MY_KEY", "my_value")
+        cfg.save()
+        cfg.delete("MY_KEY")
+        cfg.save()
+        cfg2 = Config(self._nanvix_dir)
+        self.assertIsNone(cfg2.get("MY_KEY"))
+
 
 if __name__ == "__main__":
     unittest.main()

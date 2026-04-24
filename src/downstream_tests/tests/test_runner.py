@@ -234,7 +234,7 @@ def test_run_consumer_dry_run(tmp_path: Path):
 
 
 def test_run_consumer_with_docker(tmp_path: Path):
-    """with_docker=True: --with-docker flag forwarded to build/test commands."""
+    """with_docker=True: --with-docker forwarded to setup only, after the subcommand."""
     repo_dir = _make_venv(tmp_path)
     wheel = tmp_path / "wheel.whl"
     wheel.touch()
@@ -258,9 +258,76 @@ def test_run_consumer_with_docker(tmp_path: Path):
                     dry_run=False,
                 )
 
-    # Find the build and test commands (they should include --with-docker)
-    cmds_with_docker = [c for c in captured_cmds if "--with-docker" in c]
-    assert len(cmds_with_docker) >= 2
+    # Locate setup, build and test commands.
+    setup_cmds = [c for c in captured_cmds if "setup" in c]
+    build_cmds = [c for c in captured_cmds if "build" in c]
+    test_cmds = [c for c in captured_cmds if "test" in c]
+    assert len(setup_cmds) == 1, f"expected 1 setup cmd, got {len(setup_cmds)}"
+    assert len(build_cmds) == 1, f"expected 1 build cmd, got {len(build_cmds)}"
+    assert len(test_cmds) == 1, f"expected 1 test cmd, got {len(test_cmds)}"
+
+    setup_cmd = setup_cmds[0]
+    build_cmd = build_cmds[0]
+    test_cmd = test_cmds[0]
+
+    # --with-docker present on setup, positioned *after* the "setup" token.
+    assert "--with-docker" in setup_cmd, "setup cmd missing --with-docker"
+    setup_idx = setup_cmd.index("setup")
+    docker_idx = setup_cmd.index("--with-docker")
+    assert docker_idx > setup_idx, (
+        f"--with-docker must appear after 'setup' "
+        f"(setup at {setup_idx}, --with-docker at {docker_idx}): {setup_cmd}"
+    )
+
+    # --with-docker absent from build (auto-loaded from env.json).
+    assert (
+        "--with-docker" not in build_cmd
+    ), f"build cmd must not contain --with-docker: {build_cmd}"
+
+    # --with-docker absent from test (auto-loaded from env.json).
+    assert (
+        "--with-docker" not in test_cmd
+    ), f"test cmd must not contain --with-docker: {test_cmd}"
+
+
+def test_run_consumer_with_docker_no_docker_available(tmp_path: Path):
+    """with_docker=True but Docker missing: setup still runs, without --with-docker."""
+    repo_dir = _make_venv(tmp_path)
+    wheel = tmp_path / "wheel.whl"
+    wheel.touch()
+
+    captured_cmds: list[list[str]] = []
+
+    def capture_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+        captured_cmds.append(list(cmd))
+        return _run_result(0)
+
+    with patch("subprocess.run", side_effect=capture_run):
+        with patch("shutil.rmtree"):
+            with patch("shutil.which", return_value=None):
+                _, _status = run_consumer(
+                    "nanvix/zlib",
+                    repo_dir,
+                    wheel,
+                    setup_only=False,
+                    force_fallback=False,
+                    with_docker=True,
+                    dry_run=False,
+                )
+
+    # Setup must have run (without --with-docker flag).
+    setup_cmds = [c for c in captured_cmds if "setup" in c]
+    assert len(setup_cmds) == 1, f"expected 1 setup cmd, got {setup_cmds}"
+    assert "--with-docker" not in setup_cmds[0], (
+        f"setup cmd must not contain --with-docker when Docker is unavailable: "
+        f"{setup_cmds[0]}"
+    )
+
+    # Build and test should still run.
+    build_cmds = [c for c in captured_cmds if "build" in c]
+    test_cmds = [c for c in captured_cmds if "test" in c]
+    assert len(build_cmds) == 1, f"expected 1 build cmd, got {build_cmds}"
+    assert len(test_cmds) == 1, f"expected 1 test cmd, got {test_cmds}"
 
 
 def test_run_consumer_flags_appended(tmp_path: Path):

@@ -56,6 +56,7 @@ from nanvix_zutil.buildroot import (
     suffix_dep,
 )
 from nanvix_zutil.config import (
+    CFG_DOCKER_IMAGE,
     CFG_GH_TOKEN,
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
@@ -117,6 +118,7 @@ __all__ = [
     "BuildResult",
     "Buildroot",
     "BUILDROOT_CONTAINER_PATH",
+    "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",
     "CFG_TOOLCHAIN",

@@ -80,23 +80,26 @@ nanvix-zutil lock --shallow    # resolve direct deps only (for CI release assets
 
 ## Docker Integration
 
-Consumer build scripts can run `build`, `test`, and other commands inside a
-Docker container by passing one of the three mutually exclusive Docker flags:
+Consumer build scripts can enable Docker mode by passing `--with-docker`
+to the `setup` subcommand.  The chosen image is persisted in
+`.nanvix/env.json` and automatically loaded by subsequent commands
+(`build`, `test`, `release`).
 
 | Flag | Image used |
 | --- | --- |
 | `--with-docker` | `docker_image()` (defaults to `nanvix/toolchain:latest-minimal`) |
-| `--with-minimal-docker` | `nanvix/toolchain:latest-minimal` |
-| `--docker-image <name>` | Custom image |
+| `--with-docker IMAGE` | Custom image |
 
-`setup()` always runs on the host (downloads sysroot/deps).  Every subsequent
-`self.run()` call is transparently wrapped in `docker run`.
+The flag is only available on the `setup` subcommand.  Once configured,
+all lifecycle hooks that use `self.run()` transparently execute inside
+the container.
 
 ```bash
-nanvix-zutil setup                          # download sysroot on host
-nanvix-zutil build --with-docker            # cross-compile inside Docker
-nanvix-zutil test  --with-minimal-docker    # run tests inside Docker
-nanvix-zutil clean                          # clean (host)
+nanvix-zutil setup --with-docker              # download sysroot + enable Docker (default image)
+nanvix-zutil setup --with-docker my/img:tag   # download sysroot + enable Docker (custom image)
+nanvix-zutil build                            # cross-compile inside Docker (auto)
+nanvix-zutil test                             # run tests inside Docker (auto)
+nanvix-zutil clean                            # clean (host)
 ```
 
 ### How it works

@@ -41,7 +41,7 @@ from nanvix_zutil.buildroot import (
     suffix_dep,
 )
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import CFG_GH_TOKEN, CFG_SYSROOT, Config
+from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
@@ -207,8 +207,7 @@ class ZScript:
         """Return the default Docker image name for this build script.
 
         Override in a subclass to change the default.  The value is only
-        used when ``--with-docker`` is passed; ``--docker-image`` and
-        ``--with-minimal-docker`` bypass this method.
+        used when ``--with-docker`` is passed without an explicit image.
 
         Returns:
             Docker image reference string.
@@ -541,8 +540,8 @@ class ZScript:
     ) -> "subprocess.CompletedProcess[str]":
         """Run a subprocess, logging the command before execution.
 
-        When Docker mode is active (i.e. a ``--with-docker``,
-        ``--with-minimal-docker``, or ``--docker-image`` flag was passed),
+        When Docker mode is active (i.e. ``--with-docker`` was passed
+        during ``setup`` and the current subcommand auto-loads it),
         the command is transparently wrapped in ``docker run``.
 
         Args:
@@ -712,21 +711,40 @@ class ZScript:
         args = parser.parse_args(framework_argv)
 
         # ------------------------------------------------------------------
-        # Resolve Docker image from CLI flags.
+        # Resolve Docker image from CLI flags or persisted config.
         # ------------------------------------------------------------------
         docker_image: str | None = None
-        if getattr(args, "docker_image", None):
-            docker_image = args.docker_image
-        elif getattr(args, "with_minimal_docker", False):
-            docker_image = DEFAULT_DOCKER_IMAGE
-        elif getattr(args, "with_docker", False):
+        # Subcommand-level flag (only present for setup).
+        with_docker_val = getattr(args, "with_docker", None)
+        if isinstance(with_docker_val, str):
+            # --with-docker IMAGE  (explicit custom image)
+            docker_image = with_docker_val
+        elif with_docker_val is True:
+            # --with-docker  (no argument → use default image)
             docker_image = instance.docker_image()
+
+        # For build/release subcommands, auto-load Docker image from
+        # config when it was previously persisted by ``setup --with-docker``.
+        # test and benchmark run on the host (they need KVM / hardware
+        # access that Docker cannot easily provide).
+        subcommand_name_for_docker: str | None = args.subcommand
+        _DOCKER_AUTO_LOAD: frozenset[str | None] = frozenset(
+            {"build", "release", "clean"}
+        )
+        if docker_image is None and subcommand_name_for_docker in _DOCKER_AUTO_LOAD:
+            persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
+            if persisted_image:
+                docker_image = persisted_image
+            elif is_windows():
+                # Windows has no native cross-toolchain; Docker is required
+                # for build/release/clean even without explicit --with-docker.
+                docker_image = instance.docker_image()
 
         if docker_image is not None:
             if not docker_available():
                 log.fatal(
                     "Docker is not available — install Docker or omit the"
-                    " --with-docker / --docker-image flag.",
+                    " --with-docker flag.",
                     code=EXIT_MISSING_DEP,
                 )
             if not image_exists(docker_image):
@@ -736,6 +754,18 @@ class ZScript:
                     code=EXIT_MISSING_DEP,
                 )
             instance.docker = instance.docker_config(docker_image)
+
+            # Persist Docker image on setup so subsequent commands
+            # automatically run inside Docker.
+            if subcommand_name_for_docker == "setup":
+                instance.config.set(CFG_DOCKER_IMAGE, docker_image)
+                instance.config.save()
+        elif subcommand_name_for_docker == "setup":
+            # ``setup`` without ``--with-docker`` clears any previously
+            # persisted Docker image so subsequent commands run on the host.
+            if instance.config.get(CFG_DOCKER_IMAGE):
+                instance.config.delete(CFG_DOCKER_IMAGE)
+                instance.config.save()
 
         # ------------------------------------------------------------------
         # Multi-build mode (--all-builds)

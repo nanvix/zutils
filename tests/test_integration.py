@@ -98,6 +98,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
             patch("sys.argv", argv),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
         ):
             _MockConsumer.main()
 
@@ -140,7 +142,11 @@ class TestIntegrationLifecycle(unittest.TestCase):
         # Instead verify that the --json flag propagates by checking log output
         # of a info call that happens internally (e.g. no-op build emits nothing,
         # but we can check the mode was set by attempting a direct log call).
-        with patch("sys.argv", [fake_script, "--json", "build"]):
+        with (
+            patch("sys.argv", [fake_script, "--json", "build"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
+        ):
             _MockConsumer.main()
 
         # After main(), log mode was set to True. Verify it produces JSON output.
@@ -206,6 +212,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
             patch("sys.argv", [fake_script, "build"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
         ):
             _MockConsumer.main()
 

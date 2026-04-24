@@ -38,6 +38,14 @@ SUBCOMMANDS: tuple[str, ...] = (
     "help",
 )
 
+#: Subcommands that accept the ``--with-docker`` flag.
+#:
+#: Docker is configured once during ``setup`` and persisted to
+#: ``.nanvix/env.json``.  Only ``build``, ``release``, and ``clean``
+#: auto-reload the saved image; ``test`` and ``benchmark`` always run
+#: on the host (they need KVM / direct hardware access).
+DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
+
 #: Human-readable descriptions for each subcommand.
 _SUBCOMMAND_HELP: dict[str, str] = {
     "setup": "Prepare the build environment",
@@ -86,30 +94,6 @@ def build_parser(
         "--version",
         action="version",
         version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
-    )
-
-    docker_group = parser.add_mutually_exclusive_group()
-    docker_group.add_argument(
-        "--with-docker",
-        action="store_true",
-        default=False,
-        dest="with_docker",
-        help="Run build/test commands inside the default Docker image"
-        f" (nanvix/toolchain:latest-minimal)",
-    )
-    docker_group.add_argument(
-        "--with-minimal-docker",
-        action="store_true",
-        default=False,
-        dest="with_minimal_docker",
-        help="Run build/test commands inside nanvix/toolchain:latest-minimal",
-    )
-    docker_group.add_argument(
-        "--docker-image",
-        metavar="IMAGE",
-        default=None,
-        dest="docker_image",
-        help="Run build/test commands inside the specified Docker image",
     )
 
     parser.add_argument(
@@ -168,6 +152,20 @@ def build_parser(
                 action="store_true",
                 default=False,
                 help="Resolve only direct dependencies (skip transitive discovery)",
+            )
+        if name in DOCKER_SUBCOMMANDS:
+            sub.add_argument(
+                "--with-docker",
+                nargs="?",
+                const=True,
+                default=None,
+                metavar="IMAGE",
+                dest="with_docker",
+                help="Enable Docker mode. Optionally specify a custom"
+                " image (default: nanvix/toolchain:latest-minimal)."
+                " The image is persisted to .nanvix/env.json so that"
+                " build and release automatically run inside Docker."
+                " test and benchmark always run on the host.",
             )
 
     return parser
