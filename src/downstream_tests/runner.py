@@ -56,7 +56,10 @@ def run_consumer(
         wheel_path:     Path to the nanvix-zutil wheel to install.
         setup_only:     Skip build and test phases.
         force_fallback: Force dependency fallback and assert it is triggered.
-        with_docker:    Pass ``--with-docker`` to build / test phases.
+        with_docker:    Pass ``--with-docker`` to the setup phase.
+                        The Docker image is persisted in ``.nanvix/env.json``
+                        so that ``build`` and ``release`` phases automatically
+                        run inside Docker.  ``test`` runs on the host.
         dry_run:        Print what would happen without executing.
         flags:          Per-consumer CLI flags.  ``"global"`` flags are
                         inserted before the command name; per-command keys
@@ -79,13 +82,13 @@ def run_consumer(
             dry(f"  {consumer}: would force dependency fallback")
         g = (" " + " ".join(global_flags)) if global_flags else ""
         s = (" " + " ".join(_flags.get("setup", []))) if _flags.get("setup") else ""
-        dry(f"  {consumer}: would run: nanvix-zutil{g} setup{s}")
+        docker_str = " --with-docker" if with_docker else ""
+        dry(f"  {consumer}: would run: nanvix-zutil{g} setup{docker_str}{s}")
         if not setup_only:
-            docker_str = " --with-docker" if with_docker else ""
             b = (" " + " ".join(_flags.get("build", []))) if _flags.get("build") else ""
             t = (" " + " ".join(_flags.get("test", []))) if _flags.get("test") else ""
-            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} build{b}")
-            dry(f"  {consumer}: would run: nanvix-zutil{g}{docker_str} test{t}")
+            dry(f"  {consumer}: would run: nanvix-zutil{g} build{b}")
+            dry(f"  {consumer}: would run: nanvix-zutil{g} test{t}")
         return consumer, "OK (dry-run)"
 
     # --- venv creation ---------------------------------------------------------
@@ -164,13 +167,21 @@ def run_consumer(
         export_fallback_env(repo_dir)
 
     # --- Phase 1: setup --------------------------------------------------------
-    log("  Running: nanvix-zutil setup")
+    setup_docker_flag: list[str] = []
+    if with_docker:
+        if shutil.which("docker"):
+            setup_docker_flag = ["--with-docker"]
+        else:
+            log("  --with-docker requested but Docker not available -- skipping Docker")
+
+    log(f"  Running: nanvix-zutil setup {' '.join(setup_docker_flag)}".rstrip())
     setup_cmd = [
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
         *global_flags,
         "setup",
+        *setup_docker_flag,
         *_flags.get("setup", []),
     ]
 
@@ -208,14 +219,9 @@ def run_consumer(
         return consumer, "OK (setup)"
 
     # --- Docker availability check ---------------------------------------------
-    docker_flag: list[str] = []
-    if with_docker:
-        if not shutil.which("docker"):
-            log(
-                "  --with-docker requested but Docker not available -- skipping build/test"
-            )
-            return consumer, "OK (setup, no docker)"
-        docker_flag = ["--with-docker"]
+    # Docker is configured during setup and persisted to env.json.  The
+    # build phase auto-loads the saved Docker image — no flag forwarding
+    # needed.  test runs on the host (needs KVM / direct hardware access).
 
     # --- Phase 2: build --------------------------------------------------------
     build_cmd = [
@@ -223,12 +229,11 @@ def run_consumer(
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
         *global_flags,
-        *docker_flag,
         "build",
         *_flags.get("build", []),
     ]
 
-    log(f"  Running: nanvix-zutil {' '.join(docker_flag)} build".rstrip())
+    log("  Running: nanvix-zutil build")
     build_result = subprocess.run(
         build_cmd,
         capture_output=True,
@@ -243,17 +248,17 @@ def run_consumer(
     ok(f"  {consumer} build: OK")
 
     # --- Phase 3: test ---------------------------------------------------------
+    # test always runs on the host (no Docker auto-load).
     test_cmd = [
         str(venv_python),
         "-c",
         f"{SHIM};from nanvix_zutil.__main__ import main;sys.exit(main())",
         *global_flags,
-        *docker_flag,
         "test",
         *_flags.get("test", []),
     ]
 
-    log(f"  Running: nanvix-zutil {' '.join(docker_flag)} test".rstrip())
+    log("  Running: nanvix-zutil test")
     test_result = subprocess.run(
         test_cmd,
         capture_output=True,
@@ -293,7 +298,10 @@ def run_consumers(
         wheel_path:       Path to the built wheel.
         setup_only:       Skip build and test phases.
         force_fallback:   Force dependency fallback for all consumers.
-        with_docker:      Pass ``--with-docker`` to build / test commands.
+        with_docker:      Pass ``--with-docker`` to the ``setup`` command.
+                          The Docker image is persisted to ``.nanvix/env.json``
+                          so ``build`` and ``release`` run inside Docker.
+                          ``test`` always runs on the host.
         dry_run:          Skip real operations; print what would happen.
 
     Returns:

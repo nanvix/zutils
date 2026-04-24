@@ -54,6 +54,9 @@ CFG_TOOLCHAIN: str = "NANVIX_TOOLCHAIN"
 CFG_GH_TOKEN: str = "GH_TOKEN"
 """GitHub token for authenticated API requests (rate limits)."""
 
+CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
+"""Docker image persisted by ``setup --with-docker``."""
+
 
 # ---------------------------------------------------------------------------
 # Public class
@@ -168,6 +171,16 @@ class Config:
             value: The new value.
         """
         self._data[key] = value
+
+    def delete(self, key: str) -> None:
+        """Remove a configuration key from memory.
+
+        Call :meth:`save` to persist the change to disk.
+
+        Args:
+            key: The configuration key to remove.
+        """
+        self._data.pop(key, None)
 
     # ------------------------------------------------------------------
     # Persistence

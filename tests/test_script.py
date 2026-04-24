@@ -845,6 +845,67 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIn("MY_VAR=hello", cmd)
 
 
+class TestZScriptWindowsAutoDocker(unittest.TestCase):
+    """On Windows, build/release/clean auto-enable Docker without --with-docker."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_build_auto_enables_docker_on_windows(self) -> None:
+        """build on Windows uses the default Docker image even without setup --with-docker."""
+
+        class BuildScript(ZScript):
+            def build(self) -> None:
+                pass
+
+        docker_configured = False
+
+        def _fake_build(self_inner: ZScript) -> None:
+            nonlocal docker_configured
+            docker_configured = self_inner.docker is not None
+
+        with (
+            patch("sys.argv", ["z.py", "build"]),
+            patch("nanvix_zutil.script.is_windows", return_value=True),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
+            patch.object(BuildScript, "build", _fake_build),
+            patch("nanvix_zutil.script.log"),
+        ):
+            BuildScript.main(repo_root=Path(self._tmpdir.name))
+
+        self.assertTrue(docker_configured)
+
+    def test_build_no_auto_docker_on_linux(self) -> None:
+        """build on Linux without persisted image does NOT auto-enable Docker."""
+
+        class BuildScript(ZScript):
+            def build(self) -> None:
+                pass
+
+        docker_configured = False
+
+        def _fake_build(self_inner: ZScript) -> None:
+            nonlocal docker_configured
+            docker_configured = self_inner.docker is not None
+
+        with (
+            patch("sys.argv", ["z.py", "build"]),
+            patch("nanvix_zutil.script.is_windows", return_value=False),
+            patch.object(BuildScript, "build", _fake_build),
+            patch("nanvix_zutil.script.log"),
+        ):
+            BuildScript.main(repo_root=Path(self._tmpdir.name))
+
+        self.assertFalse(docker_configured)
+
+
 class TestZScriptCleanWindows(unittest.TestCase):
     """ZScript.clean() Windows behavior."""
 

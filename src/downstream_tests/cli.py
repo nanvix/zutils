@@ -72,7 +72,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--with-docker",
         action="store_true",
         default=False,
-        help="Pass --with-docker to nanvix-zutil build/test commands.",
+        help=(
+            "Pass --with-docker to the nanvix-zutil setup command. "
+            "The Docker image is persisted to .nanvix/env.json so "
+            "build and release phases run inside Docker automatically. "
+            "test always runs on the host."
+        ),
     )
     parser.add_argument(
         "--dry-run",

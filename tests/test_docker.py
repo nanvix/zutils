@@ -101,16 +101,19 @@ class TestDockerConfigTranslatePath(unittest.TestCase):
         result = cfg.translate_path(self._sysroot / "lib" / "libposix.a")
         self.assertEqual(result, SYSROOT_CONTAINER_PATH / "lib" / "libposix.a")
 
-    def test_unmatched_path_returned_unchanged(self) -> None:
+    def test_unmatched_path_returned_as_posix(self) -> None:
         cfg = self._make_config()
         unmatched = Path("/some/other/path")
         result = cfg.translate_path(unmatched)
-        self.assertEqual(result, unmatched)
+        self.assertEqual(result, PurePosixPath("/some/other/path"))
+        self.assertIsInstance(result, PurePosixPath)
 
-    def test_empty_mounts_returns_input(self) -> None:
+    def test_empty_mounts_returns_posix(self) -> None:
         cfg = DockerConfig(image="test-image", mounts=[])
         p = Path("/foo/bar")
-        self.assertEqual(cfg.translate_path(p), p)
+        result = cfg.translate_path(p)
+        self.assertEqual(result, PurePosixPath("/foo/bar"))
+        self.assertIsInstance(result, PurePosixPath)
 
 
 @patch("nanvix_zutil.docker.is_windows", return_value=False)
@@ -736,6 +739,77 @@ class TestGetKvmGidPlatformShortCircuit(unittest.TestCase):
             mock_sys.platform = "linux"
             result = _get_kvm_gid()
         self.assertEqual(result, "108")
+
+
+class TestDockerConfigWithSysrootWritable(unittest.TestCase):
+    """Tests for DockerConfig.with_sysroot_writable."""
+
+    def test_sysroot_becomes_writable(self) -> None:
+        cfg = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
+                Mount(
+                    host_path=Path("/sr"),
+                    container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+            ],
+        )
+        new = cfg.with_sysroot_writable()
+        sysroot_mount = next(
+            m for m in new.mounts if m.container_path == SYSROOT_CONTAINER_PATH
+        )
+        self.assertFalse(sysroot_mount.readonly)
+
+    def test_other_mounts_unchanged(self) -> None:
+        cfg = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
+                Mount(
+                    host_path=Path("/sr"),
+                    container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+                Mount(
+                    host_path=Path("/br"),
+                    container_path=BUILDROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+            ],
+        )
+        new = cfg.with_sysroot_writable()
+        br_mount = next(
+            m for m in new.mounts if m.container_path == BUILDROOT_CONTAINER_PATH
+        )
+        self.assertTrue(br_mount.readonly)
+
+    def test_no_sysroot_mount_is_noop(self) -> None:
+        cfg = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
+            ],
+        )
+        new = cfg.with_sysroot_writable()
+        self.assertEqual(len(new.mounts), 1)
+
+    def test_returns_new_instance(self) -> None:
+        cfg = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(
+                    host_path=Path("/sr"),
+                    container_path=SYSROOT_CONTAINER_PATH,
+                    readonly=True,
+                ),
+            ],
+        )
+        new = cfg.with_sysroot_writable()
+        self.assertIsNot(cfg, new)
+        # Original must remain read-only.
+        self.assertTrue(cfg.mounts[0].readonly)
 
 
 if __name__ == "__main__":

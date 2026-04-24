@@ -305,6 +305,11 @@ def run_all_builds(
                     )
                 instance.docker = instance.docker_config(docker_image)
 
+                # Functional tests run nanvixd with cwd=/mnt/sysroot;
+                # nanvixd's flexi_logger needs a writable CWD.
+                if hook in ("test", "benchmark"):
+                    instance.docker = instance.docker.with_sysroot_writable()
+
             # Run prerequisite chain.
             for step in hook_chain:
                 method = getattr(instance, step, None)

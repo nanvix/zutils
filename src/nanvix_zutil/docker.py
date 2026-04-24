@@ -11,13 +11,13 @@ call in ``docker run``.
 
 Typical usage (via :class:`~nanvix_zutil.ZScript` — not used directly)::
 
-    ./z build --with-docker
-    ./z test  --with-minimal-docker
-    ./z build --docker-image nanvix/toolchain:v1.2.3
+    ./z setup --with-docker
+    ./z setup --with-docker nanvix/toolchain:v1.2.3
 """
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import shlex
 import shutil
@@ -43,8 +43,8 @@ BUILDROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/buildroot")
 #: Container path for the Nanvix cross-compilation toolchain.
 TOOLCHAIN_CONTAINER_PATH: PurePosixPath = PurePosixPath("/opt/nanvix")
 
-#: Default Docker image used when ``--with-docker`` or
-#: ``--with-minimal-docker`` is requested.
+#: Default Docker image used when ``--with-docker`` is passed
+#: without an explicit image argument.
 DEFAULT_DOCKER_IMAGE: str = "nanvix/toolchain:latest-minimal"
 
 
@@ -185,19 +185,22 @@ class DockerConfig:
     # Path translation
     # ------------------------------------------------------------------
 
-    def translate_path(self, host_path: Path) -> PurePosixPath | Path:
+    def translate_path(self, host_path: Path) -> PurePosixPath:
         """Translate a host path to its container equivalent.
 
         Scans :attr:`mounts` and returns the container-side path for the
         longest matching host prefix.  If no mount covers *host_path*, the
-        original path is returned unchanged.
+        path is returned as a :class:`PurePosixPath` so container-internal
+        paths keep forward slashes on Windows.
 
         Args:
             host_path: An absolute host path to translate.
 
         Returns:
-            Container-side :class:`~pathlib.PurePosixPath`, or *host_path*
-            if no mount matches.
+            Container-side :class:`~pathlib.PurePosixPath`.  When no mount
+            covers the path, the result is still a :class:`PurePosixPath`
+            so that container-internal paths (e.g. ``/opt/nanvix``) keep
+            forward slashes on Windows.
         """
         resolved = host_path.resolve()
         best_mount: Mount | None = None
@@ -218,7 +221,35 @@ class DockerConfig:
 
         if best_mount is not None:
             return best_mount.container_path / PurePosixPath(*best_rel.parts)
-        return host_path
+        # No mount matched — return as PurePosixPath so container-internal
+        # paths like /opt/nanvix keep forward slashes on Windows.
+        return PurePosixPath(host_path.as_posix())
+
+    # ------------------------------------------------------------------
+    # Mount helpers
+    # ------------------------------------------------------------------
+
+    def with_sysroot_writable(self) -> DockerConfig:
+        """Return a copy with the sysroot mount made read-write.
+
+        Functional tests run ``nanvixd`` with ``cd /mnt/sysroot`` as the
+        working directory.  ``nanvixd`` uses ``flexi_logger`` which writes
+        log files into the CWD — this fails when the sysroot volume is
+        mounted read-only.
+
+        Returns:
+            A new :class:`DockerConfig` with the sysroot mount (if any)
+            changed to ``readonly=False``.  All other fields are shared.
+        """
+        new_mounts = [
+            (
+                dataclasses.replace(m, readonly=False)
+                if m.container_path == SYSROOT_CONTAINER_PATH
+                else m
+            )
+            for m in self.mounts
+        ]
+        return dataclasses.replace(self, mounts=new_mounts)
 
     # ------------------------------------------------------------------
     # Command construction
