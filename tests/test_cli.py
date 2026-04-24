@@ -109,6 +109,13 @@ class TestDockerFlags(unittest.TestCase):
             parser.parse_args(["test", "--with-docker"])
         self.assertEqual(ctx.exception.code, 2)
 
+    def test_legacy_docker_before_subcommand_rejected(self) -> None:
+        """Legacy ordering (--with-docker build) is rejected after migration."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["--with-docker", "build"])
+        self.assertEqual(ctx.exception.code, 2)
+
 
 class TestAllBuildsFlags(unittest.TestCase):
     """Tests for --all-builds and --mode CLI flags."""
