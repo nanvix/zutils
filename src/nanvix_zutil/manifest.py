@@ -45,7 +45,9 @@ class BuildMatrix:
 
     Attributes:
         dimensions: Mapping of dimension names to allowed values.
-            Keys are ``"platforms"``, ``"modes"``, ``"memory"``.
+            Required keys: ``"platforms"``, ``"modes"``, ``"memory"``.
+            Optional key (always present after parsing, default
+            ``["x86"]``): ``"target-archs"``.
         exclude: List of partial-match dicts. Each dict maps
             combo field names (singular: ``"platform"``, ``"mode"``,
             ``"memory"``) to values; matching combos are removed.
@@ -246,10 +248,11 @@ def parse_builds_section(
 ) -> BuildMatrix:
     """Parse a ``[builds]`` table into a :class:`BuildMatrix`.
 
-    Validates that ``[builds.matrix]`` contains exactly the required
-    dimensions (``platforms``, ``modes``, ``memory``), each as a
-    non-empty list of strings.  Exclude entries use singular field
-    names (``platform``, ``mode``, ``memory``) and are validated
+    Validates that ``[builds.matrix]`` contains the required
+    dimensions (``platforms``, ``modes``, ``memory``) and the optional
+    dimension ``target-archs`` (defaults to ``["x86"]`` when absent),
+    each as a non-empty list of strings.  Exclude entries use singular
+    field names (``platform``, ``mode``, ``memory``) and are validated
     against the known set — unknown keys are rejected.
 
     Args:

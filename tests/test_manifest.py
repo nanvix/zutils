@@ -1276,6 +1276,45 @@ class TestTargetArchs(unittest.TestCase):
         m = load_manifest(path)
         self.assertEqual(m.builds.dimensions["target-archs"], ["x86"])
 
+    def test_target_archs_empty_fatal(self) -> None:
+        """Empty target-archs list is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "target-archs = []\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["standalone"]\n'
+            'memory = ["128mb"]\n'
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_target_archs_non_string_element_fatal(self) -> None:
+        """Non-string element in target-archs is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "target-archs = [42]\n"
+            'platforms = ["hyperlight"]\n'
+            'modes = ["standalone"]\n'
+            'memory = ["128mb"]\n'
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_target_archs_not_a_list_fatal(self) -> None:
+        """target-archs as a scalar string is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + 'target-archs = "x86"\n'
+            'platforms = ["hyperlight"]\n'
+            'modes = ["standalone"]\n'
+            'memory = ["128mb"]\n'
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
