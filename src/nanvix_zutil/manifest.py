@@ -570,7 +570,17 @@ def load_manifest(path: Path) -> Manifest:
                     f"{path}: [test.{mode_name}] must be a table",
                     code=EXIT_INVALID_ARGS,
                 )
-            targets_val: object = cast("dict[str, object]", mode_raw).get("targets")
+            mode_table: dict[str, object] = cast("dict[str, object]", mode_raw)
+            unknown_keys: list[str] = sorted(
+                key for key in mode_table.keys() if key != "targets"
+            )
+            if unknown_keys:
+                log.fatal(
+                    f"{path}: [test.{mode_name}] contains unknown key(s): "
+                    + ", ".join(unknown_keys),
+                    code=EXIT_INVALID_ARGS,
+                )
+            targets_val: object = mode_table.get("targets")
             if (
                 not isinstance(targets_val, list)
                 or not targets_val

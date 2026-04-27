@@ -1446,6 +1446,18 @@ class TestManifestTestConfig(unittest.TestCase):
             load_manifest(path)
         self.assertEqual(ctx.exception.code, 2)
 
+    def test_unknown_key_fatal(self) -> None:
+        """Unknown key in [test.<mode>] sub-table is fatal (typo guard)."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n"
+            'targets = ["test-smoke"]\n'
+            'target = ["typo"]\n'
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
