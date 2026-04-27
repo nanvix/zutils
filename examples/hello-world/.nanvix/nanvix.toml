@@ -8,3 +8,6 @@ nanvix-version = "0.12.410"
 platforms = ["hyperlight", "microvm"]
 modes = ["standalone", "single-process", "multi-process"]
 memory = ["128mb"]
+
+[test.standalone]
+targets = ["test-smoke", "test-integration"]
