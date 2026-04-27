@@ -1354,10 +1354,10 @@ class TestManifestTestConfig(unittest.TestCase):
             'targets = ["test-smoke", "test-integration"]\n'
         )
         m = load_manifest(path)
-        self.assertIsNotNone(m.test_config)
-        self.assertIn("standalone", m.test_config.modes)  # type: ignore[union-attr]
+        assert m.test_config is not None
+        self.assertIn("standalone", m.test_config.modes)
         self.assertEqual(
-            m.test_config.modes["standalone"].targets,  # type: ignore[union-attr]
+            m.test_config.modes["standalone"].targets,
             ["test-smoke", "test-integration"],
         )
 
@@ -1392,6 +1392,18 @@ class TestManifestTestConfig(unittest.TestCase):
             ["test-smoke"],
         )
 
+    def test_targets_for_mode_returns_copy(self) -> None:
+        """targets_for_mode returns a fresh list, not the internal one."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n" 'targets = ["test-smoke"]\n'
+        )
+        m = load_manifest(path)
+        assert m.test_config is not None
+        result = m.test_config.targets_for_mode("standalone")
+        assert result is not None
+        self.assertIsNot(result, m.test_config.modes["standalone"].targets)
+
     def test_targets_for_mode_miss(self) -> None:
         """targets_for_mode returns None when mode has no override."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
@@ -1419,9 +1431,17 @@ class TestManifestTestConfig(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
     def test_non_table_mode_fatal(self) -> None:
-        """[test] = scalar string instead of table is fatal."""
+        """[test] = scalar string instead of table is fatal (outer guard)."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(self._BASE + '\ntest = "bad"\n')
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_non_table_mode_value_fatal(self) -> None:
+        """[test.standalone] as a scalar string is fatal (inner guard)."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(self._BASE + "\n[test]\n" 'standalone = "bad"\n')
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
         self.assertEqual(ctx.exception.code, 2)

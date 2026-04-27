@@ -63,6 +63,8 @@ class TestModeConfig:
 
     Attributes:
         targets: Non-empty list of make target names to run for this mode.
+            Note: ``frozen=True`` prevents field rebinding but does not make
+            the list itself immutable; callers must not mutate it in place.
     """
 
     targets: list[str]
@@ -76,6 +78,8 @@ class TestConfig:
 
     Attributes:
         modes: Mapping of mode name to :class:`TestModeConfig`.
+            Note: ``frozen=True`` prevents field rebinding but does not make
+            the dict itself immutable; callers must not mutate it in place.
     """
 
     modes: dict[str, TestModeConfig]
@@ -570,7 +574,9 @@ def load_manifest(path: Path) -> Manifest:
             if (
                 not isinstance(targets_val, list)
                 or not targets_val
-                or not all(isinstance(t, str) for t in cast("list[object]", targets_val))
+                or not all(
+                    isinstance(t, str) for t in cast("list[object]", targets_val)
+                )
             ):
                 log.fatal(
                     f"{path}: [test.{mode_name}].targets must be a"
