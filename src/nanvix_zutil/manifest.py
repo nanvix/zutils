@@ -57,6 +57,42 @@ class BuildMatrix:
     exclude: list[dict[str, str]]
 
 
+@dataclass(frozen=True)
+class TestModeConfig:
+    """Parsed ``[test.<mode>]`` sub-table from ``nanvix.toml``.
+
+    Attributes:
+        targets: Non-empty list of make target names to run for this mode.
+    """
+
+    targets: list[str]
+
+
+@dataclass(frozen=True)
+class TestConfig:
+    """Parsed ``[test]`` section from ``nanvix.toml``.
+
+    Keys are deployment mode names, values are per-mode config.
+
+    Attributes:
+        modes: Mapping of mode name to :class:`TestModeConfig`.
+    """
+
+    modes: dict[str, TestModeConfig]
+
+    def targets_for_mode(self, mode: str) -> list[str] | None:
+        """Return the target list for *mode*, or ``None`` if no override.
+
+        Args:
+            mode: Deployment mode name to look up.
+
+        Returns:
+            A copy of the targets list, or ``None`` if the mode has no entry.
+        """
+        cfg = self.modes.get(mode)
+        return list(cfg.targets) if cfg is not None else None
+
+
 @dataclass
 class Manifest:
     """Parsed contents of a ``nanvix.toml`` manifest file.
@@ -68,6 +104,7 @@ class Manifest:
         builds: Build matrix from the required ``[builds]`` section.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
+        test_config: Optional per-mode test overrides from ``[test]`` section.
     """
 
     name: str
@@ -76,6 +113,7 @@ class Manifest:
     builds: BuildMatrix
     dependencies: list[Dependency] = field(default_factory=list)
     system_dependencies: list[Dependency] = field(default_factory=list)
+    test_config: TestConfig | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -512,6 +550,38 @@ def load_manifest(path: Path) -> Manifest:
         cast("dict[str, object]", sys_deps_raw), path, "system-dependencies"
     )
 
+    # --- [test] (optional) ---
+    test_raw: object = data.get("test")
+    test_config: TestConfig | None = None
+    if test_raw is not None:
+        if not isinstance(test_raw, dict):
+            log.fatal(
+                f"{path}: [test] must be a table",
+                code=EXIT_INVALID_ARGS,
+            )
+        modes: dict[str, TestModeConfig] = {}
+        for mode_name, mode_raw in cast("dict[str, object]", test_raw).items():
+            if not isinstance(mode_raw, dict):
+                log.fatal(
+                    f"{path}: [test.{mode_name}] must be a table",
+                    code=EXIT_INVALID_ARGS,
+                )
+            targets_val: object = cast("dict[str, object]", mode_raw).get("targets")
+            if (
+                not isinstance(targets_val, list)
+                or not targets_val
+                or not all(isinstance(t, str) for t in cast("list[object]", targets_val))
+            ):
+                log.fatal(
+                    f"{path}: [test.{mode_name}].targets must be a"
+                    " non-empty list of strings",
+                    code=EXIT_INVALID_ARGS,
+                )
+            modes[mode_name] = TestModeConfig(
+                targets=list(cast("list[str]", targets_val))
+            )
+        test_config = TestConfig(modes=modes)
+
     # --- [builds] (required) ---
     builds_raw: object = data.get("builds")
     if builds_raw is None:
@@ -549,4 +619,5 @@ def load_manifest(path: Path) -> Manifest:
         builds=builds,
         dependencies=dependencies,
         system_dependencies=system_dependencies,
+        test_config=test_config,
     )

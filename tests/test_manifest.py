@@ -1316,5 +1316,116 @@ class TestTargetArchs(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestManifestTestConfig(unittest.TestCase):
+    """Tests for [test] section parsing."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    _BASE = (
+        "[package]\n"
+        'name = "myapp"\n'
+        'version = "1.0.0"\n'
+        'nanvix-version = "0.12.410"\n'
+        "[builds]\n"
+        "[builds.matrix]\n"
+        'platforms = ["hyperlight"]\n'
+        'modes = ["standalone", "multi-process"]\n'
+        'memory = ["128mb"]\n'
+    )
+
+    def test_no_test_section(self) -> None:
+        """No [test] section -> test_config is None."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(self._BASE)
+        m = load_manifest(path)
+        self.assertIsNone(m.test_config)
+
+    def test_valid_single_mode(self) -> None:
+        """Valid [test.standalone] parses correctly."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n"
+            'targets = ["test-smoke", "test-integration"]\n'
+        )
+        m = load_manifest(path)
+        self.assertIsNotNone(m.test_config)
+        self.assertIn("standalone", m.test_config.modes)  # type: ignore[union-attr]
+        self.assertEqual(
+            m.test_config.modes["standalone"].targets,  # type: ignore[union-attr]
+            ["test-smoke", "test-integration"],
+        )
+
+    def test_valid_multiple_modes(self) -> None:
+        """Multiple [test.<mode>] sub-tables parse correctly."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n"
+            'targets = ["test-smoke"]\n'
+            "\n[test.single-process]\n"
+            'targets = ["test-smoke", "test-integration"]\n'
+        )
+        m = load_manifest(path)
+        assert m.test_config is not None
+        self.assertEqual(len(m.test_config.modes), 2)
+        self.assertEqual(m.test_config.modes["standalone"].targets, ["test-smoke"])
+        self.assertEqual(
+            m.test_config.modes["single-process"].targets,
+            ["test-smoke", "test-integration"],
+        )
+
+    def test_targets_for_mode_hit(self) -> None:
+        """targets_for_mode returns targets when mode matches."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n" 'targets = ["test-smoke"]\n'
+        )
+        m = load_manifest(path)
+        assert m.test_config is not None
+        self.assertEqual(
+            m.test_config.targets_for_mode("standalone"),
+            ["test-smoke"],
+        )
+
+    def test_targets_for_mode_miss(self) -> None:
+        """targets_for_mode returns None when mode has no override."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + "\n[test.standalone]\n" 'targets = ["test-smoke"]\n'
+        )
+        m = load_manifest(path)
+        assert m.test_config is not None
+        self.assertIsNone(m.test_config.targets_for_mode("multi-process"))
+
+    def test_empty_targets_fatal(self) -> None:
+        """Empty targets list is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(self._BASE + "\n[test.standalone]\n" "targets = []\n")
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_non_string_targets_fatal(self) -> None:
+        """Non-string entries in targets list is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(self._BASE + "\n[test.standalone]\n" "targets = [42]\n")
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_non_table_mode_fatal(self) -> None:
+        """[test] = scalar string instead of table is fatal."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(self._BASE + '\ntest = "bad"\n')
+        with self.assertRaises(SystemExit) as ctx:
+            load_manifest(path)
+        self.assertEqual(ctx.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
