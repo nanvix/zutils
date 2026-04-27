@@ -1233,5 +1233,49 @@ class TestLoadManifestBuildsSection(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestTargetArchs(unittest.TestCase):
+    """Tests for target-archs dimension in [builds.matrix]."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    _BASE = (
+        "[package]\n"
+        'name = "myapp"\n'
+        'version = "1.0.0"\n'
+        'nanvix-version = "0.12.410"\n'
+        "[builds]\n"
+        "[builds.matrix]\n"
+    )
+
+    def test_target_archs_present(self) -> None:
+        """Explicit target-archs parsed into dimensions."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + 'target-archs = ["x86", "arm64"]\n'
+            'platforms = ["hyperlight"]\n'
+            'modes = ["standalone"]\n'
+            'memory = ["128mb"]\n'
+        )
+        m = load_manifest(path)
+        self.assertEqual(m.builds.dimensions["target-archs"], ["x86", "arm64"])
+
+    def test_target_archs_absent_defaults_to_x86(self) -> None:
+        """Missing target-archs defaults to ["x86"]."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(
+            self._BASE + 'platforms = ["hyperlight"]\n'
+            'modes = ["standalone"]\n'
+            'memory = ["128mb"]\n'
+        )
+        m = load_manifest(path)
+        self.assertEqual(m.builds.dimensions["target-archs"], ["x86"])
+
+
 if __name__ == "__main__":
     unittest.main()

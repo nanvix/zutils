@@ -270,7 +270,10 @@ def parse_builds_section(
         )
     matrix = cast("dict[str, object]", matrix_raw)
 
-    _valid_dimensions = frozenset({"platforms", "modes", "memory"})
+    _optional_dimensions = frozenset({"target-archs"})
+    _valid_dimensions = (
+        frozenset({"platforms", "modes", "memory"}) | _optional_dimensions
+    )
     unknown_dims = set(matrix.keys()) - _valid_dimensions
     if unknown_dims:
         log.fatal(
@@ -311,6 +314,10 @@ def parse_builds_section(
                 code=EXIT_INVALID_ARGS,
             )
         dimensions[dim_name] = str_list
+
+    # target-archs is optional; default to ["x86"] when absent.
+    if "target-archs" not in dimensions:
+        dimensions["target-archs"] = ["x86"]
 
     exclude: list[dict[str, str]] = []
     exclude_raw: object = raw.get("exclude")
