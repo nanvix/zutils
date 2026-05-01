@@ -1135,5 +1135,77 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         self.assertEqual(obj["code"], EXIT_DEGRADED_SETUP)
 
 
+class TestZScriptSetupWithNanvix(unittest.TestCase):
+    """setup() with WITH_NANVIX overlays local artifacts."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+            "WITH_NANVIX",
+        ):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        os.environ.pop("WITH_NANVIX", None)
+        self._tmpdir.cleanup()
+
+    def test_setup_calls_overlay_when_env_set(self) -> None:
+        """setup() calls sysroot.overlay_local_nanvix when WITH_NANVIX is set."""
+        local_dir = Path(self._tmpdir.name) / "local-nanvix"
+        local_dir.mkdir()
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        os.environ["WITH_NANVIX"] = str(local_dir)
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        fake_sysroot.overlay_local_nanvix.assert_called_once_with(local_dir)
+        fake_sysroot.verify.assert_called_once()
+
+    def test_setup_no_overlay_without_env(self) -> None:
+        """setup() does not call overlay_local_nanvix when WITH_NANVIX is unset."""
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        fake_sysroot.overlay_local_nanvix.assert_not_called()
+
+    def test_setup_local_deps_skips_github(self) -> None:
+        """setup() skips GitHub download for deps found locally."""
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+
+        local_dir = Path(self._tmpdir.name) / "local-nanvix"
+        (local_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
+        (local_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"local-zlib")
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.tag = "v0.1.0"
+
+        os.environ["WITH_NANVIX"] = str(local_dir)
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_resolve,
+        ):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+
+        # The dependency was satisfied locally so GitHub resolve should not
+        # have been called.
+        mock_resolve.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

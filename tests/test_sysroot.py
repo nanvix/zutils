@@ -205,5 +205,84 @@ class TestSysrootVerify(unittest.TestCase):
         sysroot.verify(required_files=[])
 
 
+class TestSysrootOverlayLocal(unittest.TestCase):
+    """Sysroot.overlay_local() copies local artifacts into the sysroot."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_overlay_copies_bin_files(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        (sysroot_dir / "bin").mkdir(parents=True)
+        (sysroot_dir / "bin" / "nanvixd.elf").write_bytes(b"old")
+
+        local_dir = Path(self._tmpdir.name) / "local"
+        (local_dir / "bin").mkdir(parents=True)
+        (local_dir / "bin" / "nanvixd.elf").write_bytes(b"new-local")
+
+        sysroot = Sysroot(sysroot_dir)
+        sysroot.overlay_local_nanvix(local_dir)
+
+        self.assertEqual(
+            (sysroot_dir / "bin" / "nanvixd.elf").read_bytes(), b"new-local"
+        )
+
+    def test_overlay_copies_lib_files(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        (sysroot_dir / "lib").mkdir(parents=True)
+        (sysroot_dir / "lib" / "libposix.a").write_bytes(b"old-lib")
+
+        local_dir = Path(self._tmpdir.name) / "local"
+        (local_dir / "lib").mkdir(parents=True)
+        (local_dir / "lib" / "libposix.a").write_bytes(b"new-lib")
+
+        sysroot = Sysroot(sysroot_dir)
+        sysroot.overlay_local_nanvix(local_dir)
+
+        self.assertEqual((sysroot_dir / "lib" / "libposix.a").read_bytes(), b"new-lib")
+
+    def test_overlay_adds_new_files(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        (sysroot_dir / "bin").mkdir(parents=True)
+
+        local_dir = Path(self._tmpdir.name) / "local"
+        (local_dir / "bin").mkdir(parents=True)
+        (local_dir / "bin" / "uservm.elf").write_bytes(b"uservm-data")
+
+        sysroot = Sysroot(sysroot_dir)
+        sysroot.overlay_local_nanvix(local_dir)
+
+        self.assertTrue((sysroot_dir / "bin" / "uservm.elf").exists())
+        self.assertEqual(
+            (sysroot_dir / "bin" / "uservm.elf").read_bytes(), b"uservm-data"
+        )
+
+    def test_overlay_no_artifacts_warns(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir.mkdir()
+
+        local_dir = Path(self._tmpdir.name) / "local"
+        local_dir.mkdir()  # No bin/ or lib/ subdirs
+
+        sysroot = Sysroot(sysroot_dir)
+        # Should not raise, just warn.
+        sysroot.overlay_local_nanvix(local_dir)
+
+    def test_overlay_nonexistent_path_exits(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir.mkdir()
+        log_mod.set_json_mode(True)
+
+        sysroot = Sysroot(sysroot_dir)
+        with self.assertRaises(SystemExit) as ctx:
+            sysroot.overlay_local_nanvix(Path("/nonexistent/path"))
+        self.assertEqual(ctx.exception.code, 3)
+
+
 if __name__ == "__main__":
     unittest.main()
