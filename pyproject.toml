@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanvix-zutil"
-version = "0.7.26"
+version = "0.7.27"
 description = "Build orchestration utilities for the Nanvix ecosystem"
 readme = "README.md"
 license = { file = "LICENSE" }
