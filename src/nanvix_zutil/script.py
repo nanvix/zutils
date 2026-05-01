@@ -335,6 +335,13 @@ class ZScript:
                 gh_token=self.config.get(CFG_GH_TOKEN),
             )
 
+        # When --with-nanvix PATH is passed, overlay local build artifacts
+        # (nanvixd.elf, mkramfs.elf, uservm.elf, libposix.a, etc.) on top
+        # of the downloaded sysroot before verification.
+        nanvix_local = os.environ.get("WITH_NANVIX")
+        if nanvix_local:
+            self.sysroot.overlay_local_nanvix(Path(nanvix_local))
+
         self.sysroot.verify(self.sysroot_required_files())
 
         # Deferred auto-suffix: when sysroot is "latest", load_manifest()
@@ -355,6 +362,15 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
             for dep in deps:
+                # When --with-nanvix is active, try local artifacts first (only for nanvix-owned
+                # dependencies).
+                if (
+                    nanvix_local
+                    and dep.repo.startswith("nanvix/")
+                    and self.buildroot.install_local_nanvix(dep, Path(nanvix_local))
+                ):
+                    continue
+
                 try:
                     # Resolve release with version fallback for nanvix-suffixed
                     # deps, then pass the pre-resolved release and enable

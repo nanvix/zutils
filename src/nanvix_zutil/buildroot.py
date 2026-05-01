@@ -314,6 +314,62 @@ class Buildroot:
 
         log.success(f"Installed {dep.name} into buildroot")
 
+    def install_local_nanvix(
+        self,
+        dep: Dependency,
+        local_path: Path,
+    ) -> bool:
+        """Install a dependency from a local Nanvix build directory.
+
+        Looks for ``<local_path>/deps/<dep.name>/`` containing ``lib/``
+        and/or ``include/`` subdirectories.  If found, copies the
+        matching artifacts into the buildroot.
+
+        Args:
+            dep: The :class:`Dependency` descriptor.
+            local_path: Absolute path to the local Nanvix build output.
+
+        Returns:
+            ``True`` if local artifacts were found and installed,
+            ``False`` otherwise (caller should fall back to GitHub).
+        """
+        import shutil
+
+        dep_dir = local_path / "deps" / dep.name
+        if not dep_dir.is_dir():
+            return False
+
+        installed = False
+        lib_dir = dep_dir / "lib"
+        if lib_dir.is_dir():
+            dst_lib = self.path / "lib"
+            dst_lib.mkdir(parents=True, exist_ok=True)
+            for src_file in lib_dir.iterdir():
+                if src_file.is_file() and src_file.suffix == ".a":
+                    if dep.install_libs is None or src_file.name in dep.install_libs:
+                        shutil.copy2(src_file, dst_lib / src_file.name)
+                        installed = True
+
+        include_dir = dep_dir / "include"
+        if include_dir.is_dir():
+            dst_inc = self.path / "include"
+            dst_inc.mkdir(parents=True, exist_ok=True)
+            for src_file in include_dir.rglob("*"):
+                if src_file.is_file() and src_file.suffix == ".h":
+                    if (
+                        dep.install_headers is None
+                        or src_file.name in dep.install_headers
+                    ):
+                        rel = src_file.relative_to(include_dir)
+                        dst_file = dst_inc / rel
+                        dst_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_file, dst_file)
+                        installed = True
+
+        if installed:
+            log.info(f"Installed {dep.name} from local path: {dep_dir}")
+        return installed
+
     # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------

@@ -238,6 +238,59 @@ class Sysroot:
             log.success("Windows host binaries installed")
 
     # ------------------------------------------------------------------
+    # Local overlay
+    # ------------------------------------------------------------------
+
+    def overlay_local_nanvix(self, local_path: Path) -> None:
+        """Overlay locally-built Nanvix artifacts on top of the sysroot.
+
+        Walks the local directory and copies any files that match the
+        sysroot layout (``bin/`` and ``lib/`` subdirectories) into the
+        sysroot, overriding downloaded artifacts.  This enables
+        development workflows where nanvixd, mkramfs, uservm, etc. are
+        built from a local checkout.
+
+        Args:
+            local_path: Absolute path to the local Nanvix build output
+                directory.  Expected to mirror the sysroot layout
+                (``bin/nanvixd.elf``, ``lib/libposix.a``, etc.).
+
+        Raises:
+            SystemExit: If *local_path* does not exist or is not a
+                directory.
+        """
+        if not local_path.is_dir():
+            log.fatal(
+                f"--with-nanvix path is not a directory: {local_path}",
+                code=EXIT_MISSING_DEP,
+            )
+
+        import shutil
+
+        overlaid: list[str] = []
+        for subdir in ("bin", "lib"):
+            src_dir = local_path / subdir
+            if not src_dir.is_dir():
+                continue
+            dst_dir = self.path / subdir
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for src_file in src_dir.iterdir():
+                if src_file.is_file():
+                    dst_file = dst_dir / src_file.name
+                    shutil.copy2(src_file, dst_file)
+                    overlaid.append(f"{subdir}/{src_file.name}")
+
+        if overlaid:
+            log.info(f"Overlaid {len(overlaid)} local artifact(s) from {local_path}")
+            for name in sorted(overlaid):
+                log.info(f"  → {name}")
+        else:
+            log.warning(
+                f"No bin/ or lib/ artifacts found in {local_path} — "
+                "sysroot unchanged"
+            )
+
+    # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------
 
