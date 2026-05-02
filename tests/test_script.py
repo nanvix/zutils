@@ -883,8 +883,8 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIn("MY_VAR=hello", cmd)
 
 
-class TestZScriptWindowsAutoDocker(unittest.TestCase):
-    """On Windows, build/release/clean auto-enable Docker without --with-docker."""
+class TestZScriptAutoDocker(unittest.TestCase):
+    """Docker is always enabled for build/release/clean."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -896,7 +896,7 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_build_auto_enables_docker_on_windows(self) -> None:
-        """build on Windows uses the default Docker image even without setup --with-docker."""
+        """build on Windows uses the default Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -920,8 +920,8 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
 
         self.assertTrue(docker_configured)
 
-    def test_build_no_auto_docker_on_linux(self) -> None:
-        """build on Linux without persisted image does NOT auto-enable Docker."""
+    def test_build_auto_enables_docker_on_linux(self) -> None:
+        """build on Linux also uses the default Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -936,12 +936,14 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
         with (
             patch("sys.argv", ["z.py", "build"]),
             patch("nanvix_zutil.script.is_windows", return_value=False),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
             BuildScript.main(repo_root=Path(self._tmpdir.name))
 
-        self.assertFalse(docker_configured)
+        self.assertTrue(docker_configured)
 
 
 class TestZScriptCleanWindows(unittest.TestCase):

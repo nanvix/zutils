@@ -57,9 +57,11 @@ def run_consumer(
         setup_only:     Skip build and test phases.
         force_fallback: Force dependency fallback and assert it is triggered.
         with_docker:    Pass ``--with-docker`` to the setup phase.
-                        The Docker image is persisted in ``.nanvix/env.json``
+                        Docker mode is always enabled; this flag is only
+                        meaningful when a custom image needs to be specified.
+                        The image is persisted in ``.nanvix/env.json``
                         so that ``build`` and ``release`` phases automatically
-                        run inside Docker.  ``test`` runs on the host.
+                        use the same image.  ``test`` runs on the host.
         dry_run:        Print what would happen without executing.
         flags:          Per-consumer CLI flags.  ``"global"`` flags are
                         inserted before the command name; per-command keys

@@ -40,10 +40,10 @@ SUBCOMMANDS: tuple[str, ...] = (
 
 #: Subcommands that accept the ``--with-docker`` flag.
 #:
-#: Docker is configured once during ``setup`` and persisted to
-#: ``.nanvix/env.json``.  The ``build``, ``release``, and ``clean``
-#: subcommands auto-reload the saved image.  ``test`` and ``benchmark``
-#: run natively on the host.
+#: Docker mode is always enabled for ``setup``, ``build``, ``release``,
+#: and ``clean``.  The ``--with-docker`` flag on ``setup`` allows the
+#: consumer to override the default Docker image with a custom one.
+#: ``test`` and ``benchmark`` run natively on the host.
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.
@@ -161,10 +161,11 @@ def build_parser(
                 default=None,
                 metavar="IMAGE",
                 dest="with_docker",
-                help="Enable Docker mode. Optionally specify a custom"
-                " image (default: nanvix/toolchain:latest-minimal)."
-                " The image is persisted to .nanvix/env.json so that"
-                " build and release automatically run inside Docker."
+                help="Specify a custom Docker image for the build"
+                " environment (default: nanvix/toolchain:latest-minimal)."
+                " Docker mode is always enabled; this flag only overrides"
+                " the image. The image is persisted to .nanvix/env.json"
+                " so that build and release automatically use it."
                 " test and benchmark always run on the host.",
             )
 

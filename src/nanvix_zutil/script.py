@@ -747,21 +747,27 @@ class ZScript:
 
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags or persisted config.
+        #
+        # Docker mode is always enabled for setup, build, release, and
+        # clean.  The --with-docker flag on setup allows overriding the
+        # default image.  test and benchmark run natively on the host.
         # ------------------------------------------------------------------
         docker_image: str | None = None
+        subcommand_name_for_docker: str | None = args.subcommand
+
         # Subcommand-level flag (only present for setup).
         with_docker_val = getattr(args, "with_docker", None)
         if isinstance(with_docker_val, str):
             # --with-docker IMAGE  (explicit custom image)
             docker_image = with_docker_val
-        elif with_docker_val is True:
-            # --with-docker  (no argument → use default image)
+        elif subcommand_name_for_docker == "setup":
+            # setup always enables Docker — use default image when no
+            # custom image was specified via --with-docker.
             docker_image = instance.docker_image()
 
         # For build/release/clean subcommands, auto-load Docker image
-        # from config when it was previously persisted by
-        # ``setup --with-docker``.  Test and benchmark run natively.
-        subcommand_name_for_docker: str | None = args.subcommand
+        # from config persisted during setup.  test and benchmark run
+        # natively on the host.
         _DOCKER_AUTO_LOAD: frozenset[str | None] = frozenset(
             {"build", "release", "clean"}
         )
@@ -769,16 +775,14 @@ class ZScript:
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
             if persisted_image:
                 docker_image = persisted_image
-            elif is_windows():
-                # Windows has no native cross-toolchain; Docker is required
-                # for build/release/clean even without explicit --with-docker.
+            else:
+                # No persisted image — use default.
                 docker_image = instance.docker_image()
 
         if docker_image is not None:
             if not docker_available():
                 log.fatal(
-                    "Docker is not available — install Docker or omit the"
-                    " --with-docker flag.",
+                    "Docker is not available — install Docker to continue.",
                     code=EXIT_MISSING_DEP,
                 )
             if not image_exists(docker_image):
@@ -790,15 +794,9 @@ class ZScript:
             instance.docker = instance.docker_config(docker_image)
 
             # Persist Docker image on setup so subsequent commands
-            # automatically run inside Docker.
+            # automatically use the same image.
             if subcommand_name_for_docker == "setup":
                 instance.config.set(CFG_DOCKER_IMAGE, docker_image)
-                instance.config.save()
-        elif subcommand_name_for_docker == "setup":
-            # ``setup`` without ``--with-docker`` clears any previously
-            # persisted Docker image so subsequent commands run on the host.
-            if instance.config.get(CFG_DOCKER_IMAGE):
-                instance.config.delete(CFG_DOCKER_IMAGE)
                 instance.config.save()
 
         # ------------------------------------------------------------------
