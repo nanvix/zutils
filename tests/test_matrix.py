@@ -606,6 +606,8 @@ class TestAllBuildsFallbackExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "--all-builds", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch(
                 "nanvix_zutil.script.run_all_builds",
                 return_value=fake_results,
@@ -635,6 +637,8 @@ class TestAllBuildsFallbackExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "--all-builds", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch(
                 "nanvix_zutil.script.run_all_builds",
                 return_value=fake_results,

@@ -774,10 +774,7 @@ class ZScript:
         # For build/release/clean, load persisted image or fall back to
         # the default.  setup uses the default when --with-docker was
         # not supplied.
-        if (
-            docker_image is None
-            and subcommand_name_for_docker in _DOCKER_COMMANDS
-        ):
+        if docker_image is None and subcommand_name_for_docker in _DOCKER_COMMANDS:
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
             docker_image = persisted_image or instance.docker_image()
 
