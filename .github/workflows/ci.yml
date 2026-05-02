@@ -69,8 +69,7 @@ jobs:
       - name: Run unit tests
         run: >
           uv run pytest tests/ -v
-          --ignore=tests/test_example.py
-          --ignore=tests/test_example_bin_hello.py
+          --ignore=tests/test_examples.py
 
       - name: Run downstream_tests unit tests
         run: uv run pytest src/downstream_tests/tests/ -v
@@ -94,32 +93,8 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Pull Docker image
-        run: docker pull nanvix/toolchain:latest-minimal
-
-      - name: Setup (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil setup --with-docker
-
-      - name: Build (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil build
-
-      - name: Test (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil test
-
-      - name: Setup (bin-hello)
-        working-directory: examples/bin-hello
-        run: uv run nanvix-zutil setup
-
-      - name: Build (bin-hello)
-        working-directory: examples/bin-hello
-        run: uv run nanvix-zutil build
-
-      - name: Test (bin-hello)
-        working-directory: examples/bin-hello
-        run: uv run nanvix-zutil test
+      - name: Build & test examples
+        run: uv run pytest tests/test_examples.py -v -k "not Cleanup"
 
       - name: Upload build artifacts for Windows test
         if: success()
@@ -132,13 +107,8 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
-      - name: Clean (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil clean
-
-      - name: Clean (bin-hello)
-        working-directory: examples/bin-hello
-        run: uv run nanvix-zutil clean
+      - name: Clean examples
+        run: uv run pytest tests/test_examples.py -v -k "Cleanup"
 
   integration-tests-windows:
     name: Integration Tests (windows-latest)
@@ -164,10 +134,5 @@ jobs:
           name: integration-test-artifacts
           path: examples
 
-      - name: Test (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil test
-
-      - name: Test (bin-hello)
-        working-directory: examples/bin-hello
-        run: uv run nanvix-zutil test
+      - name: Test examples
+        run: uv run pytest tests/test_examples.py -v
