@@ -109,6 +109,18 @@ jobs:
         working-directory: examples/lib-hello
         run: uv run nanvix-zutil test
 
+      - name: Setup (bin-hello)
+        working-directory: examples/bin-hello
+        run: uv run nanvix-zutil setup
+
+      - name: Build (bin-hello)
+        working-directory: examples/bin-hello
+        run: uv run nanvix-zutil build
+
+      - name: Test (bin-hello)
+        working-directory: examples/bin-hello
+        run: uv run nanvix-zutil test
+
       - name: Upload build artifacts for Windows test
         if: success()
         uses: actions/upload-artifact@v4
@@ -122,6 +134,10 @@ jobs:
 
       - name: Clean (lib-hello)
         working-directory: examples/lib-hello
+        run: uv run nanvix-zutil clean
+
+      - name: Clean (bin-hello)
+        working-directory: examples/bin-hello
         run: uv run nanvix-zutil clean
 
   integration-tests-windows:
@@ -150,4 +166,8 @@ jobs:
 
       - name: Test (lib-hello)
         working-directory: examples/lib-hello
+        run: uv run nanvix-zutil test
+
+      - name: Test (bin-hello)
+        working-directory: examples/bin-hello
         run: uv run nanvix-zutil test
