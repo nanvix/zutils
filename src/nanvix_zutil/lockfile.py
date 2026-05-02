@@ -115,7 +115,9 @@ class Lockfile:
 
     metadata: LockfileMetadata
     builds: BuildMatrix
-    packages: list[ResolvedPackage] = field(default_factory=lambda: list[ResolvedPackage]())
+    packages: list[ResolvedPackage] = field(
+        default_factory=lambda: list[ResolvedPackage]()
+    )
 
 
 # ---------------------------------------------------------------------------
