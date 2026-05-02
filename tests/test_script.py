@@ -884,7 +884,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
 
 
 class TestZScriptAutoDocker(unittest.TestCase):
-    """Docker is always enabled for build/release/clean."""
+    """Docker is always enabled for setup/build/release/clean (hard fail)."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -1110,6 +1110,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", _setup_with_fallback),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1123,6 +1125,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=True),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1134,6 +1138,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         """main() with setup subcommand completes normally when no fallback."""
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=False),
             patch("nanvix_zutil.script.log") as mock_log,
         ):
@@ -1159,6 +1165,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         try:
             with (
                 patch("sys.argv", ["z.py", "--json", "setup"]),
+                patch("nanvix_zutil.script.docker_available", return_value=True),
+                patch("nanvix_zutil.script.image_exists", return_value=True),
                 patch.object(ZScript, "setup", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):

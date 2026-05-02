@@ -5,12 +5,11 @@
 
 Provides per-command Docker wrapping so that build and test commands run
 inside a Nanvix toolchain container without re-execing the whole script.
-``setup()`` runs on the host (downloading sysroot/deps); ``build()``,
-``release()``, etc. transparently wrap each :meth:`~nanvix_zutil.ZScript.run`
-call in ``docker run``.
+Docker mode is always enabled for ``setup``, ``build``, ``release``, and
+``clean`` — if Docker or the required image is unavailable the command
+fails immediately.  ``test`` and ``benchmark`` run natively on the host.
 
-Docker mode is always enabled.  Use ``--with-docker IMAGE`` during setup
-to override the default image::
+Use ``--with-docker IMAGE`` during setup to override the default image::
 
     ./z setup                                     # default image
     ./z setup --with-docker nanvix/toolchain:v1.2.3  # custom image

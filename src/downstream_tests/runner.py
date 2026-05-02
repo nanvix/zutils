@@ -57,8 +57,8 @@ def run_consumer(
         setup_only:     Skip build and test phases.
         force_fallback: Force dependency fallback and assert it is triggered.
         with_docker:    Pass ``--with-docker`` to the setup phase.
-                        Docker mode is always enabled; this flag is only
-                        meaningful when a custom image needs to be specified.
+                        Docker mode is always enabled; this flag only
+                        overrides the default image with a custom one.
                         The image is persisted in ``.nanvix/env.json``
                         so that ``build`` and ``release`` phases automatically
                         use the same image.  ``test`` runs on the host.

@@ -750,34 +750,36 @@ class ZScript:
         #
         # Docker mode is always enabled for setup, build, release, and
         # clean.  The --with-docker flag on setup allows overriding the
-        # default image.  test and benchmark run natively on the host.
+        # default image.  If Docker or the image is unavailable the
+        # command fails immediately — there is no fallback to native
+        # execution.  test and benchmark run natively on the host.
         # ------------------------------------------------------------------
         docker_image: str | None = None
         subcommand_name_for_docker: str | None = args.subcommand
+
+        #: Subcommands that always run inside Docker.
+        _DOCKER_COMMANDS: frozenset[str | None] = frozenset(
+            {"setup", "build", "release", "clean"}
+        )
 
         # Subcommand-level flag (only present for setup).
         with_docker_val = getattr(args, "with_docker", None)
         if isinstance(with_docker_val, str):
             # --with-docker IMAGE  (explicit custom image)
             docker_image = with_docker_val
-        elif subcommand_name_for_docker == "setup":
-            # setup always enables Docker — use default image when no
-            # custom image was specified via --with-docker.
+        elif with_docker_val is True:
+            # --with-docker  (no argument → use default image)
             docker_image = instance.docker_image()
 
-        # For build/release/clean subcommands, auto-load Docker image
-        # from config persisted during setup.  test and benchmark run
-        # natively on the host.
-        _DOCKER_AUTO_LOAD: frozenset[str | None] = frozenset(
-            {"build", "release", "clean"}
-        )
-        if docker_image is None and subcommand_name_for_docker in _DOCKER_AUTO_LOAD:
+        # For build/release/clean, load persisted image or fall back to
+        # the default.  setup uses the default when --with-docker was
+        # not supplied.
+        if (
+            docker_image is None
+            and subcommand_name_for_docker in _DOCKER_COMMANDS
+        ):
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
-            if persisted_image:
-                docker_image = persisted_image
-            else:
-                # No persisted image — use default.
-                docker_image = instance.docker_image()
+            docker_image = persisted_image or instance.docker_image()
 
         if docker_image is not None:
             if not docker_available():
