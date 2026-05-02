@@ -14,8 +14,11 @@ permissions:
 
 jobs:
   lint-and-typecheck:
-    name: Lint & Type Check
-    runs-on: ubuntu-latest
+    name: Lint & Type Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +28,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install shfmt
+        if: runner.os == 'Linux'
         run: |
           set -euxo pipefail
           curl -fsSL "https://github.com/mvdan/sh/releases/download/v3.13.0/shfmt_v3.13.0_linux_amd64" -o /tmp/shfmt
@@ -42,40 +46,13 @@ jobs:
       - name: Type check downstream_tests
         run: uv run pyright src/downstream_tests/ scripts/downstream/wrapper.py
 
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
+  unit-tests:
+    name: Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
-    container:
-      image: nanvix/toolchain:latest-minimal
-      options: --device /dev/kvm
-    env:
-      NANVIX_TOOLCHAIN: /opt/nanvix
-      USER: runner
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install project and dev dependencies
-        run: uv sync --python 3.12
-
-      - name: Run tests
-        run: uv run pytest tests/ -v
-
-      - name: Run downstream_tests unit tests
-        run: uv run pytest src/downstream_tests/tests/ -v
-        env:
-          PYTHONPATH: src
-
-  test-windows:
-    name: Tests (Windows)
-    runs-on: windows-latest
-    timeout-minutes: 10
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -86,16 +63,95 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install project and dev dependencies
+      - name: Install dependencies
         run: uv sync
 
-      - name: Verify import succeeds
-        run: uv run python -c "import nanvix_zutil; print('import OK')"
-
       - name: Run unit tests
-        run: uv run pytest tests/ -v
+        run: >
+          uv run pytest tests/ -v
+          --ignore=tests/test_example.py
+          --ignore=tests/test_example_zlib.py
+          --ignore=tests/test_example_transitive.py
 
       - name: Run downstream_tests unit tests
         run: uv run pytest src/downstream_tests/tests/ -v
         env:
           PYTHONPATH: src
+
+  integration-tests:
+    name: Integration Tests (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Pull Docker image
+        run: docker pull nanvix/toolchain:latest-minimal
+
+      - name: Setup (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil setup --with-docker
+
+      - name: Build (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil build
+
+      - name: Test (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil test
+
+      - name: Upload ELF binaries for Windows test
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-elfs
+          path: |
+            examples/**/*.elf
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: Clean (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil clean
+
+  integration-tests-windows:
+    name: Integration Tests (windows-latest)
+    needs: [integration-tests]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: integration-test-elfs
+          path: examples
+
+      - name: Setup (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil setup
+
+      - name: Test (hello-world)
+        working-directory: examples/hello-world
+        run: uv run nanvix-zutil test

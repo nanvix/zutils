@@ -545,24 +545,6 @@ class TestZScriptRun(unittest.TestCase):
             log_mod.set_json_mode(False)
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
-    def test_run_kvm_fatal_on_windows(self, _mock: object) -> None:
-        """run() with kvm=True exits fatally on Windows."""
-        script = ZScript(Path(self._tmpdir.name))
-        script.docker = DockerConfig(
-            image="test-image",
-            mounts=[],
-            uid=0,
-            gid=0,
-        )
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                script.run("echo", kvm=True)
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
-
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
         """run() delegates to build_windows_run_cmd on Windows."""
         script = ZScript(Path(self._tmpdir.name))

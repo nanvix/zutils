@@ -95,10 +95,9 @@ class HelloZlib(ZScript):
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
 
-        Note:
-            The functional test phase uses ``timeout --foreground`` (GNU
-            coreutils) and KVM. This is Linux-only by design — functional
-            tests require ``/dev/kvm`` inside a Docker container.
+        The functional test phase runs under ``nanvixd.elf`` inside a
+        Docker container.  It is skipped when Docker is not configured
+        (e.g. on Windows using pre-built ELF artifacts from Linux).
         """
         binary = self.repo_root / "hello-zlib.elf"
 
@@ -122,7 +121,11 @@ class HelloZlib(ZScript):
             log.fatal(f"{binary} is not a valid ELF binary.", code=EXIT_TEST_FAILURE)
         log.success(f"OK: {binary.name} is a valid ELF binary")
 
-        # Functional: run under nanvixd.elf (requires KVM).
+        # Functional: run under nanvixd.elf (requires Docker).
+        if not self.docker:
+            log.info("=== skipping functional tests (Docker not configured) ===")
+            return
+
         log.info("=== hello-zlib functional tests ===")
         sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
@@ -133,7 +136,6 @@ class HelloZlib(ZScript):
             f"{sysroot}/bin/nanvixd.elf",
             "--",
             str(workspace_binary),
-            kvm=True,
         )
         log.success("PASS: hello-zlib functional tests")
 

@@ -47,19 +47,10 @@ def _has_nanvix_toolchain() -> bool:
     return False
 
 
-def _has_kvm() -> bool:
-    """Return True if /dev/kvm is accessible (Linux only)."""
-    if sys.platform != "linux":
-        return False
-    return os.access("/dev/kvm", os.R_OK | os.W_OK)
-
-
 _HAS_TOOLCHAIN = _has_nanvix_toolchain()
-_HAS_KVM = _has_kvm()
 _SKIP_LIFECYCLE = (
     "Nanvix toolchain not available (set NANVIX_TOOLCHAIN or install to /opt/nanvix)"
 )
-_SKIP_NO_KVM = "KVM not available (/dev/kvm not accessible)"
 _LIFECYCLE_TIMEOUT = (
     120  # seconds per step — setup downloads assets + build + VM boot + test + clean
 )
@@ -84,12 +75,11 @@ class TestHelloZlibBash(unittest.TestCase):
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle (requires toolchain + KVM + network)
+    # Lifecycle (requires toolchain + network)
     # ------------------------------------------------------------------
 
     @unittest.skip("TEMP - Need to update zlib first")
     @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
-    @unittest.skipUnless(_HAS_KVM, _SKIP_NO_KVM)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean and verify each step."""
         # setup (downloads sysroot + zlib)

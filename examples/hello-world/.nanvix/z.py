@@ -13,6 +13,7 @@ Demonstrates the full lifecycle with a real Nanvix build.  Run with
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 
+import sys
 from pathlib import Path
 
 from nanvix_zutil import (
@@ -72,10 +73,10 @@ class HelloWorld(ZScript):
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
 
-        Note:
-            The functional test phase uses ``timeout --foreground`` (GNU
-            coreutils) and KVM. This is Linux-only by design — functional
-            tests require ``/dev/kvm`` inside a Docker container.
+        The functional test phase runs under ``nanvixd.elf`` inside a
+        Docker container on Linux, or natively under ``nanvixd.exe`` on
+        Windows.  It is skipped only when Docker is not configured **and**
+        the platform is not Windows.
         """
         binary = self.repo_root / "hello.elf"
 
@@ -99,8 +100,17 @@ class HelloWorld(ZScript):
             log.fatal(f"{binary} is not a valid ELF binary.", code=EXIT_TEST_FAILURE)
         log.success(f"OK: {binary.name} is a valid ELF binary")
 
-        # Functional: run under nanvixd.elf (requires KVM).
-        log.info("=== hello-world functional tests ===")
+        # Functional: run under nanvixd on the appropriate platform.
+        if sys.platform == "win32":
+            self._test_functional_windows(binary)
+        elif self.docker:
+            self._test_functional_docker(binary)
+        else:
+            log.info("=== skipping functional tests (Docker not configured) ===")
+
+    def _test_functional_docker(self, binary: Path) -> None:
+        """Run functional tests inside a Docker container (Linux)."""
+        log.info("=== hello-world functional tests (Docker) ===")
         sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
         self.run(
@@ -112,7 +122,26 @@ class HelloWorld(ZScript):
             f"{sysroot}/bin",
             "--",
             str(workspace_binary),
-            kvm=True,
+        )
+        log.success("PASS: hello-world functional tests")
+
+    def _test_functional_windows(self, binary: Path) -> None:
+        """Run functional tests natively on Windows using nanvixd.exe."""
+        log.info("=== hello-world functional tests (Windows) ===")
+        sysroot = self._sysroot()
+        nanvixd = sysroot / "bin" / "nanvixd.exe"
+        if not nanvixd.exists():
+            log.fatal(
+                f"{nanvixd} not found — run 'nanvix-zutil setup' first.",
+                code=EXIT_TEST_FAILURE,
+                hint="Setup downloads nanvixd.exe into the sysroot on Windows.",
+            )
+        self.run(
+            str(nanvixd),
+            "-bin-dir",
+            str(sysroot / "bin"),
+            "--",
+            str(binary),
         )
         log.success("PASS: hello-world functional tests")
 

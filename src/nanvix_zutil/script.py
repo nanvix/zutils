@@ -583,7 +583,6 @@ class ZScript:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         docker: bool = True,
-        kvm: bool = False,
     ) -> "subprocess.CompletedProcess[str]":
         """Run a subprocess, logging the command before execution.
 
@@ -604,9 +603,6 @@ class ZScript:
             docker: When ``False``, always runs on the host even if Docker
                 mode is active.  Use this for commands that must run locally
                 (e.g. ``clean``).
-            kvm: When ``True`` and Docker is active, uses
-                :meth:`~nanvix_zutil.DockerConfig.build_kvm_run_cmd` to add
-                ``/dev/kvm`` access for functional tests.
 
         Returns:
             The completed process result.
@@ -622,15 +618,7 @@ class ZScript:
             if combo_and_explicit:
                 merged = {**cfg.extra_env, **combo_and_explicit}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
-            if kvm:
-                if is_windows():
-                    log.fatal(
-                        "KVM mode is not available on Windows",
-                        code=EXIT_BUILD_FAILURE,
-                        hint="KVM requires a Linux host with /dev/kvm access.",
-                    )
-                cmd = cfg.build_kvm_run_cmd(*args)
-            elif is_windows():
+            if is_windows():
                 cmd = cfg.build_windows_run_cmd(*args)
             else:
                 cmd = cfg.build_run_cmd(*args)
@@ -770,10 +758,9 @@ class ZScript:
             # --with-docker  (no argument → use default image)
             docker_image = instance.docker_image()
 
-        # For build/release subcommands, auto-load Docker image from
-        # config when it was previously persisted by ``setup --with-docker``.
-        # test and benchmark run on the host (they need KVM / hardware
-        # access that Docker cannot easily provide).
+        # For build/release/clean subcommands, auto-load Docker image
+        # from config when it was previously persisted by
+        # ``setup --with-docker``.  Test and benchmark run natively.
         subcommand_name_for_docker: str | None = args.subcommand
         _DOCKER_AUTO_LOAD: frozenset[str | None] = frozenset(
             {"build", "release", "clean"}

@@ -220,8 +220,8 @@ def run_consumer(
 
     # --- Docker availability check ---------------------------------------------
     # Docker is configured during setup and persisted to env.json.  The
-    # build phase auto-loads the saved Docker image — no flag forwarding
-    # needed.  test runs on the host (needs KVM / direct hardware access).
+    # build and test phases auto-load the saved Docker image — no flag
+    # forwarding needed.
 
     # --- Phase 2: build --------------------------------------------------------
     build_cmd = [

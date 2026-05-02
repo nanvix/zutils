@@ -41,9 +41,9 @@ SUBCOMMANDS: tuple[str, ...] = (
 #: Subcommands that accept the ``--with-docker`` flag.
 #:
 #: Docker is configured once during ``setup`` and persisted to
-#: ``.nanvix/env.json``.  Only ``build``, ``release``, and ``clean``
-#: auto-reload the saved image; ``test`` and ``benchmark`` always run
-#: on the host (they need KVM / direct hardware access).
+#: ``.nanvix/env.json``.  The ``build``, ``release``, and ``clean``
+#: subcommands auto-reload the saved image.  ``test`` and ``benchmark``
+#: run natively on the host.
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.

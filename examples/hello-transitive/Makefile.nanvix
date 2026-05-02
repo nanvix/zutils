@@ -7,7 +7,7 @@
 #   all              Build hello-transitive.elf
 #   test-smoke       Verify build artifact exists
 #   test-integration Verify ELF binary is valid
-#   test-functional  Run on nanvixd.elf (requires KVM)
+#   test-functional  Run on nanvixd.elf (requires Docker)
 #   test             Run all test levels
 #   clean            Remove build artifacts
 
@@ -67,9 +67,8 @@ ifdef CONFIG_NANVIX
       -w $(DOCKER_WORKSPACE_PATH) \
       -e HOME=/tmp \
       $(NANVIX_DOCKER_IMAGE)
-    DOCKER_KVM_GID := $(shell stat -c '%g' /dev/kvm 2>/dev/null || echo 0)
-    DOCKER_RUN_FUNCTIONAL := docker run --rm --device /dev/kvm \
-      --user $(DOCKER_UID):$(DOCKER_GID) --group-add $(DOCKER_KVM_GID) \
+    DOCKER_RUN_FUNCTIONAL := docker run --rm \
+      --user $(DOCKER_UID):$(DOCKER_GID) \
       -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
       -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH) \
       -v $(BUILDROOT_PATH):$(DOCKER_BUILDROOT_PATH):ro \

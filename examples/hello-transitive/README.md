@@ -42,7 +42,7 @@ hello-transitive/
 - **Nanvix cross-compiler** — one of:
   - Native install at `/opt/nanvix/` (or `$NANVIX_TOOLCHAIN`)
   - Docker image `nanvix/toolchain:latest-minimal`
-- **KVM** (`/dev/kvm`) — for functional tests only
+- **Docker** — for functional tests only
 
 ## Usage
 

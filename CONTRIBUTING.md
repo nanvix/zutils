@@ -36,7 +36,7 @@ All code must pass before merging:
 - **Type checking** — `pyright` in strict mode. Every public function
   needs a complete type signature.
 - **Tests** — `pytest`. Functional tests require the `nanvix/toolchain`
-  Docker image and `/dev/kvm`.
+  Docker image.
 - **Docstrings** — all public functions must have docstrings.
 
 ### Running CI Locally

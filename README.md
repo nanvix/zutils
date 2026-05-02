@@ -3,8 +3,8 @@
 Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem.
 
 `nanvix_zutil` is a Python 3.12+ library that provides a unified `ZScript`
-base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`,
-`release`, `clean`), structured logging, config persistence, GitHub release
+base class with lifecycle hooks (`setup`, `distclean`, `build`, `test`, `benchmark`,
+`release`, `clean`, `lock`), structured logging, config persistence, GitHub release
 artifact downloading, lockfile-based dependency resolution, and deterministic
 exit codes.
 
@@ -107,12 +107,11 @@ nanvix-zutil clean                            # clean (host)
 `ZScript.run()` accepts two extra keyword arguments:
 
 * `docker=False` — opt out of Docker for a single command (e.g. `clean`)
-* `kvm=True` — add `/dev/kvm` for functional/VM tests
 
 The default `DockerConfig` mounts:
 
 * `repo_root` → `/mnt/workspace` (writable, default workdir)
-* sysroot path → `/mnt/sysroot` (read-only; writable in KVM mode)
+* sysroot path → `/mnt/sysroot` (read-only)
 * `.nanvix/buildroot` → `/mnt/buildroot` (read-only; auto-added when present)
 
 Use `self.translate_path(host_path)` to obtain the container-equivalent of any

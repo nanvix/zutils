@@ -23,7 +23,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -55,12 +54,20 @@ DEFAULT_DOCKER_IMAGE: str = "nanvix/toolchain:latest-minimal"
 
 def _get_uid() -> int:
     """Return the current user ID, or ``0`` on platforms without ``os.getuid``."""
-    return os.getuid() if hasattr(os, "getuid") else 0
+    return (
+        os.getuid()  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
+        if hasattr(os, "getuid")
+        else 0
+    )
 
 
 def _get_gid() -> int:
     """Return the current group ID, or ``0`` on platforms without ``os.getgid``."""
-    return os.getgid() if hasattr(os, "getgid") else 0
+    return (
+        os.getgid()  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
+        if hasattr(os, "getgid")
+        else 0
+    )
 
 
 def is_windows() -> bool:
@@ -130,9 +137,9 @@ class DockerConfig:
 
     An instance is stored on :class:`~nanvix_zutil.ZScript` once a Docker
     flag is passed on the command line.  Each :meth:`~nanvix_zutil.ZScript.run`
-    call then delegates to :meth:`build_run_cmd`, :meth:`build_kvm_run_cmd`
-    (when ``kvm=True``), or :meth:`build_windows_run_cmd` (on Windows) to
-    prepend the appropriate ``docker run`` invocation.
+    call then delegates to :meth:`build_run_cmd` or
+    :meth:`build_windows_run_cmd` (on Windows) to prepend the appropriate
+    ``docker run`` invocation.
 
     Attributes:
         image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
@@ -141,8 +148,8 @@ class DockerConfig:
             or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
         gid: Group ID passed to ``--user``.  Defaults to the current process GID,
             or ``0`` on platforms where ``os.getgid`` is unavailable (e.g. Windows).
-        workdir: Container working directory (used by both standard and KVM
-            runs).  Defaults to :data:`WORKSPACE_CONTAINER_PATH`.
+        workdir: Container working directory.  Defaults to
+            :data:`WORKSPACE_CONTAINER_PATH`.
         extra_env: Additional ``-e KEY=VALUE`` pairs forwarded to the container.
     """
 
@@ -159,7 +166,7 @@ class DockerConfig:
     """Group ID passed to ``--user`` (defaults to current process GID, or 0 on Windows)."""
 
     workdir: PurePosixPath = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
-    """Container working directory (used by both standard and KVM runs)."""
+    """Container working directory."""
 
     extra_env: dict[str, str] = field(default_factory=lambda: {})
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
@@ -269,6 +276,7 @@ class DockerConfig:
             :func:`subprocess.run`.
         """
         docker_cmd: list[str] = ["docker", "run", "--rm"]
+
         docker_cmd += ["--user", f"{self.uid}:{self.gid}"]
 
         for mount in self.mounts:
@@ -285,55 +293,6 @@ class DockerConfig:
         docker_cmd += ["-w", str(self.workdir)]
         docker_cmd += ["-e", "HOME=/tmp"]
 
-        for key, val in self.extra_env.items():
-            docker_cmd += ["-e", f"{key}={val}"]
-
-        docker_cmd.append(self.image)
-        docker_cmd.extend(cmd)
-        return docker_cmd
-
-    def build_kvm_run_cmd(self, *cmd: str) -> list[str]:
-        """Build a KVM-enabled ``docker run`` command list for functional tests.
-
-        Differences from :meth:`build_run_cmd`:
-
-        * Adds ``--device /dev/kvm`` and ``--group-add <kvm-gid>``.
-        * Forces the sysroot mount to be writable (``nanvixd.elf`` needs
-          write access); other mounts respect :attr:`Mount.readonly`.
-        * Adds ``USER`` to the container environment.
-
-        Args:
-            *cmd: Inner command and arguments to wrap.
-
-        Returns:
-            Full ``docker run …`` argument list.
-        """
-        docker_cmd: list[str] = ["docker", "run", "--rm", "--device", "/dev/kvm"]
-        if sys.platform != "linux":
-            warnings.warn(
-                "KVM is only available on Linux. The generated Docker command "
-                "will include --device /dev/kvm which is not supported on "
-                f"{sys.platform}.",
-                stacklevel=2,
-            )
-        docker_cmd += ["--user", f"{self.uid}:{self.gid}"]
-
-        kvm_gid = _get_kvm_gid()
-        if kvm_gid:
-            docker_cmd += ["--group-add", kvm_gid]
-
-        for mount in self.mounts:
-            # KVM is Linux-only (see warning above), so Windows-style
-            # paths never appear here — no _translate_windows_path needed.
-            # Sysroot must be writable for functional tests; other mounts
-            # respect the readonly flag just like build_run_cmd().
-            vol = f"{mount.host_path.resolve()}:{mount.container_path}"
-            if mount.readonly and mount.container_path != SYSROOT_CONTAINER_PATH:
-                vol += ":ro"
-            docker_cmd += ["-v", vol]
-
-        docker_cmd += ["-w", str(self.workdir)]
-        docker_cmd += ["-e", "HOME=/tmp"]
         user = os.environ.get("USER") or os.environ.get("USERNAME") or "nanvix"
         docker_cmd += ["-e", f"USER={user}"]
 
@@ -448,18 +407,3 @@ def image_exists(image: str) -> bool:
         capture_output=True,
     )
     return result.returncode == 0
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_kvm_gid() -> str:
-    """Return the GID of ``/dev/kvm`` as a string, or empty string on failure."""
-    if sys.platform != "linux":
-        return ""
-    try:
-        return str(os.stat("/dev/kvm").st_gid)
-    except OSError:
-        return ""
