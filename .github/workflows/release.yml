@@ -35,8 +35,8 @@ jobs:
       - name: Check formatting (black)
         run: uv run black --check src/ tests/
 
-      - name: Type check (basedpyright)
-        run: uv run basedpyright src/ tests/
+      - name: Type check (pyright)
+        run: uv run pyright src/ tests/
 
   test:
     name: Tests

@@ -35,6 +35,7 @@ htmlcov/
 .basedpyright/
 .pyright/
 pyrightconfig.json
+!src/nanvix_zutil/configs/pyrightconfig.json
 
 # Editor
 /.vscode

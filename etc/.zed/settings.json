@@ -1,9 +1,9 @@
 {
   "lsp": {
-    "basedpyright": {
+    "pyright": {
       "settings": {
         "python.pythonPath": ".venv/bin/python",
-        "basedpyright": {
+        "pyright": {
           "analysis": {
             "typeCheckingMode": "strict",
             "pythonVersion": "3.12"

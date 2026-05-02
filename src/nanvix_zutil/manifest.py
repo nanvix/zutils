@@ -72,8 +72,8 @@ class Manifest:
     version: str
     sysroot_ref: Ref
     builds: BuildMatrix
-    dependencies: list[Dependency] = field(default_factory=list)
-    system_dependencies: list[Dependency] = field(default_factory=list)
+    dependencies: list[Dependency] = field(default_factory=lambda: [])
+    system_dependencies: list[Dependency] = field(default_factory=lambda: [])
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,7 @@ The default branch is **`dev`** — all feature work targets `dev`.
 |------------------------------|--------------------------------------|
 | `uv run tasks.py lint`      | Check formatting (black)             |
 | `uv run tasks.py format`   | Fix formatting (black)               |
-| `uv run tasks.py typecheck` | Strict type checking (basedpyright) |
+| `uv run tasks.py typecheck` | Strict type checking (pyright)      |
 | `uv run tasks.py test`     | Run test suite (pytest)              |
 | `uv run tasks.py ci`       | Run CI locally via `gh act`          |
 | `uv run tasks.py clean`    | Remove caches and build artifacts    |
@@ -33,7 +33,7 @@ The default branch is **`dev`** — all feature work targets `dev`.
 All code must pass before merging:
 
 - **Formatting** — `black` with no configuration overrides.
-- **Type checking** — `basedpyright` in strict mode. Every public function
+- **Type checking** — `pyright` in strict mode. Every public function
   needs a complete type signature.
 - **Tests** — `pytest`. Functional tests require the `nanvix/toolchain`
   Docker image and `/dev/kvm`.

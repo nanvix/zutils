@@ -19,7 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "black",
-  "basedpyright",
+  "pyright",
   "pytest",
   "yamllint",
 ]
@@ -34,6 +34,7 @@ Repository = "https://github.com/nanvix/zutils"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nanvix_zutil"]
+artifacts = ["src/nanvix_zutil/configs/*", "src/nanvix_zutil/configs/.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -42,7 +43,7 @@ testpaths = ["tests"]
 line-length = 88
 target-version = ["py312"]
 
-[tool.basedpyright]
+[tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"

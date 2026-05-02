@@ -48,13 +48,13 @@ check_formatting() {
 
 #
 # Description
-#   Run strict type checking with basedpyright.
+#   Run strict type checking with pyright.
 #
 # Return Value
 #   0 on success, 1 on failure.
 #
 check_types() {
-    print_step "Type checking (basedpyright)..."
+    print_step "Type checking (pyright)..."
     if ! uv run tasks.py typecheck; then
         print_error "Type check failed. Fix the reported errors before pushing."
         return 1

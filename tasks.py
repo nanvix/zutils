@@ -10,7 +10,7 @@ Commands:
   setup         Configure git hooks and sync dev dependencies
   lint          Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)
   format        Fix code formatting with black
-  typecheck     Run strict type checking with basedpyright
+  typecheck     Run strict type checking with pyright
   test          Run the test suite with pytest
   test-downstream  Run the downstream_tests unit tests
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
@@ -79,8 +79,8 @@ def format_code() -> int:
 
 
 def typecheck() -> int:
-    """Run strict type checking with basedpyright."""
-    return _run(sys.executable, "-m", "basedpyright", *SOURCES)
+    """Run strict type checking with pyright."""
+    return _run(sys.executable, "-m", "pyright", *SOURCES)
 
 
 def test() -> int:
@@ -482,7 +482,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
         "Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)",
     ),
     "format": (format_code, "Fix code formatting with black"),
-    "typecheck": (typecheck, "Run strict type checking with basedpyright"),
+    "typecheck": (typecheck, "Run strict type checking with pyright"),
     "test": (test, "Run the test suite with pytest"),
     "test-downstream": (test_downstream, "Run the downstream_tests unit tests"),
     "ci": (
