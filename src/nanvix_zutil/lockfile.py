@@ -82,10 +82,10 @@ class ResolvedPackage:
     resolved_tag: str
     resolved_commitish: str
     release_id: int
-    dependencies: list[str] = field(default_factory=list)
-    assets: list[ResolvedAsset] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=lambda: list[str]())
+    assets: list[ResolvedAsset] = field(default_factory=lambda: list[ResolvedAsset]())
     transitive: bool = False
-    required_by: list[str] = field(default_factory=list)
+    required_by: list[str] = field(default_factory=lambda: list[str]())
 
 
 @dataclass
@@ -115,7 +115,9 @@ class Lockfile:
 
     metadata: LockfileMetadata
     builds: BuildMatrix
-    packages: list[ResolvedPackage] = field(default_factory=list)
+    packages: list[ResolvedPackage] = field(
+        default_factory=lambda: list[ResolvedPackage]()
+    )
 
 
 # ---------------------------------------------------------------------------
