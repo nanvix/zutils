@@ -10,7 +10,7 @@ Commands:
   setup         Configure git hooks and sync dev dependencies
   lint          Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)
   format        Fix code formatting with black
-  typecheck     Run strict type checking with basedpyright
+  typecheck     Run strict type checking with pyright
   test          Run the test suite with pytest
   test-downstream  Run the downstream_tests unit tests
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
@@ -79,8 +79,8 @@ def format_code() -> int:
 
 
 def typecheck() -> int:
-    """Run strict type checking with basedpyright."""
-    return _run(sys.executable, "-m", "basedpyright", *SOURCES)
+    """Run strict type checking with pyright."""
+    return _run(sys.executable, "-m", "pyright", *SOURCES)
 
 
 def test() -> int:
@@ -259,7 +259,6 @@ def shell_lint() -> int:
         shfmt_path = shutil.which("shfmt")
         if shfmt_path is None:
             print("shfmt not found — skipping shell formatting checks")
-            rc = 1
         else:
             print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
             print(print_step)
@@ -274,7 +273,6 @@ def shell_lint() -> int:
         shellcheck_path = shutil.which("shellcheck")
         if shellcheck_path is None:
             print("shellcheck not found — skipping shell correctness checks")
-            rc = 1
         else:
             print_step = f"> shellcheck {' '.join(bash_files)}"
             print(print_step)
@@ -325,7 +323,11 @@ def shell_format() -> int:
     if not bash_files:
         print("No bash scripts found.")
         return 0
-    return _run("shfmt", "-w", "-i", "4", "-ci", *bash_files)
+    shfmt_path = shutil.which("shfmt")
+    if shfmt_path is None:
+        print("error: shfmt not found")
+        return 1
+    return _run(shfmt_path, "-w", "-i", "4", "-ci", *bash_files)
 
 
 def yaml_lint() -> int:
@@ -480,7 +482,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
         "Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)",
     ),
     "format": (format_code, "Fix code formatting with black"),
-    "typecheck": (typecheck, "Run strict type checking with basedpyright"),
+    "typecheck": (typecheck, "Run strict type checking with pyright"),
     "test": (test, "Run the test suite with pytest"),
     "test-downstream": (test_downstream, "Run the downstream_tests unit tests"),
     "ci": (

@@ -149,7 +149,7 @@ class DockerConfig:
     image: str
     """Docker image name."""
 
-    mounts: list[Mount] = field(default_factory=list)
+    mounts: list[Mount] = field(default_factory=lambda: [])
     """Ordered list of volume mounts."""
 
     uid: int = field(default_factory=_get_uid)
@@ -161,10 +161,10 @@ class DockerConfig:
     workdir: PurePosixPath = field(default_factory=lambda: WORKSPACE_CONTAINER_PATH)
     """Container working directory (used by both standard and KVM runs)."""
 
-    extra_env: dict[str, str] = field(default_factory=dict)
+    extra_env: dict[str, str] = field(default_factory=lambda: {})
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
 
-    output_files: list[str] = field(default_factory=list)
+    output_files: list[str] = field(default_factory=lambda: [])
     """Build output files to copy back from the container to the host."""
 
     tar_excludes: list[str] = field(

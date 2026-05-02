@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import importlib.resources
 import os
 import shutil
 import subprocess
@@ -418,7 +419,37 @@ class ZScript:
                     raise
 
         self.config.save()
+        self._sync_configs()
         return self._used_fallback
+
+    # ------------------------------------------------------------------
+    # Config synchronisation
+    # ------------------------------------------------------------------
+
+    #: Mapping of canonical config filename -> destination relative to .nanvix/.
+    _CONFIG_FILES: dict[str, str] = {
+        "pyrightconfig.json": "pyrightconfig.json",
+        ".yamllint.yml": ".yamllint.yml",
+    }
+
+    def _sync_configs(self) -> None:
+        """Sync canonical tool configuration files into ``.nanvix/``.
+
+        Copies config files shipped inside ``nanvix_zutil.configs`` to the
+        ``.nanvix/`` directory, ensuring all downstream repos use
+        consistent linter/type-checker settings.  Files whose content
+        already matches are skipped.  Configs are confined to ``.nanvix/``
+        so consumer repo roots are never modified.
+        """
+        configs = importlib.resources.files("nanvix_zutil.configs")
+        for src_name, dst_rel in self._CONFIG_FILES.items():
+            src = configs / src_name
+            dst = self.nanvix_dir / dst_rel
+            content = src.read_bytes()
+            if dst.exists() and dst.read_bytes() == content:
+                continue
+            dst.write_bytes(content)
+            log.note(f"Synced .nanvix/{dst_rel}")
 
     def distclean(self) -> None:
         """Remove all transient ``.nanvix/`` artifacts.

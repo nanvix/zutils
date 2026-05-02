@@ -36,11 +36,11 @@ jobs:
       - name: Lint (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)
         run: uv run tasks.py lint
 
-      - name: Type check (basedpyright)
-        run: uv run basedpyright src/ tests/
+      - name: Type check (pyright)
+        run: uv run pyright src/ tests/
 
       - name: Type check downstream_tests
-        run: uv run basedpyright src/downstream_tests/ scripts/downstream/wrapper.py
+        run: uv run pyright src/downstream_tests/ scripts/downstream/wrapper.py
 
   test:
     name: Tests

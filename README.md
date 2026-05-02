@@ -163,7 +163,7 @@ uv run tasks.py setup         # configure git hooks
 | ---------------------------- | ----------------------------------- |
 | `uv run tasks.py lint`       | Check formatting (black)            |
 | `uv run tasks.py format`     | Fix formatting (black)              |
-| `uv run tasks.py typecheck`  | Strict type checking (basedpyright) |
+| `uv run tasks.py typecheck`  | Strict type checking (pyright)      |
 | `uv run tasks.py test`       | Run test suite (pytest)             |
 | `uv run tasks.py clean`      | Remove caches and build artifacts   |
 
@@ -175,7 +175,7 @@ contains:
 | Hook         | What it does                                                    |
 | ------------ | --------------------------------------------------------------- |
 | `commit-msg` | Validates `[module] type: Description` format (B, E, F, or W)   |
-| `pre-push`   | Runs formatting (black) and type checking (basedpyright) checks |
+| `pre-push`   | Runs formatting (black) and type checking (pyright) checks      |
 
 ## License
 

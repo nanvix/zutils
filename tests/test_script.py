@@ -244,6 +244,62 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
             log_mod.set_json_mode(False)
 
 
+class TestZScriptSyncConfigs(unittest.TestCase):
+    """setup() syncs canonical configs into .nanvix/."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _run_setup(self) -> ZScript:
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+            script = ZScript(Path(self._tmpdir.name))
+            script.setup()
+        return script
+
+    def test_setup_creates_config_files(self) -> None:
+        """setup() creates config files under .nanvix/."""
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        self.assertTrue((nanvix_dir / "pyrightconfig.json").exists())
+        self.assertTrue((nanvix_dir / ".yamllint.yml").exists())
+
+    def test_setup_skips_identical_configs(self) -> None:
+        """setup() is a no-op for configs when content already matches."""
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        pyright_cfg = nanvix_dir / "pyrightconfig.json"
+        mtime_before = pyright_cfg.stat().st_mtime
+        import time
+
+        time.sleep(0.01)
+        self._run_setup()
+        mtime_after = pyright_cfg.stat().st_mtime
+        self.assertEqual(mtime_before, mtime_after)
+
+    def test_setup_updates_config_when_different(self) -> None:
+        """setup() overwrites config when content differs."""
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        pyright_cfg = nanvix_dir / "pyrightconfig.json"
+        pyright_cfg.write_text("{}")
+        self._run_setup()
+        self.assertNotEqual(pyright_cfg.read_text(), "{}")
+
+    def test_setup_confines_configs_to_nanvix_dir(self) -> None:
+        """setup() never writes config files outside .nanvix/."""
+        self._run_setup()
+        repo_root = Path(self._tmpdir.name)
+        self.assertFalse((repo_root / "pyrightconfig.json").exists())
+        self.assertFalse((repo_root / ".yamllint.yml").exists())
+
+
 class TestZScriptLifecycleHooks(unittest.TestCase):
     """Default consumer lifecycle hooks are no-ops."""
 

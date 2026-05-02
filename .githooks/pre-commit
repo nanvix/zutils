@@ -4,9 +4,9 @@
 # Licensed under the MIT License.
 
 #
-# Git hook for pre-push validation.
+# Git hook for pre-commit validation.
 #
-# Runs formatting and type checks before allowing a push,
+# Runs formatting and type checks before allowing a commit,
 # ensuring CI will not fail due to lint or type errors.
 #
 
@@ -24,7 +24,7 @@ print_error() {
 }
 
 print_step() {
-    echo "pre-push: $1" >&2
+    echo "pre-commit: $1" >&2
 }
 
 #==================================================================================================
@@ -56,7 +56,7 @@ check_formatting() {
 check_types() {
     print_step "Type checking (pyright)..."
     if ! uv run tasks.py typecheck; then
-        print_error "Type check failed. Fix the reported errors before pushing."
+        print_error "Type check failed. Fix the reported errors before committing."
         return 1
     fi
 }
@@ -66,7 +66,7 @@ check_types() {
 #==================================================================================================
 
 main() {
-    print_step "Running pre-push checks..."
+    print_step "Running pre-commit checks..."
 
     check_formatting
     check_types

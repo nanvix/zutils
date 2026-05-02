@@ -60,7 +60,7 @@ nanvix/<project>/
 
 - **Python 3.12+ only.** Matches the Nanvix CPython port (3.12.3). Use modern syntax: `X | Y` unions, `list[str]` generics, etc.
 - **External dependencies are allowed.** Add runtime dependencies to `[project] dependencies` in `pyproject.toml`.
-- **Type-checked with `basedpyright` in strict mode.** All code must pass strict type checking. Every public function must have a complete type signature.
+- **Type-checked with `pyright` in strict mode.** All code must pass strict type checking. Every public function must have a complete type signature.
 - **Formatted with `black`.** No configuration overrides.
 - **All public functions must have docstrings.**
 - **Deterministic exit codes 0–6:** 0=success, 1=general error, 2=invalid args, 3=missing dependency, 4=network error, 5=build failure, 6=test failure.
