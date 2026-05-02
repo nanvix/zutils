@@ -14,7 +14,7 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
 """
 
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
     BUILDROOT_CONTAINER_PATH,
@@ -33,12 +33,12 @@ class BinHello(ZScript):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _toolchain(self) -> Path:
+    def _toolchain(self) -> PurePosixPath | Path:
         """Return the toolchain root, translated for Docker if active."""
         host = Path(self.config.get(CFG_TOOLCHAIN, "/opt/nanvix") or "/opt/nanvix")
         return self.translate_path(host) if self.docker else host
 
-    def _sysroot(self) -> Path:
+    def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
@@ -49,7 +49,7 @@ class BinHello(ZScript):
         host = Path(sysroot_str)  # type: ignore[arg-type]
         return self.translate_path(host) if self.docker else host
 
-    def _buildroot_path(self) -> Path:
+    def _buildroot_path(self) -> PurePosixPath | Path:
         """Return the effective buildroot path (translated for Docker if active)."""
         if self.docker:
             return BUILDROOT_CONTAINER_PATH
@@ -59,9 +59,9 @@ class BinHello(ZScript):
     # Lifecycle hooks
     # ------------------------------------------------------------------
 
-    def setup(self) -> None:
+    def setup(self) -> bool:
         """Download the Nanvix sysroot and lib-hello dependency, then verify."""
-        super().setup()
+        used_fallback = super().setup()
         if self.buildroot is None:
             self.log.fatal(
                 "nanvix.toml must declare lib-hello as a build-time dependency.",
@@ -71,6 +71,7 @@ class BinHello(ZScript):
                 ),
             )
         self.buildroot.verify(["libhello.a"])
+        return used_fallback
 
     def build(self) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
@@ -150,7 +151,7 @@ class BinHello(ZScript):
     def _test_functional_windows(self, binary: Path) -> None:
         """Run functional tests natively on Windows using nanvixd.exe."""
         log.info("=== bin-hello functional tests (Windows) ===")
-        sysroot = self._sysroot()
+        sysroot = Path(self._sysroot())
         nanvixd = sysroot / "bin" / "nanvixd.exe"
         if not nanvixd.exists():
             log.fatal(

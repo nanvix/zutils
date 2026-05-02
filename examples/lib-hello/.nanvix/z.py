@@ -13,7 +13,7 @@ Demonstrates the full lifecycle with a real Nanvix build.  Run with
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
     CFG_SYSROOT,
@@ -31,12 +31,12 @@ class LibHello(ZScript):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _toolchain(self) -> Path:
+    def _toolchain(self) -> PurePosixPath | Path:
         """Return the toolchain root, translated for Docker if active."""
         host = Path(self.config.get(CFG_TOOLCHAIN, "/opt/nanvix") or "/opt/nanvix")
         return self.translate_path(host) if self.docker else host
 
-    def _sysroot(self) -> Path:
+    def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
