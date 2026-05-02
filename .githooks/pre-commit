@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Git hook for pre-commit validation.
+#
+# Runs formatting and type checks before allowing a commit,
+# ensuring CI will not fail due to lint or type errors.
+#
+
+#==================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#==================================================================================================
+# Logging Helpers
+#==================================================================================================
+
+print_error() {
+    echo "error: $1" >&2
+}
+
+print_step() {
+    echo "pre-commit: $1" >&2
+}
+
+#==================================================================================================
+# Functions
+#==================================================================================================
+
+#
+# Description
+#   Run all linters (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint).
+#
+# Return Value
+#   0 on success, 1 on failure.
+#
+check_formatting() {
+    print_step "Linting (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint)..."
+    if ! uv run tasks.py lint; then
+        print_error "Lint failed. Run 'uv run tasks.py format' and 'uv run tasks.py shell-format' to fix formatting."
+        return 1
+    fi
+}
+
+#
+# Description
+#   Run strict type checking with basedpyright.
+#
+# Return Value
+#   0 on success, 1 on failure.
+#
+check_types() {
+    print_step "Type checking (basedpyright)..."
+    if ! uv run tasks.py typecheck; then
+        print_error "Type check failed. Fix the reported errors before committing."
+        return 1
+    fi
+}
+
+#==================================================================================================
+# Main Script
+#==================================================================================================
+
+main() {
+    print_step "Running pre-commit checks..."
+
+    check_formatting
+    check_types
+
+    print_step "All checks passed."
+}
+
+main "$@"
