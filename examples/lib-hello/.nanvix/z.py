@@ -6,18 +6,20 @@
 Demonstrates the full lifecycle with a real Nanvix build.  Run with
 ``--help`` to see available subcommands and Docker flags::
 
-    nanvix-zutil setup --with-docker       # download sysroot + enable Docker (default image)
-    nanvix-zutil setup --with-docker IMG   # download sysroot + enable Docker (custom image)
+    nanvix-zutil setup                     # download sysroot (Docker auto-enabled)
+    nanvix-zutil setup --with-docker IMG   # download sysroot (custom Docker image)
     nanvix-zutil build                     # cross-compile inside Docker container (auto)
     nanvix-zutil test                      # run tests (verifies libhello.a)
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 
+import dataclasses
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
     CFG_SYSROOT,
     CFG_TOOLCHAIN,
+    DockerConfig,
     ZScript,
     log,
 )
@@ -26,6 +28,15 @@ from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 
 class LibHello(ZScript):
     """Build script for the lib-hello static library example."""
+
+    # ------------------------------------------------------------------
+    # Docker configuration
+    # ------------------------------------------------------------------
+
+    def docker_config(self, image: str) -> DockerConfig:
+        """Add output_files so libhello.a is copied back on Windows."""
+        cfg = super().docker_config(image)
+        return dataclasses.replace(cfg, output_files=["libhello.a"])
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -56,10 +67,15 @@ class LibHello(ZScript):
         tc = self._toolchain()
         cc = str(tc / "bin" / "i686-nanvix-gcc")
         ar = str(tc / "bin" / "i686-nanvix-ar")
-        cflags = ["-O2", "-Wall", "-msse2", "-mfpmath=sse"]
+        cflags = "-O2 -Wall -msse2 -mfpmath=sse"
 
-        self.run(cc, *cflags, "-c", "-o", "hello.o", "src/hello.c")
-        self.run(ar, "rcs", "libhello.a", "hello.o")
+        # Single shell invocation so intermediate .o survives across
+        # compile and archive steps inside the same Docker container.
+        self.run(
+            "sh",
+            "-c",
+            f"{cc} {cflags} -c -o hello.o src/hello.c && {ar} rcs libhello.a hello.o",
+        )
 
     def test(self) -> None:
         """Run the test suite (smoke + integration).

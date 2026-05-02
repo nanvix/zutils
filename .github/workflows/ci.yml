@@ -148,13 +148,6 @@ jobs:
           name: integration-test-artifacts
           path: examples
 
-      - name: Pull Docker image
-        run: docker pull nanvix/toolchain:latest-minimal
-
-      - name: Setup (lib-hello)
-        working-directory: examples/lib-hello
-        run: uv run nanvix-zutil setup
-
       - name: Test (lib-hello)
         working-directory: examples/lib-hello
         run: uv run nanvix-zutil test
