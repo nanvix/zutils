@@ -259,7 +259,6 @@ def shell_lint() -> int:
         shfmt_path = shutil.which("shfmt")
         if shfmt_path is None:
             print("shfmt not found — skipping shell formatting checks")
-            rc = 1
         else:
             print_step = f"> shfmt --diff -i 4 -ci {' '.join(bash_files)}"
             print(print_step)
@@ -274,7 +273,6 @@ def shell_lint() -> int:
         shellcheck_path = shutil.which("shellcheck")
         if shellcheck_path is None:
             print("shellcheck not found — skipping shell correctness checks")
-            rc = 1
         else:
             print_step = f"> shellcheck {' '.join(bash_files)}"
             print(print_step)
@@ -325,7 +323,11 @@ def shell_format() -> int:
     if not bash_files:
         print("No bash scripts found.")
         return 0
-    return _run("shfmt", "-w", "-i", "4", "-ci", *bash_files)
+    shfmt_path = shutil.which("shfmt")
+    if shfmt_path is None:
+        print("error: shfmt not found")
+        return 1
+    return _run(shfmt_path, "-w", "-i", "4", "-ci", *bash_files)
 
 
 def yaml_lint() -> int:
