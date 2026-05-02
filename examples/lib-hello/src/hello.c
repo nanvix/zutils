@@ -1,10 +1,10 @@
 /* Copyright(c) The Maintainers of Nanvix. */
 /* Licensed under the MIT License. */
 
+#include "hello.h"
 #include <stdio.h>
 
-int main(void)
+void hello(void)
 {
-    printf("Hello from Nanvix with transitive dependencies!\n");
-    return 0;
+    printf("Hello from Nanvix!\n");
 }

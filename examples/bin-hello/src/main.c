@@ -1,10 +1,10 @@
 /* Copyright(c) The Maintainers of Nanvix. */
 /* Licensed under the MIT License. */
 
-#include <stdio.h>
+#include <hello.h>
 
 int main(void)
 {
-    printf("Hello from Nanvix!\n");
+    hello();
     return 0;
 }

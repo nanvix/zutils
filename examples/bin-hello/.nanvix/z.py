@@ -1,18 +1,19 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Hello-zlib example — cross-compiles a C program that uses zlib for Nanvix.
+"""bin-hello example — cross-compiles a binary that depends on lib-hello.
 
-Demonstrates dependency downloading with nanvix.toml.  Run with ``--help``
-to see available subcommands and Docker flags::
+Demonstrates dependency resolution with ``nanvix.toml``.  Run with
+``--help`` to see available subcommands and Docker flags::
 
-    nanvix-zutil setup --with-docker       # download sysroot + zlib + enable Docker (default)
-    nanvix-zutil setup --with-docker IMG   # download sysroot + zlib + enable Docker (custom)
+    nanvix-zutil setup --with-docker       # download sysroot + lib-hello + enable Docker
+    nanvix-zutil setup --with-docker IMG   # download sysroot + lib-hello + enable Docker (custom)
     nanvix-zutil build                     # cross-compile inside Docker container (auto)
-    nanvix-zutil test                      # run tests inside Docker (auto)
+    nanvix-zutil test                      # run tests (smoke + integration + functional)
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 
+import sys
 from pathlib import Path
 
 from nanvix_zutil import (
@@ -25,8 +26,8 @@ from nanvix_zutil import (
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 
 
-class HelloZlib(ZScript):
-    """Build script for the hello-zlib C example."""
+class BinHello(ZScript):
+    """Build script for the bin-hello binary example."""
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -59,21 +60,20 @@ class HelloZlib(ZScript):
     # ------------------------------------------------------------------
 
     def setup(self) -> None:
-        """Download the Nanvix sysroot and zlib dependency, then verify."""
+        """Download the Nanvix sysroot and lib-hello dependency, then verify."""
         super().setup()
         if self.buildroot is None:
             self.log.fatal(
-                "nanvix.toml must declare zlib as a build-time dependency.",
+                "nanvix.toml must declare lib-hello as a build-time dependency.",
                 hint=(
-                    "Add zlib as a build-time dependency in nanvix.toml, then "
-                    "re-run `nanvix-zutil setup`. See the hello-zlib example manifest "
-                    "for reference."
+                    "Add lib-hello as a dependency in nanvix.toml, then "
+                    "re-run `nanvix-zutil setup`."
                 ),
             )
-        self.buildroot.verify(["libz.a"])
+        self.buildroot.verify(["libhello.a"])
 
     def build(self) -> None:
-        """Cross-compile hello-zlib.c into hello-zlib.elf for Nanvix."""
+        """Cross-compile main.c into hello.elf for Nanvix."""
         tc = self._toolchain()
         sysroot = self._sysroot()
         buildroot = self._buildroot_path()
@@ -82,27 +82,28 @@ class HelloZlib(ZScript):
         ldflags = [f"-T{sysroot}/lib/user.ld", "-static", "-Wl,-z,noexecstack"]
         libs = [
             "-Wl,--start-group",
-            f"{buildroot}/lib/libz.a",
+            f"{buildroot}/lib/libhello.a",
             f"{sysroot}/lib/libposix.a",
             f"{tc}/i686-nanvix/lib/libc.a",
             f"{tc}/i686-nanvix/lib/libm.a",
             "-Wl,--end-group",
         ]
 
-        self.run(cc, *cflags, "-c", "-o", "hello-zlib.o", "src/hello-zlib.c")
-        self.run(cc, *cflags, *ldflags, "-o", "hello-zlib.elf", "hello-zlib.o", *libs)
+        self.run(cc, *cflags, "-c", "-o", "main.o", "src/main.c")
+        self.run(cc, *cflags, *ldflags, "-o", "hello.elf", "main.o", *libs)
 
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
 
         The functional test phase runs under ``nanvixd.elf`` inside a
-        Docker container.  It is skipped when Docker is not configured
-        (e.g. on Windows using pre-built ELF artifacts from Linux).
+        Docker container on Linux, or natively under ``nanvixd.exe`` on
+        Windows.  It is skipped only when Docker is not configured **and**
+        the platform is not Windows.
         """
-        binary = self.repo_root / "hello-zlib.elf"
+        binary = self.repo_root / "hello.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
-        log.info("=== hello-zlib smoke tests ===")
+        log.info("=== bin-hello smoke tests ===")
         if not binary.exists():
             log.fatal(
                 f"{binary} not found — run 'nanvix-zutil build' first.",
@@ -114,19 +115,24 @@ class HelloZlib(ZScript):
         log.success(f"OK: {binary.name} ({size} bytes)")
 
         # Integration: verify ELF magic.
-        log.info("=== hello-zlib integration tests ===")
+        log.info("=== bin-hello integration tests ===")
         with binary.open("rb") as fh:
             magic = fh.read(4)
         if magic != b"\x7fELF":
             log.fatal(f"{binary} is not a valid ELF binary.", code=EXIT_TEST_FAILURE)
         log.success(f"OK: {binary.name} is a valid ELF binary")
 
-        # Functional: run under nanvixd.elf (requires Docker).
-        if not self.docker:
+        # Functional: run under nanvixd on the appropriate platform.
+        if sys.platform == "win32":
+            self._test_functional_windows(binary)
+        elif self.docker:
+            self._test_functional_docker(binary)
+        else:
             log.info("=== skipping functional tests (Docker not configured) ===")
-            return
 
-        log.info("=== hello-zlib functional tests ===")
+    def _test_functional_docker(self, binary: Path) -> None:
+        """Run functional tests inside a Docker container (Linux)."""
+        log.info("=== bin-hello functional tests (Docker) ===")
         sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
         self.run(
@@ -134,18 +140,40 @@ class HelloZlib(ZScript):
             "--foreground",
             "60",
             f"{sysroot}/bin/nanvixd.elf",
+            "-bin-dir",
+            f"{sysroot}/bin",
             "--",
             str(workspace_binary),
         )
-        log.success("PASS: hello-zlib functional tests")
+        log.success("PASS: bin-hello functional tests")
+
+    def _test_functional_windows(self, binary: Path) -> None:
+        """Run functional tests natively on Windows using nanvixd.exe."""
+        log.info("=== bin-hello functional tests (Windows) ===")
+        sysroot = self._sysroot()
+        nanvixd = sysroot / "bin" / "nanvixd.exe"
+        if not nanvixd.exists():
+            log.fatal(
+                f"{nanvixd} not found — run 'nanvix-zutil setup' first.",
+                code=EXIT_TEST_FAILURE,
+                hint="Setup downloads nanvixd.exe into the sysroot on Windows.",
+            )
+        self.run(
+            str(nanvixd),
+            "-bin-dir",
+            str(sysroot / "bin"),
+            "--",
+            str(binary),
+        )
+        log.success("PASS: bin-hello functional tests")
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        for name in ("hello-zlib.o", "hello-zlib.elf"):
+        for name in ("main.o", "hello.elf"):
             artifact = self.repo_root / name
             if artifact.exists():
                 artifact.unlink()
 
 
 if __name__ == "__main__":
-    HelloZlib.main()
+    BinHello.main()

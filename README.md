@@ -138,12 +138,10 @@ class MyBuild(ZScript):
 
 ## Examples
 
-* [`examples/hello-world/`](examples/hello-world/) — builds a trivial C project
-  using `ZScript`.
-* [`examples/hello-zlib/`](examples/hello-zlib/) — downloads zlib via
-  `nanvix.toml` and cross-compiles a program that uses it.
-* [`examples/hello-transitive/`](examples/hello-transitive/) — demonstrates
-  transitive dependency resolution via the lockfile system.
+* [`examples/lib-hello/`](examples/lib-hello/) — builds a static library
+  (`libhello.a`) using `ZScript`.
+* [`examples/bin-hello/`](examples/bin-hello/) — depends on `lib-hello` and
+  cross-compiles a binary that uses it.
 
 ## Developer Setup
 

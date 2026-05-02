@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Integration tests for the hello-zlib example.
+"""Integration tests for the bin-hello example.
 
 These tests exercise the example by invoking ``python -m nanvix_zutil``
 from the example directory — the same way an end-user would run
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import cast
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-zlib"
+_EXAMPLE_DIR = _REPO_ROOT / "examples" / "bin-hello"
 
 
 def _has_nanvix_toolchain() -> bool:
@@ -51,13 +51,11 @@ _HAS_TOOLCHAIN = _has_nanvix_toolchain()
 _SKIP_LIFECYCLE = (
     "Nanvix toolchain not available (set NANVIX_TOOLCHAIN or install to /opt/nanvix)"
 )
-_LIFECYCLE_TIMEOUT = (
-    120  # seconds per step — setup downloads assets + build + VM boot + test + clean
-)
+_LIFECYCLE_TIMEOUT = 120
 
 
-class TestHelloZlibBash(unittest.TestCase):
-    """End-to-end tests for the hello-zlib example via ``nanvix-zutil``."""
+class TestBinHelloBash(unittest.TestCase):
+    """End-to-end tests for the bin-hello example via ``nanvix-zutil``."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -72,38 +70,6 @@ class TestHelloZlibBash(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=_LIFECYCLE_TIMEOUT,
-        )
-
-    # ------------------------------------------------------------------
-    # Lifecycle (requires toolchain + network)
-    # ------------------------------------------------------------------
-
-    @unittest.skip("TEMP - Need to update zlib first")
-    @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
-    def test_full_lifecycle(self) -> None:
-        """Run setup → build → test → clean and verify each step."""
-        # setup (downloads sysroot + zlib)
-        r = self._run_z("setup")
-        self.assertEqual(r.returncode, 0, r.stderr)
-
-        # build
-        r = self._run_z("build")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(
-            (_EXAMPLE_DIR / "hello-zlib.elf").exists(),
-            "hello-zlib.elf should exist after build",
-        )
-
-        # test
-        r = self._run_z("test")
-        self.assertEqual(r.returncode, 0, r.stderr)
-
-        # clean
-        r = self._run_z("clean")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(
-            (_EXAMPLE_DIR / "hello-zlib.elf").exists(),
-            "hello-zlib.elf should not exist after clean",
         )
 
     # ------------------------------------------------------------------
@@ -135,7 +101,7 @@ class TestHelloZlibBash(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         """Remove build artifacts left over from test runs."""
-        for artifact in ("hello-zlib.o", "hello-zlib.elf"):
+        for artifact in ("main.o", "hello.elf"):
             path = _EXAMPLE_DIR / artifact
             if path.exists():
                 path.unlink()

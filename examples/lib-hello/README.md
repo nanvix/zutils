@@ -1,19 +1,21 @@
-# Hello World Example
+# lib-hello Example
 
-Cross-compiles a C program for Nanvix — demonstrates the full `nanvix_zutil`
-lifecycle with sysroot download, cross-compilation, and testing.
+Cross-compiles a static library (`libhello.a`) for Nanvix — demonstrates the
+full `nanvix_zutil` lifecycle with sysroot download, cross-compilation, and
+testing.
 
 ## Structure
 
 ```
-hello-world/
+lib-hello/
 ├── z                # Bash bootstrap wrapper
 ├── z.ps1            # PowerShell bootstrap wrapper
-├── Makefile.nanvix  # Cross-compilation rules (i686-nanvix-gcc + Docker fallback)
+├── z.sh             # Bash bootstrap wrapper
 ├── .nanvix/
 │   └── z.py         # ZScript subclass (build orchestration)
 ├── src/
-│   └── hello.c      # Hello world C program
+│   ├── hello.c      # Library implementation
+│   └── hello.h      # Public header
 └── README.md
 ```
 
@@ -37,8 +39,8 @@ container where the toolchain is pre-installed at `/opt/nanvix`.
 
 ```bash
 ./z setup    # download Nanvix sysroot from GitHub releases
-./z build    # cross-compile hello.c → hello.elf
-./z test     # run tests (smoke, integration, functional via nanvixd.elf)
+./z build    # cross-compile hello.c → libhello.a
+./z test     # run tests (smoke, integration)
 ./z clean    # remove build artifacts
 ```
 
@@ -55,11 +57,8 @@ container where the toolchain is pre-installed at `/opt/nanvix`.
 ## How It Works
 
 1. **`./z setup`** downloads the Nanvix runtime sysroot from
-   `nanvix/nanvix` GitHub releases. The sysroot contains `libposix.a`,
-   `libc.a`, `user.ld`, and the `nanvixd.elf` runtime.
-2. **`./z build`** invokes `make -f Makefile.nanvix` which cross-compiles
-   `src/hello.c` using `i686-nanvix-gcc` and links it statically against
-   the Nanvix POSIX layer.
-3. **`./z test`** runs smoke tests (binary exists), integration tests
-   (valid ELF), and functional tests (executes on `nanvixd.elf`).
-
+   `nanvix/nanvix` GitHub releases.
+2. **`./z build`** cross-compiles `src/hello.c` using `i686-nanvix-gcc`
+   and archives the object into `libhello.a`.
+3. **`./z test`** runs smoke tests (archive exists) and integration tests
+   (valid ar archive magic).

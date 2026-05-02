@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Integration tests for the hello-world example.
+"""Integration tests for the lib-hello example.
 
 These tests exercise the example by invoking ``python -m nanvix_zutil``
 from the example directory — the same way an end-user would run
@@ -29,7 +29,7 @@ from typing import cast
 from unittest.mock import patch
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_EXAMPLE_DIR = _REPO_ROOT / "examples" / "hello-world"
+_EXAMPLE_DIR = _REPO_ROOT / "examples" / "lib-hello"
 
 
 def _has_nanvix_toolchain() -> bool:
@@ -54,8 +54,8 @@ _SKIP_LIFECYCLE = (
 _LIFECYCLE_TIMEOUT = 300  # seconds — setup + build + VM boot + test + clean
 
 
-class TestHelloWorldBash(unittest.TestCase):
-    """End-to-end tests for the hello-world example via ``nanvix-zutil``."""
+class TestLibHelloBash(unittest.TestCase):
+    """End-to-end tests for the lib-hello example via ``nanvix-zutil``."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -79,8 +79,6 @@ class TestHelloWorldBash(unittest.TestCase):
     @unittest.skipUnless(_HAS_TOOLCHAIN, _SKIP_LIFECYCLE)
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test → clean and verify each step."""
-        # nanvixd does not yet support standalone deployment at runtime,
-        # so override to multi-process for the full lifecycle.
         with patch.dict(os.environ, {"NANVIX_DEPLOYMENT_MODE": "multi-process"}):
             self._run_lifecycle()
 
@@ -94,8 +92,8 @@ class TestHelloWorldBash(unittest.TestCase):
         r = self._run_z("build")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(
-            (_EXAMPLE_DIR / "hello.elf").exists(),
-            "hello.elf should exist after build",
+            (_EXAMPLE_DIR / "libhello.a").exists(),
+            "libhello.a should exist after build",
         )
 
         # test
@@ -106,8 +104,8 @@ class TestHelloWorldBash(unittest.TestCase):
         r = self._run_z("clean")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(
-            (_EXAMPLE_DIR / "hello.elf").exists(),
-            "hello.elf should not exist after clean",
+            (_EXAMPLE_DIR / "libhello.a").exists(),
+            "libhello.a should not exist after clean",
         )
 
     # ------------------------------------------------------------------
@@ -139,7 +137,7 @@ class TestHelloWorldBash(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         """Remove build artifacts left over from test runs."""
-        for artifact in ("hello.o", "hello.elf"):
+        for artifact in ("hello.o", "libhello.a"):
             path = _EXAMPLE_DIR / artifact
             if path.exists():
                 path.unlink()
