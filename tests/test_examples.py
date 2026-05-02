@@ -60,8 +60,20 @@ def _has_docker_image() -> bool:
         return False
 
 
-_HAS_DOCKER = _has_docker()
-_SKIP_NO_DOCKER = "Docker daemon not available"
+def _can_run_docker_lifecycle() -> bool:
+    """Return True if Docker lifecycle tests can run.
+
+    Requires the Docker daemon **and** a platform that can execute
+    Linux containers.  Windows CI has Docker Desktop but only supports
+    Windows containers, so the Linux toolchain image cannot run there.
+    """
+    if sys.platform == "win32":
+        return False
+    return _has_docker()
+
+
+_CAN_LIFECYCLE = _can_run_docker_lifecycle()
+_SKIP_NO_DOCKER = "Docker lifecycle not available (no daemon or Windows host)"
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +186,7 @@ class TestBinHelloCLI(unittest.TestCase):
 # ===================================================================
 
 
-@unittest.skipUnless(_HAS_DOCKER, _SKIP_NO_DOCKER)
+@unittest.skipUnless(_CAN_LIFECYCLE, _SKIP_NO_DOCKER)
 class TestLibHelloLifecycle(unittest.TestCase):
     """setup → build → test for the lib-hello example."""
 
@@ -201,7 +213,7 @@ class TestLibHelloLifecycle(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
-@unittest.skipUnless(_HAS_DOCKER, _SKIP_NO_DOCKER)
+@unittest.skipUnless(_CAN_LIFECYCLE, _SKIP_NO_DOCKER)
 class TestBinHelloLifecycle(unittest.TestCase):
     """setup → build → test for the bin-hello example.
 
@@ -240,7 +252,7 @@ class TestBinHelloLifecycle(unittest.TestCase):
 # ===================================================================
 
 
-@unittest.skipIf(_HAS_DOCKER, "covered by lifecycle tests above")
+@unittest.skipIf(_CAN_LIFECYCLE, "covered by lifecycle tests above")
 class TestLibHelloTestOnly(unittest.TestCase):
     """Run ``nanvix-zutil test`` against pre-built lib-hello artifacts."""
 
@@ -251,7 +263,7 @@ class TestLibHelloTestOnly(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
-@unittest.skipIf(_HAS_DOCKER, "covered by lifecycle tests above")
+@unittest.skipIf(_CAN_LIFECYCLE, "covered by lifecycle tests above")
 class TestBinHelloTestOnly(unittest.TestCase):
     """Run ``nanvix-zutil test`` against pre-built bin-hello artifacts."""
 
@@ -267,7 +279,7 @@ class TestBinHelloTestOnly(unittest.TestCase):
 # ===================================================================
 
 
-@unittest.skipUnless(_HAS_DOCKER, "nothing to clean")
+@unittest.skipUnless(_CAN_LIFECYCLE, "nothing to clean")
 class TestExamplesCleanup(unittest.TestCase):
     """Clean both examples after lifecycle tests.
 
