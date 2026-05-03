@@ -1,0 +1,20 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 20
+
+  # Covers [project].dependencies in pyproject.toml (e.g. tomli-w).
+  # [dependency-groups] (dev tools: black, pyright, pytest, yamllint) are not
+  # monitored here because Dependabot's pip ecosystem does not support PEP 735
+  # dependency groups or uv.lock. Update those manually via `uv lock --upgrade`.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 20
