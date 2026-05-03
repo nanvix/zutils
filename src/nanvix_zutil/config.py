@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import cast
+from typing import cast, overload
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -143,6 +143,12 @@ class Config:
     # ------------------------------------------------------------------
     # Generic get / set
     # ------------------------------------------------------------------
+
+    @overload
+    def get(self, key: str, default: str) -> str: ...
+
+    @overload
+    def get(self, key: str, default: None = ...) -> str | None: ...
 
     def get(self, key: str, default: str | None = None) -> str | None:
         """Retrieve a configuration value.
