@@ -130,7 +130,7 @@ not using the pinned versions.
 ```bash
 nanvix-zutil lock
 git add .nanvix/nanvix.lock
-git commit -m "[project] E: Update lockfile"
+git commit -m "[zutils] E: Update lockfile"
 ```
 
 ### Bootstrap wrapper can't find Python 3.12+
@@ -144,9 +144,9 @@ git commit -m "[project] E: Update lockfile"
    # Ubuntu/Debian
    sudo apt-get install python3.12
    ```
-2. Ensure it's on PATH or set `PYTHON` environment variable:
+2. Ensure `python3` resolves to 3.12+ on your PATH:
    ```bash
-   PYTHON=python3.12 ./z setup
+   sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
    ```
 
 ### Windows: paths not translating correctly

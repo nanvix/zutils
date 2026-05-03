@@ -32,9 +32,9 @@ contains:
 
 | Hook | What it does |
 |------|-------------|
-| `commit-msg` | Validates `[scope] T: Description` format (B, E, F, or W) |
-| `pre-commit` | Runs formatting checks |
-| `pre-push` | Runs formatting (black) and type checking (pyright) |
+| `commit-msg` | Validates `[module] (B\|E\|F\|W): Description` format. Valid modules: `zutils`, `ci`, `doc`, `git`, `tests`, `build`, `examples` |
+| `pre-commit` | Runs `tasks.py lint` (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint) + `tasks.py typecheck` (pyright) |
+| `pre-push` | Runs `tasks.py lint` + `tasks.py typecheck` (same checks as pre-commit) |
 
 ## Environment Variables
 
