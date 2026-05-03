@@ -123,7 +123,7 @@ jobs:
         run: uv sync
 
       - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: integration-test-artifacts
           path: examples
