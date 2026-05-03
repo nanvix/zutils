@@ -33,6 +33,37 @@ MANIFEST_LATEST_WITH_DEPS = (
 )
 
 
+def make_toml(
+    *,
+    name: str = "myapp",
+    version: str = "1.0.0",
+    nanvix_version: str = "0.12.257",
+    deps: dict[str, str] | None = None,
+    sys_deps: dict[str, str] | None = None,
+) -> str:
+    """Build a nanvix.toml string with sensible defaults.
+
+    Dependency values are raw TOML fragments placed after ``=``.
+    For string values, include quotes: ``deps={"zlib": '"1.0.0"'}``.
+    For inline tables: ``deps={"zlib": '{ commitish = "abc" }'}``.
+    """
+    lines = [
+        "[package]",
+        f'name = "{name}"',
+        f'version = "{version}"',
+        f'nanvix-version = "{nanvix_version}"',
+    ]
+    if deps is not None:
+        lines.append("[dependencies]")
+        for dep_name, dep_value in deps.items():
+            lines.append(f"{dep_name} = {dep_value}")
+    if sys_deps is not None:
+        lines.append("[system-dependencies]")
+        for dep_name, dep_value in sys_deps.items():
+            lines.append(f"{dep_name} = {dep_value}")
+    return "\n".join(lines) + "\n"
+
+
 def write_manifest(repo_root: Path, content: str = MINIMAL_MANIFEST) -> None:
     """Create ``.nanvix/nanvix.toml`` inside *repo_root*."""
     nanvix_dir = repo_root / ".nanvix"
