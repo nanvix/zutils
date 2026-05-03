@@ -117,6 +117,13 @@ class TestConfigGetSet(unittest.TestCase):
         self.assertIsNone(cfg.get("NONEXISTENT_KEY"))
         self.assertEqual(cfg.get("NONEXISTENT_KEY", "fallback"), "fallback")
 
+    def test_get_with_str_default_returns_str(self) -> None:
+        cfg = Config(self._nanvix_dir)
+        # When a str default is given, the return value must be str (not None).
+        result = cfg.get("NONEXISTENT_KEY", "/opt/nanvix")
+        self.assertIsInstance(result, str)
+        self.assertEqual(result, "/opt/nanvix")
+
     def test_set_then_get(self) -> None:
         cfg = Config(self._nanvix_dir)
         cfg.set("MY_KEY", "my_value")
