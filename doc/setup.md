@@ -25,13 +25,21 @@ uv run tasks.py setup         # configure git hooks
 `uv sync` creates a `.venv/` virtualenv and installs all dependencies
 (runtime + dev group) declared in `pyproject.toml`.
 
+## Dependency Groups
+
+| Group | Scope | Contents |
+| ----- | ----- | -------- |
+| `[project] dependencies` | Runtime | `tomli-w` |
+| `[project.optional-dependencies] lint` | Consumer repos | `black`, `pyright` — installed in consumer venvs via `nanvix-zutil[lint]` |
+| `[dependency-groups] dev` | Dev only | `black`, `pyright`, `pytest`, `yamllint` |
+
 ## Git Hooks
 
 `uv run tasks.py setup` points Git at the `.githooks/` directory, which
 contains:
 
 | Hook | What it does |
-|------|-------------|
+| ------ | ------------- |
 | `commit-msg` | Validates `[module] (B\|E\|F\|W): Description` format. Valid modules: `zutils`, `ci`, `doc`, `git`, `tests`, `build`, `examples` |
 | `pre-commit` | Runs `tasks.py lint` (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint) + `tasks.py typecheck` (pyright) |
 | `pre-push` | Runs `tasks.py lint` + `tasks.py typecheck` (same checks as pre-commit) |
@@ -42,7 +50,7 @@ These are used by the library at runtime (in consumer repos), not during
 development of `nanvix-zutil` itself:
 
 | Variable | Default | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `NANVIX_TARGET` | `x86` | Target architecture |
 | `NANVIX_MACHINE` | `microvm` | Target machine |
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
@@ -53,17 +61,18 @@ development of `nanvix-zutil` itself:
 
 ## Project Layout
 
-```
+```text
 zutils/
-├── src/nanvix_zutil/   # Library source code
-├── tests/              # Test suite (pytest)
-├── templates/          # Bootstrap wrapper templates (z, z.sh, z.ps1)
-├── examples/           # Example consumer repos
-├── docs/               # Additional reference docs
-├── doc/                # Developer documentation
-├── tasks.py            # Dev task runner
-├── pyproject.toml      # Project metadata + dependencies
-└── .githooks/          # Git hooks (commit-msg, pre-push)
+├── src/nanvix_zutil/          # Library source code
+│   └── configs/               # Canonical tool configs synced to consumers
+├── tests/                     # Test suite (pytest)
+├── templates/                 # Bootstrap wrapper templates (z, z.sh, z.ps1)
+├── examples/                  # Example consumer repos
+├── docs/                      # Additional reference docs
+├── doc/                       # Developer documentation
+├── tasks.py                   # Dev task runner
+├── pyproject.toml             # Project metadata + dependencies
+└── .githooks/                 # Git hooks (commit-msg, pre-push)
 ```
 
 ## IDE Configuration

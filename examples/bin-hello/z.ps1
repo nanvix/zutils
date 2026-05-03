@@ -70,7 +70,7 @@ function Bootstrap {
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "venv creation failed (exit code $LASTEXITCODE)"
     }
-    & $venvPython -m pip install --quiet $wheelUrl
+    & $venvPython -m pip install --quiet "$($wheelUrl)[lint]"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "pip install failed (exit code $LASTEXITCODE)"
     }

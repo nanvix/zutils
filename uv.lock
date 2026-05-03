@@ -81,6 +81,12 @@ dependencies = [
     { name = "tomli-w" },
 ]
 
+[package.optional-dependencies]
+lint = [
+    { name = "black" },
+    { name = "pyright" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "black" },
@@ -90,7 +96,12 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tomli-w", specifier = ">=1.2.0" }]
+requires-dist = [
+    { name = "black", marker = "extra == 'lint'" },
+    { name = "pyright", marker = "extra == 'lint'" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+]
+provides-extras = ["lint"]
 
 [package.metadata.requires-dev]
 dev = [

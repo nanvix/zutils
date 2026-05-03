@@ -125,7 +125,14 @@ class ZScript:
 
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
-    AUTO_HOOKS: tuple[str, ...] = ("setup", "distclean", "lock", "help")
+    AUTO_HOOKS: tuple[str, ...] = (
+        "setup",
+        "distclean",
+        "lock",
+        "lint",
+        "format",
+        "help",
+    )
 
     #: Consumer-defined hooks that appear in the CLI only when the
     #: subclass overrides the corresponding method.
@@ -422,6 +429,7 @@ class ZScript:
     _CONFIG_FILES: dict[str, str] = {
         "pyrightconfig.json": "pyrightconfig.json",
         ".yamllint.yml": ".yamllint.yml",
+        "black.toml": "black.toml",
     }
 
     def _sync_configs(self) -> None:
@@ -518,6 +526,66 @@ class ZScript:
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
                 code=EXIT_INVALID_ARGS,
                 hint="Run `nanvix-zutil lock` to regenerate the lockfile.",
+            )
+
+    # ------------------------------------------------------------------
+    # Lint & format hooks — auto-implemented
+    # ------------------------------------------------------------------
+
+    def lint(self) -> None:
+        """Run linters on ``.nanvix/*.py``.
+
+        Runs ``black --check`` followed by ``pyright`` on all Python
+        files in the ``.nanvix/`` directory.  Exits with
+        ``EXIT_BUILD_FAILURE`` if either tool reports problems.
+        """
+        py_files = sorted(self.nanvix_dir.glob("*.py"))
+        if not py_files:
+            log.warning("No .py files found in .nanvix/ — nothing to lint")
+            return
+        str_files = [str(f) for f in py_files]
+        black_cfg = str(self.nanvix_dir / "black.toml")
+        pyright_cfg = str(self.nanvix_dir / "pyrightconfig.json")
+        self._run_tool("black", "--config", black_cfg, "--check", *str_files)
+        self._run_tool("pyright", "--project", pyright_cfg, *str_files)
+
+    def format(self, *, check: bool = False) -> None:
+        """Format ``.nanvix/*.py`` with black.
+
+        Args:
+            check: When ``True``, run ``black --check`` instead of
+                auto-formatting (exit non-zero on diff).
+        """
+        py_files = sorted(self.nanvix_dir.glob("*.py"))
+        if not py_files:
+            log.warning("No .py files found in .nanvix/ — nothing to format")
+            return
+        str_files = [str(f) for f in py_files]
+        black_cfg = str(self.nanvix_dir / "black.toml")
+        cmd = ["black", "--config", black_cfg]
+        if check:
+            cmd.append("--check")
+        cmd.extend(str_files)
+        self._run_tool(*cmd)
+
+    def _run_tool(self, *args: str) -> None:
+        """Run a host-side tool via ``sys.executable -m``, exiting on failure."""
+        import importlib.util as _imputil
+
+        tool = args[0]
+        if _imputil.find_spec(tool) is None:
+            log.fatal(
+                f"'{tool}' not found — install it with: "
+                f"pip install nanvix-zutil[lint]",
+                code=EXIT_MISSING_DEP,
+            )
+        cmd = [sys.executable, "-m", *args]
+        log.info(f"$ {' '.join(args)}")
+        result = subprocess.run(cmd, cwd=self.repo_root)
+        if result.returncode != 0:
+            log.fatal(
+                f"{tool} failed with exit code {result.returncode}",
+                code=EXIT_BUILD_FAILURE,
             )
 
     # ------------------------------------------------------------------
@@ -807,6 +875,12 @@ class ZScript:
                 instance.lock(shallow=args.shallow)
             return
 
+        # Special handling for format subcommand (--check flag).
+        if subcommand == "format":
+            instance.format(check=args.check)
+            log.success("Format complete")
+            return
+
         dispatch: dict[str, object] = {
             "setup": instance.setup,
             "distclean": instance.distclean,
@@ -815,6 +889,7 @@ class ZScript:
             "benchmark": instance.benchmark,
             "release": instance.release,
             "clean": instance.clean,
+            "lint": instance.lint,
         }
 
         handler = dispatch.get(subcommand) if subcommand is not None else None

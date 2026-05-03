@@ -4,9 +4,9 @@ Build orchestration utilities for the [Nanvix](https://github.com/nanvix/nanvix)
 
 `nanvix_zutil` is a Python 3.12+ library that provides a unified `ZScript`
 base class with lifecycle hooks (`setup`, `distclean`, `build`, `test`, `benchmark`,
-`release`, `clean`, `lock`), structured logging, config persistence, GitHub release
-artifact downloading, lockfile-based dependency resolution, and deterministic
-exit codes.
+`release`, `clean`, `lock`, `lint`, `format`), structured logging, config persistence,
+GitHub release artifact downloading, lockfile-based dependency resolution, and
+deterministic exit codes.
 
 ## Quick Start
 
@@ -32,6 +32,8 @@ Then invoke via the bootstrap wrapper or the `nanvix-zutil` CLI:
 ./z setup            # download sysroot + install dependencies
 ./z build            # cross-compile (Docker auto-enabled)
 ./z test             # run tests
+./z lint             # black --check + pyright on .nanvix/*.py
+./z format           # auto-format .nanvix/*.py with black
 ./z distclean        # remove all generated artifacts
 ```
 
@@ -42,6 +44,8 @@ nanvix-zutil lock    # resolve dependency graph → nanvix.lock
 nanvix-zutil setup   # download sysroot + install deps
 nanvix-zutil build   # cross-compile
 nanvix-zutil test    # run tests
+nanvix-zutil lint    # lint .nanvix/*.py
+nanvix-zutil format  # format .nanvix/*.py
 ```
 
 ## Installation
@@ -66,7 +70,7 @@ version into `.nanvix/venv/`.
 ## Documentation
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | [Design Overview](doc/design.md) | Architecture, module graph, data flow |
 | [Setup](doc/setup.md) | Developer environment setup |
 | [Build](doc/build.md) | How to build the project |
@@ -76,7 +80,7 @@ version into `.nanvix/venv/`.
 Additional references:
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | [Manifest Reference](docs/manifest.md) | `nanvix.toml` format and options |
 | [Local Development (`--with-nanvix`)](docs/with-nanvix.md) | Using local Nanvix builds |
 | [Contributing](CONTRIBUTING.md) | Contribution guidelines and release process |

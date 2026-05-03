@@ -46,7 +46,7 @@ function bootstrap() {
     fi
     # Re-resolve paths now that the venv exists (Scripts/ vs bin/).
     _resolve_venv_paths
-    "$VENV_PYTHON" -m pip install --quiet "$WHEEL_URL"
+    "$VENV_PYTHON" -m pip install --quiet "${WHEEL_URL}[lint]"
 }
 
 # Prefer the venv copy if it exists; otherwise use the global install.

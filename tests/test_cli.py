@@ -117,5 +117,47 @@ class TestDockerFlags(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestLintFormatSubcommands(unittest.TestCase):
+    """Tests for lint and format subcommands."""
+
+    def test_lint_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["lint"])
+        self.assertEqual(args.subcommand, "lint")
+
+    def test_format_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["format"])
+        self.assertEqual(args.subcommand, "format")
+
+    def test_format_check_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["format", "--check"])
+        self.assertTrue(args.check)
+
+    def test_format_check_default_false(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["format"])
+        self.assertFalse(args.check)
+
+    def test_lint_in_subcommands(self) -> None:
+        self.assertIn("lint", SUBCOMMANDS)
+
+    def test_format_in_subcommands(self) -> None:
+        self.assertIn("format", SUBCOMMANDS)
+
+    def test_lint_available_restricted(self) -> None:
+        """lint is accepted when in the available set."""
+        parser = build_parser(available=("lint", "help"))
+        args = parser.parse_args(["lint"])
+        self.assertEqual(args.subcommand, "lint")
+
+    def test_format_available_restricted(self) -> None:
+        """format is accepted when in the available set."""
+        parser = build_parser(available=("format", "help"))
+        args = parser.parse_args(["format"])
+        self.assertEqual(args.subcommand, "format")
+
+
 if __name__ == "__main__":
     unittest.main()

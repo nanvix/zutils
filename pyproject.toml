@@ -16,6 +16,9 @@ dependencies = [
     "tomli-w>=1.2.0",
 ]
 
+[project.optional-dependencies]
+lint = ["black", "pyright"]
+
 [dependency-groups]
 dev = [
   "black",
