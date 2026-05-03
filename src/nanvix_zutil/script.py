@@ -31,6 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import log
@@ -122,6 +123,12 @@ class ZScript:
         "bin/linuxd.elf",
         "bin/uservm.elf",
     )
+
+    #: Optional allowlist of test binary filenames to run on Windows.
+    #: When non-empty, only ``.elf`` files whose names are in this set
+    #: will be executed by :meth:`run_tests_windows`.  When empty (the
+    #: default), all ``.elf`` files discovered in ``build/`` are run.
+    WINDOWS_TEST_ALLOWLIST: set[str] = set()
 
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
@@ -563,6 +570,141 @@ class ZScript:
                 if p.is_file():
                     p.unlink()
                     log.info(f"Removed {name}")
+
+    # ------------------------------------------------------------------
+    # Windows test runner
+    # ------------------------------------------------------------------
+
+    def run_tests_windows(self) -> None:
+        """Run test binaries natively on Windows using ``nanvixd.exe``.
+
+        This method validates sysroot binaries (``nanvixd.exe``,
+        ``mkramfs.exe``), discovers ``.elf`` test binaries in
+        ``build/``, and executes each one inside a temporary ramfs via
+        ``nanvixd.exe``.
+
+        Filtering:
+            If :attr:`WINDOWS_TEST_ALLOWLIST` is non-empty, only
+            binaries whose filenames are in the allowlist are executed.
+            Otherwise all discovered ``.elf`` files are run.
+
+        Consumer usage::
+
+            class MyBuild(ZScript):
+                def test(self) -> None:
+                    if is_windows():
+                        self.run_tests_windows()
+                        return
+                    # Linux test path …
+
+        To filter test binaries (e.g. skip CLI tools)::
+
+            class ZlibBuild(ZScript):
+                WINDOWS_TEST_ALLOWLIST = {"example.elf"}
+
+        Raises:
+            RuntimeError: If one or more tests fail.
+            SystemExit: If sysroot binaries are missing (via
+                :func:`~nanvix_zutil.log.fatal`).
+        """
+        sysroot_str = self.config.get(CFG_SYSROOT, "")
+        if not sysroot_str:
+            log.fatal(
+                f"{CFG_SYSROOT} is not set.",
+                code=EXIT_MISSING_DEP,
+                hint="Run `./z setup` first.",
+            )
+        sysroot_path = Path(sysroot_str)
+        nanvixd = sysroot_path / "bin" / "nanvixd.exe"
+        mkramfs = sysroot_path / "bin" / "mkramfs.exe"
+        if not nanvixd.is_file():
+            log.fatal(
+                "nanvixd.exe not found.",
+                code=EXIT_MISSING_DEP,
+                hint="Run `./z setup` first.",
+            )
+        if not mkramfs.is_file():
+            log.fatal(
+                "mkramfs.exe not found.",
+                code=EXIT_MISSING_DEP,
+                hint="Run `./z setup` first.",
+            )
+
+        build_dir = self.repo_root / "build"
+        all_elfs = sorted(build_dir.glob("*.elf")) if build_dir.is_dir() else []
+
+        # Apply allowlist filter if configured.
+        allowlist = self.WINDOWS_TEST_ALLOWLIST
+        if allowlist:
+            test_binaries = [b for b in all_elfs if b.name in allowlist]
+        else:
+            test_binaries = all_elfs
+
+        if not test_binaries:
+            print("No test binaries found in build/ -- smoke test only.")
+            print("OK: library-only repo, no functional tests to run on Windows")
+            return
+
+        failed: list[str] = []
+        for binary in test_binaries:
+            name = binary.stem
+            print(f"RUN  {name}...")
+            with tempfile.TemporaryDirectory(prefix=f"nanvix_{name}_") as tmpdir:
+                tmpdir_path = Path(tmpdir)
+                ramfs_dir = tmpdir_path / "ramfs"
+                ramfs_dir.mkdir()
+                (ramfs_dir / "tmp").mkdir(exist_ok=True)
+                shutil.copy2(binary, ramfs_dir / binary.name)
+                # Write ramfs image alongside the ramfs source dir to avoid
+                # self-inclusion while keeping artifacts scoped to this
+                # temp dir.
+                ramfs_img = tmpdir_path / f"rootfs_{name}.img"
+                try:
+                    subprocess.run(
+                        [
+                            str(mkramfs.resolve()),
+                            "-o",
+                            str(ramfs_img),
+                            str(ramfs_dir),
+                        ],
+                        check=True,
+                        timeout=60,
+                    )
+                except subprocess.CalledProcessError as e:
+                    print(f"FAIL {name} (mkramfs exit code {e.returncode})")
+                    failed.append(name)
+                    continue
+                except subprocess.TimeoutExpired:
+                    print(f"FAIL {name} (mkramfs timeout)")
+                    failed.append(name)
+                    continue
+                try:
+                    result = subprocess.run(
+                        [
+                            str(nanvixd.resolve()),
+                            "-bin-dir",
+                            str((sysroot_path / "bin").resolve()),
+                            "-ramfs",
+                            str(ramfs_img),
+                            "--",
+                            f"./{binary.name}",
+                        ],
+                        stdin=subprocess.DEVNULL,
+                        timeout=120,
+                    )
+                    if result.returncode != 0:
+                        print(f"FAIL {name} (exit code {result.returncode})")
+                        failed.append(name)
+                    else:
+                        print(f"OK   {name}")
+                except subprocess.TimeoutExpired:
+                    print(f"FAIL {name} (timeout)")
+                    failed.append(name)
+
+        if failed:
+            msg = " ".join(failed)
+            raise RuntimeError(f"{len(failed)} test(s) failed: {msg}")
+        print(f"\t\t*** All {len(test_binaries)} tests PASSED ***")
 
     # ------------------------------------------------------------------
     # Subprocess helper

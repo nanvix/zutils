@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
@@ -1246,6 +1247,133 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         # The dependency was satisfied locally so GitHub resolve should not
         # have been called.
         mock_resolve.assert_not_called()
+
+
+# ======================================================================
+# run_tests_windows()
+# ======================================================================
+
+
+class TestRunTestsWindows(unittest.TestCase):
+    """Tests for ZScript.run_tests_windows()."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._repo = Path(self._tmpdir.name)
+        write_manifest(self._repo)
+        # Set up a minimal sysroot with fake binaries.
+        sysroot_dir = self._repo / ".nanvix" / "sysroot" / "bin"
+        sysroot_dir.mkdir(parents=True)
+        (sysroot_dir / "nanvixd.exe").write_bytes(b"fake")
+        (sysroot_dir / "mkramfs.exe").write_bytes(b"fake")
+        self._sysroot_path = str(self._repo / ".nanvix" / "sysroot")
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        script = ZScript(self._repo)
+        script.config.set(CFG_SYSROOT, self._sysroot_path)
+        return script
+
+    def test_no_sysroot_fatals(self) -> None:
+        """run_tests_windows() fatals when sysroot is not set."""
+        script = ZScript(self._repo)
+        with self.assertRaises(SystemExit):
+            script.run_tests_windows()
+
+    def test_missing_nanvixd_fatals(self) -> None:
+        """run_tests_windows() fatals when nanvixd.exe is missing."""
+        (self._repo / ".nanvix" / "sysroot" / "bin" / "nanvixd.exe").unlink()
+        script = self._make_script()
+        with self.assertRaises(SystemExit):
+            script.run_tests_windows()
+
+    def test_missing_mkramfs_fatals(self) -> None:
+        """run_tests_windows() fatals when mkramfs.exe is missing."""
+        (self._repo / ".nanvix" / "sysroot" / "bin" / "mkramfs.exe").unlink()
+        script = self._make_script()
+        with self.assertRaises(SystemExit):
+            script.run_tests_windows()
+
+    def test_no_build_dir_smoke(self) -> None:
+        """run_tests_windows() prints smoke-test message when no build dir."""
+        script = self._make_script()
+        # Should not raise — just prints smoke-test message.
+        script.run_tests_windows()
+
+    def test_no_elf_files_smoke(self) -> None:
+        """run_tests_windows() prints smoke-test when build/ has no .elf."""
+        (self._repo / "build").mkdir()
+        script = self._make_script()
+        script.run_tests_windows()
+
+    @patch("nanvix_zutil.script.subprocess.run")
+    def test_runs_discovered_binaries(self, mock_run: MagicMock) -> None:
+        """run_tests_windows() discovers and runs .elf files."""
+        build_dir = self._repo / "build"
+        build_dir.mkdir()
+        (build_dir / "test_foo.elf").write_bytes(b"\x7fELF")
+        (build_dir / "test_bar.elf").write_bytes(b"\x7fELF")
+
+        mock_run.return_value = sp.CompletedProcess(args=[], returncode=0)
+        script = self._make_script()
+        script.run_tests_windows()
+
+        # mkramfs + nanvixd called for each binary = 4 calls.
+        self.assertEqual(mock_run.call_count, 4)
+
+    @patch("nanvix_zutil.script.subprocess.run")
+    def test_allowlist_filters_binaries(self, mock_run: MagicMock) -> None:
+        """WINDOWS_TEST_ALLOWLIST filters which binaries are executed."""
+        build_dir = self._repo / "build"
+        build_dir.mkdir()
+        (build_dir / "example.elf").write_bytes(b"\x7fELF")
+        (build_dir / "minigzip.elf").write_bytes(b"\x7fELF")
+
+        mock_run.return_value = sp.CompletedProcess(args=[], returncode=0)
+
+        class Filtered(ZScript):
+            WINDOWS_TEST_ALLOWLIST = {"example.elf"}
+
+        script = Filtered(self._repo)
+        script.config.set(CFG_SYSROOT, self._sysroot_path)
+        script.run_tests_windows()
+
+        # Only example.elf → 2 calls (mkramfs + nanvixd).
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch("nanvix_zutil.script.subprocess.run")
+    def test_failure_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """run_tests_windows() raises RuntimeError on test failure."""
+        build_dir = self._repo / "build"
+        build_dir.mkdir()
+        (build_dir / "failing.elf").write_bytes(b"\x7fELF")
+
+        # mkramfs succeeds, nanvixd returns non-zero.
+        def side_effect(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+            cmd: list[str] = list(args[0]) if args else list(kwargs.get("args", []))  # type: ignore[arg-type]
+            if "mkramfs" in str(cmd[0]):
+                return sp.CompletedProcess(args=cmd, returncode=0)
+            return sp.CompletedProcess(args=cmd, returncode=1)
+
+        mock_run.side_effect = side_effect
+        script = self._make_script()
+        with self.assertRaises(RuntimeError) as ctx:
+            script.run_tests_windows()
+        self.assertIn("1 test(s) failed", str(ctx.exception))
+
+    @patch("nanvix_zutil.script.subprocess.run")
+    def test_mkramfs_failure_continues(self, mock_run: MagicMock) -> None:
+        """run_tests_windows() handles mkramfs CalledProcessError."""
+        build_dir = self._repo / "build"
+        build_dir.mkdir()
+        (build_dir / "test_a.elf").write_bytes(b"\x7fELF")
+
+        mock_run.side_effect = sp.CalledProcessError(1, "mkramfs")
+        script = self._make_script()
+        with self.assertRaises(RuntimeError):
+            script.run_tests_windows()
 
 
 if __name__ == "__main__":
