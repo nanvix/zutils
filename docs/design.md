@@ -7,8 +7,8 @@ orchestration for the Nanvix ecosystem. Consumer repositories (e.g.
 `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a
 `.nanvix/z.py` file and invoke it via bootstrap wrappers (`z`, `z.sh`,
 `z.ps1`) at the repo root. The library handles sysroot and dependency
-management, Docker-based cross-compilation, lockfile resolution, build
-matrix expansion, and structured logging — so consumers only implement
+management, Docker-based cross-compilation, lockfile resolution,
+and structured logging — so consumers only implement
 the lifecycle hooks they need.
 
 ## Module Dependency Graph
@@ -25,13 +25,11 @@ __main__.py            ← nanvix-zutil CLI entry point
   │     ├── resolver.py      ← BFS dependency resolution, cycle detection
   │     ├── manifest.py      ← nanvix.toml parser (metadata + dependencies)
   │     ├── docker.py        ← Docker integration (per-command wrapping, mounts)
-  │     ├── matrix.py        ← Build matrix expansion and parallel execution
   │     ├── release.py       ← Release artifact packaging (.tar.gz, .zip, etc.)
   │     ├── log.py           ← Colored terminal output, --json mode, fatal()
   │     └── exitcodes.py     ← Deterministic exit code constants (0–7)
   │
   ├── info.py          ← nanvix-info CLI (query Nanvix release metadata)
-  ├── matrix_cmd.py    ← nanvix-zutil matrix CLI (emit matrix as CI JSON)
   ├── resolve_cmd.py   ← nanvix-zutil resolve CLI (emit resolved metadata)
   └── utils.py         ← Shared utilities (semver regex)
 ```
@@ -63,7 +61,7 @@ exposes.
 
 Internal module that builds the `argparse` parser for `ZScript.main()`.
 Registers subcommands dynamically based on which hooks the consumer
-overrides. Handles `--json`, `--version`, `--all-builds`, `--mode`, and
+overrides. Handles `--json`, `--version`, `--mode`, and
 the per-subcommand `--with-docker` flag.
 
 ### `config.py` — Configuration
@@ -115,8 +113,6 @@ metadata and dependencies. Supports:
   unless the sysroot is `"latest"` (deferred to resolver).
 - **Environment overrides**: `NANVIX_VERSION` and
   `NANVIX_VERSION_<NAME>` override manifest-declared versions.
-- **Build matrix**: `[builds]` section with dimensions, excludes, and
-  includes for multi-configuration builds.
 
 ### `lockfile.py` — Lockfile
 
@@ -182,19 +178,6 @@ Downloads release assets from the GitHub API with:
 - **Fallback resolution**: `resolve_release_with_fallback()` tries the
   exact version, then falls back to the best available matching release.
 
-### `matrix.py` — Build Matrix
-
-Handles `--all-builds` mode for multi-configuration builds:
-
-- **`expand_matrix()`**: Expands the `[builds]` manifest section into
-  all combinations of platform × mode × memory.
-- **`filter_matrix()`**: Filters combos by `--mode`.
-- **`run_all_builds()`**: Runs a lifecycle hook across all combos in
-  parallel using `ThreadPoolExecutor`. Each combo gets its own workspace
-  copy under `.nanvix/_builds/`.
-- **`BuildCombo`**: A single (platform, mode, memory) tuple.
-- **`BuildResult`**: Outcome of running a hook for one combo.
-
 ### `release.py` — Release Packaging
 
 Produces release archives from a source directory:
@@ -237,12 +220,6 @@ release and emits metadata (version, commit SHA, asset URLs) as
 `key=value` lines or JSON. Used in CI pipelines to resolve release
 information.
 
-### `matrix_cmd.py` — nanvix-zutil matrix CLI
-
-Reads the `[builds]` section from `nanvix.toml` and emits the build
-matrix as a JSON object suitable for GitHub Actions
-`strategy.matrix`.
-
 ### `resolve_cmd.py` — nanvix-zutil resolve CLI
 
 Resolves the `nanvix.toml` manifest and emits release metadata as
@@ -262,7 +239,7 @@ The `nanvix-zutil` command entry point. Routes to three categories:
 1. **Consumer commands** (`setup`, `build`, `test`, etc.): Discovers
    the consumer's `.nanvix/z.py`, imports its `ZScript` subclass, and
    delegates to `ZScript.main()`.
-2. **Standalone commands** (`info`, `resolve`, `matrix`): Handled
+2. **Standalone commands** (`info`, `resolve`): Handled
    directly without requiring a consumer script.
 3. **Help/version**: Prints usage information.
 
@@ -331,8 +308,8 @@ nanvix/nanvix releases ──→ Sysroot
 ## Confinement
 
 `nanvix_zutil` creates no files outside `.nanvix/` in consumer repos.
-All artifacts — sysroot, buildroot, venv, config, cache, lockfile, and
-per-combo build workspaces — live under `.nanvix/`.
+All artifacts — sysroot, buildroot, venv, config, cache, and lockfile
+— live under `.nanvix/`.
 
 ## Consumer Pattern
 

@@ -45,7 +45,6 @@ class TestHelpFlag(unittest.TestCase):
         self.assertIn("nanvix-zutil", output)
         self.assertIn("info", output)
         self.assertIn("resolve", output)
-        self.assertIn("matrix", output)
 
     def test_no_subcommand_prints_help(self) -> None:
         buf = StringIO()

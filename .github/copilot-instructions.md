@@ -29,13 +29,11 @@ script.py  ←  CLI entry point (ZScript.main)
   ├── exitcodes.py   ←  deterministic exit code constants (0–7)
   ├── info.py        ←  nanvix-info CLI (query Nanvix release metadata)
   ├── release.py     ←  release artifact packaging (.tar.gz, .tar.bz2, .zip)
-  ├── matrix.py      ←  build matrix expansion and parallel execution (--all-builds)
-  ├── matrix_cmd.py  ←  nanvix-zutil matrix CLI (emit matrix as CI-ready JSON)
   ├── resolve_cmd.py ←  nanvix-zutil resolve CLI (emit resolved metadata)
   └── utils.py       ←  shared utilities (semver regex)
 ```
 
-`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, `BuildCombo`, `BuildMatrix`, and `resolve` — all re-exported from `__init__.py`.
+`script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
 
 ### Bootstrap Chain
 

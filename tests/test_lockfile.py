@@ -20,16 +20,6 @@ from nanvix_zutil.lockfile import (
     read_lockfile,
     write_lockfile,
 )
-from nanvix_zutil.manifest import BuildMatrix
-
-_DEFAULT_BUILDS = BuildMatrix(
-    dimensions={
-        "platforms": ["hyperlight"],
-        "modes": ["multi-process"],
-        "memory": ["128mb"],
-    },
-    exclude=[],
-)
 
 
 def _make_sample_lockfile() -> Lockfile:
@@ -39,7 +29,6 @@ def _make_sample_lockfile() -> Lockfile:
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.2.2",
         ),
-        builds=_DEFAULT_BUILDS,
         packages=[
             ResolvedPackage(
                 name="nanvix",
@@ -134,7 +123,6 @@ class TestLockfileRoundTrip(unittest.TestCase):
                 manifest_hash="sha256:def456",
                 nanvix_zutil_version="0.2.2",
             ),
-            builds=_DEFAULT_BUILDS,
             packages=[
                 ResolvedPackage(
                     name="nanvix",
@@ -173,7 +161,6 @@ class TestLockfileRoundTrip(unittest.TestCase):
                 manifest_hash="sha256:id_test",
                 nanvix_zutil_version="0.2.2",
             ),
-            builds=_DEFAULT_BUILDS,
             packages=[
                 ResolvedPackage(
                     name="nanvix",
@@ -293,12 +280,6 @@ class TestDownloadLockfileAsset(unittest.TestCase):
             'manifest-hash = "sha256:abc"\n'
             'nanvix-zutil-version = "0.2.2"\n'
             "\n"
-            "[builds]\n"
-            "[builds.matrix]\n"
-            'platforms = ["hyperlight"]\n'
-            'modes = ["multi-process"]\n'
-            'memory = ["128mb"]\n'
-            "\n"
             "[[package]]\n"
             'name = "nanvix"\n'
             'repo = "nanvix/nanvix"\n'
@@ -329,58 +310,6 @@ class TestDownloadLockfileAsset(unittest.TestCase):
         self.assertEqual(result.metadata.manifest_hash, "sha256:abc")
         self.assertEqual(len(result.packages), 1)
         self.assertEqual(result.packages[0].name, "nanvix")
-
-
-class TestRoundTripWithBuilds(unittest.TestCase):
-    """Lockfile round-trip preserves the [builds] section."""
-
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
-
-    def test_roundtrip_with_builds(self) -> None:
-        """write_lockfile → read_lockfile preserves builds.dimensions and builds.exclude."""
-        builds = BuildMatrix(
-            dimensions={
-                "platforms": ["hyperlight", "microvm"],
-                "modes": ["multi-process", "standalone"],
-                "memory": ["128mb", "256mb"],
-            },
-            exclude=[
-                {"platform": "hyperlight", "mode": "standalone"},
-            ],
-        )
-        lockfile = Lockfile(
-            metadata=LockfileMetadata(
-                manifest_hash="sha256:builds_test",
-                nanvix_zutil_version="0.2.2",
-            ),
-            builds=builds,
-        )
-        path = Path(self._tmpdir.name) / "nanvix.lock"
-
-        write_lockfile(lockfile, path)
-        restored = read_lockfile(path)
-
-        self.assertEqual(
-            restored.builds.dimensions["platforms"],
-            builds.dimensions["platforms"],
-        )
-        self.assertEqual(
-            restored.builds.dimensions["modes"],
-            builds.dimensions["modes"],
-        )
-        self.assertEqual(
-            restored.builds.dimensions["memory"],
-            builds.dimensions["memory"],
-        )
-        self.assertEqual(len(restored.builds.exclude), 1)
-        self.assertEqual(restored.builds.exclude[0]["platform"], "hyperlight")
-        self.assertEqual(restored.builds.exclude[0]["mode"], "standalone")
 
 
 if __name__ == "__main__":

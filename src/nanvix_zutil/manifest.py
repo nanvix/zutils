@@ -39,22 +39,6 @@ from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class BuildMatrix:
-    """Parsed ``[builds]`` section from ``nanvix.toml``.
-
-    Attributes:
-        dimensions: Mapping of dimension names to allowed values.
-            Keys are ``"platforms"``, ``"modes"``, ``"memory"``.
-        exclude: List of partial-match dicts. Each dict maps
-            combo field names (singular: ``"platform"``, ``"mode"``,
-            ``"memory"``) to values; matching combos are removed.
-    """
-
-    dimensions: dict[str, list[str]]
-    exclude: list[dict[str, str]]
-
-
 @dataclass
 class Manifest:
     """Parsed contents of a ``nanvix.toml`` manifest file.
@@ -63,7 +47,6 @@ class Manifest:
         name: Package name.
         version: Package version.
         sysroot_ref: Nanvix sysroot version reference.
-        builds: Build matrix from the required ``[builds]`` section.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
     """
@@ -71,7 +54,6 @@ class Manifest:
     name: str
     version: str
     sysroot_ref: Ref
-    builds: BuildMatrix
     dependencies: list[Dependency] = field(default_factory=lambda: [])
     system_dependencies: list[Dependency] = field(default_factory=lambda: [])
 
@@ -240,119 +222,6 @@ def _parse_version_field(raw: object, context: str, path: Path) -> Ref:
     )
 
 
-def parse_builds_section(
-    raw: dict[str, object],
-    path: Path,
-) -> BuildMatrix:
-    """Parse a ``[builds]`` table into a :class:`BuildMatrix`.
-
-    Validates that ``[builds.matrix]`` contains exactly the required
-    dimensions (``platforms``, ``modes``, ``memory``), each as a
-    non-empty list of strings.  Exclude entries use singular field
-    names (``platform``, ``mode``, ``memory``) and are validated
-    against the known set — unknown keys are rejected.
-
-    Args:
-        raw: The raw TOML table for the ``[builds]`` section.
-        path: Manifest file path (for error messages).
-
-    Returns:
-        A :class:`BuildMatrix` with validated dimensions and excludes.
-
-    Raises:
-        SystemExit: With exit code ``2`` on any validation failure.
-    """
-    matrix_raw: object = raw.get("matrix")
-    if not isinstance(matrix_raw, dict):
-        log.fatal(
-            f"{path}: [builds] missing required 'matrix' key",
-            code=EXIT_INVALID_ARGS,
-        )
-    matrix = cast("dict[str, object]", matrix_raw)
-
-    _valid_dimensions = frozenset({"platforms", "modes", "memory"})
-    unknown_dims = set(matrix.keys()) - _valid_dimensions
-    if unknown_dims:
-        log.fatal(
-            f"{path}: [builds.matrix] has unknown dimension(s):"
-            f" {', '.join(sorted(unknown_dims))}"
-            f" (valid: {', '.join(sorted(_valid_dimensions))})",
-            code=EXIT_INVALID_ARGS,
-        )
-
-    _required_dimensions = ("platforms", "modes", "memory")
-    missing_dims = [d for d in _required_dimensions if d not in matrix]
-    if missing_dims:
-        log.fatal(
-            f"{path}: [builds.matrix] is missing required dimension(s):"
-            f" {', '.join(missing_dims)}",
-            code=EXIT_INVALID_ARGS,
-        )
-
-    dimensions: dict[str, list[str]] = {}
-    for dim_name, dim_val in matrix.items():
-        if not isinstance(dim_val, list):
-            log.fatal(
-                f"{path}: [builds.matrix.{dim_name}] must be a list of strings",
-                code=EXIT_INVALID_ARGS,
-            )
-        str_list: list[str] = []
-        for item in cast("list[object]", dim_val):
-            if not isinstance(item, str):
-                log.fatal(
-                    f"{path}: [builds.matrix.{dim_name}] must be a list of"
-                    " strings (non-string value found)",
-                    code=EXIT_INVALID_ARGS,
-                )
-            str_list.append(item)
-        if not str_list:
-            log.fatal(
-                f"{path}: [builds.matrix.{dim_name}] must have at least one value",
-                code=EXIT_INVALID_ARGS,
-            )
-        dimensions[dim_name] = str_list
-
-    exclude: list[dict[str, str]] = []
-    exclude_raw: object = raw.get("exclude")
-    if exclude_raw is not None:
-        if not isinstance(exclude_raw, list):
-            log.fatal(
-                f"{path}: [builds] 'exclude' must be an array of tables",
-                code=EXIT_INVALID_ARGS,
-            )
-        _valid_combo_fields = frozenset({"platform", "mode", "memory"})
-        for exc_item in cast("list[object]", exclude_raw):
-            if not isinstance(exc_item, dict):
-                log.fatal(
-                    f"{path}: each [[builds.exclude]] entry must be a table",
-                    code=EXIT_INVALID_ARGS,
-                )
-            exc_dict = cast("dict[str, object]", exc_item)
-            if not exc_dict:
-                log.fatal(
-                    f"{path}: [[builds.exclude]] entry must not be empty"
-                    " — an empty table would exclude every combination",
-                    code=EXIT_INVALID_ARGS,
-                )
-            str_exc: dict[str, str] = {}
-            for k, v in exc_dict.items():
-                if k not in _valid_combo_fields:
-                    log.fatal(
-                        f"{path}: [[builds.exclude]] references unknown"
-                        f" field '{k}' (valid: {', '.join(sorted(_valid_combo_fields))})",
-                        code=EXIT_INVALID_ARGS,
-                    )
-                if not isinstance(v, str):
-                    log.fatal(
-                        f"{path}: [[builds.exclude]] value for '{k}' must be a string",
-                        code=EXIT_INVALID_ARGS,
-                    )
-                str_exc[k] = v
-            exclude.append(str_exc)
-
-    return BuildMatrix(dimensions=dimensions, exclude=exclude)
-
-
 def _parse_dependencies(
     section: dict[str, object],
     path: Path,
@@ -502,20 +371,6 @@ def load_manifest(path: Path) -> Manifest:
         cast("dict[str, object]", sys_deps_raw), path, "system-dependencies"
     )
 
-    # --- [builds] (required) ---
-    builds_raw: object = data.get("builds")
-    if builds_raw is None:
-        log.fatal(
-            f"{path}: missing required [builds] section",
-            code=EXIT_INVALID_ARGS,
-        )
-    if not isinstance(builds_raw, dict):
-        log.fatal(
-            f"{path}: [builds] must be a TOML table",
-            code=EXIT_INVALID_ARGS,
-        )
-    builds = parse_builds_section(cast("dict[str, object]", builds_raw), path)
-
     # Auto-suffix VERSION refs with the nanvix sysroot version.
     # When the sysroot is "latest", suffixing is deferred to the resolver
     # (which resolves the sysroot first and knows the actual version).
@@ -536,7 +391,6 @@ def load_manifest(path: Path) -> Manifest:
         name=pkg_name,
         version=pkg_version,
         sysroot_ref=sysroot_ref,
-        builds=builds,
         dependencies=dependencies,
         system_dependencies=system_dependencies,
     )

@@ -27,7 +27,6 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
-from nanvix_zutil.manifest import BuildMatrix, parse_builds_section
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -109,12 +108,10 @@ class Lockfile:
 
     Attributes:
         metadata: Lockfile header metadata.
-        builds: Build matrix from the ``[builds]`` section.
         packages: Ordered list of resolved packages.
     """
 
     metadata: LockfileMetadata
-    builds: BuildMatrix
     packages: list[ResolvedPackage] = field(
         default_factory=lambda: list[ResolvedPackage]()
     )
@@ -164,14 +161,6 @@ def write_lockfile(lockfile: Lockfile, path: Path) -> None:
         "nanvix-zutil-version": lockfile.metadata.nanvix_zutil_version,
     }
     lines.append(tomli_w.dumps({"metadata": meta_dict}).rstrip())
-    lines.append("")
-
-    # [builds]
-    builds_dict: dict[str, object] = {
-        "matrix": lockfile.builds.dimensions,
-        "exclude": lockfile.builds.exclude,
-    }
-    lines.append(tomli_w.dumps({"builds": builds_dict}).rstrip())
     lines.append("")
 
     # [[package]] blocks
@@ -276,13 +265,6 @@ def read_lockfile(path: Path) -> Lockfile:
         nanvix_zutil_version=zutil_version,
     )
 
-    # Parse [builds] (optional — older lockfiles from dependencies may lack it)
-    raw_builds: object = data.get("builds")
-    if isinstance(raw_builds, dict):
-        builds = parse_builds_section(cast("dict[str, object]", raw_builds), path)
-    else:
-        builds = BuildMatrix(dimensions={}, exclude=[])
-
     # Parse packages
     raw_packages: object = data.get("package", [])
     if not isinstance(raw_packages, list):
@@ -301,7 +283,7 @@ def read_lockfile(path: Path) -> Lockfile:
         pkg_data = cast("dict[str, object]", raw_pkg_item)
         packages.append(_parse_package(pkg_data, path))
 
-    return Lockfile(metadata=metadata, builds=builds, packages=packages)
+    return Lockfile(metadata=metadata, packages=packages)
 
 
 def _parse_package(data: dict[str, object], path: Path) -> ResolvedPackage:

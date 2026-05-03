@@ -59,17 +59,10 @@ from nanvix_zutil.exitcodes import (
     EXIT_DEGRADED_SETUP,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
-    EXIT_TEST_FAILURE,
 )
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
-from nanvix_zutil.matrix import (
-    expand_matrix,
-    filter_matrix,
-    print_summary,
-    run_all_builds,
-)
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -177,7 +170,6 @@ class ZScript:
         self.sysroot: Sysroot | None = None
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
-        self.combo_env: dict[str, str] | None = None
         self._used_fallback: bool = False
 
     # ------------------------------------------------------------------
@@ -470,7 +462,6 @@ class ZScript:
             "env.json",
             "venv",
             "__pycache__",
-            "_builds",
         ):
             path = self.nanvix_dir / artifact
             if not path.exists() and not path.is_symlink():
@@ -613,10 +604,8 @@ class ZScript:
         """
         if self.docker is not None and docker:
             cfg = self.docker
-            # Merge combo env into Docker extra_env when in --all-builds mode.
-            combo_and_explicit = {**(self.combo_env or {}), **(env or {})}
-            if combo_and_explicit:
-                merged = {**cfg.extra_env, **combo_and_explicit}
+            if env:
+                merged = {**cfg.extra_env, **env}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
             if is_windows():
                 cmd = cfg.build_windows_run_cmd(*args)
@@ -627,13 +616,8 @@ class ZScript:
         else:
             cmd = list(args)
             working_dir = cwd if cwd is not None else self.repo_root
-            # When combo_env is set (--all-builds mode), merge it into the
-            # subprocess env so subprocesses see the correct NANVIX_* values
-            # for this combo.  This mirrors the Docker branch behaviour.
             if env is not None:
-                subprocess_env = {**(self.combo_env or {}), **env}
-            elif self.combo_env:
-                subprocess_env = {**os.environ, **self.combo_env}
+                subprocess_env = env
             else:
                 subprocess_env = None
 
@@ -686,7 +670,7 @@ class ZScript:
         # Pre-parse --json and --version before creating the instance so
         # that JSON mode is active for any errors raised during __init__,
         # and --version can exit cleanly without requiring a valid manifest.
-        # Also pre-parse --mode / --all-builds so that --mode can override
+        # Also pre-parse --mode so that --mode can override
         # NANVIX_DEPLOYMENT_MODE before Config.__init__ runs.
         pre_parser = argparse.ArgumentParser(add_help=False)
         pre_parser.add_argument("--json", action="store_true", default=False)
@@ -696,9 +680,6 @@ class ZScript:
             version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
         )
         pre_parser.add_argument("--mode", default=None, dest="mode")
-        pre_parser.add_argument(
-            "--all-builds", action="store_true", default=False, dest="all_builds"
-        )
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
 
         if pre_args.json:
@@ -730,11 +711,11 @@ class ZScript:
                 repo_root = script_path.parent
 
         # ------------------------------------------------------------------
-        # Handle --mode without --all-builds: override NANVIX_DEPLOYMENT_MODE
-        # before Config.__init__ reads it during instance construction.
+        # Handle --mode: override NANVIX_DEPLOYMENT_MODE before Config
+        # __init__ reads it during instance construction.
         # ------------------------------------------------------------------
         cli_mode = getattr(pre_args, "mode", None)
-        if cli_mode is not None and not getattr(pre_args, "all_builds", False):
+        if cli_mode is not None:
             os.environ["NANVIX_DEPLOYMENT_MODE"] = cli_mode
 
         instance = cls(repo_root)
@@ -799,74 +780,8 @@ class ZScript:
                 instance.config.save()
 
         # ------------------------------------------------------------------
-        # Multi-build mode (--all-builds)
+        # Dispatch to lifecycle hook
         # ------------------------------------------------------------------
-        if getattr(args, "all_builds", False):
-            combos = expand_matrix(instance.manifest.builds)
-            mode_filter = getattr(args, "mode", None)
-            combos = filter_matrix(combos, mode=mode_filter)
-
-            if not combos:
-                log.fatal(
-                    "No build combinations remain after filtering"
-                    + (f" (--mode={mode_filter})" if mode_filter else ""),
-                    code=EXIT_INVALID_ARGS,
-                )
-
-            subcommand_name: str | None = args.subcommand
-            if subcommand_name is None:
-                log.fatal(
-                    "--all-builds requires a subcommand (e.g. ./z --all-builds test)",
-                    code=EXIT_INVALID_ARGS,
-                )
-
-            # Only lifecycle hooks that are meaningful per-combo are allowed.
-            _SUPPORTED_ALL_BUILDS = frozenset(
-                {"setup", "build", "test", "benchmark", "release", "clean"}
-            )
-            if subcommand_name not in _SUPPORTED_ALL_BUILDS:
-                log.fatal(
-                    f"--all-builds is not supported with '{subcommand_name}'",
-                    code=EXIT_INVALID_ARGS,
-                )
-
-            results = run_all_builds(
-                script_cls=cls,
-                combos=combos,
-                hook=subcommand_name,
-                targets=targets,
-                docker_image=docker_image,
-                repo_root=repo_root,
-            )
-            print_summary(results)
-
-            failed = sum(1 for r in results.values() if not r.success)
-            if failed:
-                failure_code = (
-                    EXIT_TEST_FAILURE
-                    if subcommand_name in {"test", "benchmark"}
-                    else EXIT_BUILD_FAILURE
-                )
-                log.fatal(
-                    f"{failed}/{len(results)} build(s) failed",
-                    code=failure_code,
-                )
-                return  # log.fatal exits, but be explicit
-
-            any_fallback = any(r.used_fallback for r in results.values())
-            if any_fallback:
-                n_fb = sum(1 for r in results.values() if r.used_fallback)
-                log.warning(
-                    f"All {len(results)} build(s) passed, but "
-                    f"{n_fb} used fallback dependencies",
-                    code=EXIT_DEGRADED_SETUP,
-                )
-                sys.exit(EXIT_DEGRADED_SETUP)
-                return  # sys.exit raises, but be explicit
-
-            log.success(f"All {len(results)} build(s) passed")
-            return
-
         subcommand: str | None = args.subcommand
 
         # Special handling for lock subcommand (--check, --shallow flags).

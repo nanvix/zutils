@@ -363,13 +363,6 @@ class TestZScriptDistclean(unittest.TestCase):
         self._make_script().distclean()
         self.assertFalse(cache_dir.exists())
 
-    def test_distclean_removes_builds(self) -> None:
-        builds_dir = self._nanvix() / "_builds"
-        builds_dir.mkdir()
-        (builds_dir / "microvm-standalone-256mb").mkdir()
-        self._make_script().distclean()
-        self.assertFalse(builds_dir.exists())
-
     def test_distclean_preserves_manifest(self) -> None:
         manifest = self._nanvix() / "nanvix.toml"
         self.assertTrue(manifest.exists())

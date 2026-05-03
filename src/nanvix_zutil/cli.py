@@ -97,22 +97,6 @@ def build_parser(
         version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
     )
 
-    parser.add_argument(
-        "--all-builds",
-        action="store_true",
-        default=False,
-        dest="all_builds",
-        help="Expand the [builds] matrix and run the hook for every combo in parallel",
-    )
-    parser.add_argument(
-        "--mode",
-        metavar="MODE",
-        default=None,
-        dest="mode",
-        help="Filter the build matrix to only combos matching this"
-        " deployment mode (also settable via NANVIX_DEPLOYMENT_MODE)",
-    )
-
     subparsers = parser.add_subparsers(dest="subcommand")
 
     if available is None:
