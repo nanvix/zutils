@@ -70,7 +70,7 @@ function Bootstrap {
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "venv creation failed (exit code $LASTEXITCODE)"
     }
-    & $venvPython -m pip install --quiet "$($wheelUrl)[lint]"
+    & $venvPython -m pip install --quiet "nanvix-zutil[lint] @ $($wheelUrl)"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "pip install failed (exit code $LASTEXITCODE)"
     }
