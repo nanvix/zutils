@@ -19,6 +19,7 @@ the same way a real user would.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB_HELLO = _REPO_ROOT / "examples" / "lib-hello"
 _BIN_HELLO = _REPO_ROOT / "examples" / "bin-hello"
 _DOCKER_IMAGE = "nanvix/toolchain:latest-minimal"
+_NANVIX_VERSION = "0.12.410"
 _TIMEOUT = 300
 
 
@@ -100,6 +102,21 @@ def _pull_docker_image() -> None:
         subprocess.run(["docker", "pull", _DOCKER_IMAGE], check=True, timeout=_TIMEOUT)
 
 
+def _write_env_json(nanvix_dir: Path, sysroot: Path) -> None:
+    """Write env.json so nanvix-zutil build/test/clean can find paths."""
+    cfg = {
+        "NANVIX_TARGET": "x86",
+        "NANVIX_MACHINE": "microvm",
+        "NANVIX_DEPLOYMENT_MODE": "standalone",
+        "NANVIX_MEMORY_SIZE": "256mb",
+        "NANVIX_SYSROOT": str(sysroot),
+        "NANVIX_TOOLCHAIN": "/opt/nanvix",
+        "NANVIX_DOCKER_IMAGE": _DOCKER_IMAGE,
+    }
+    nanvix_dir.mkdir(parents=True, exist_ok=True)
+    (nanvix_dir / "env.json").write_text(json.dumps(cfg, indent=2))
+
+
 def _setup_bin_hello_buildroot() -> None:
     """Populate bin-hello's buildroot from lib-hello artifacts.
 
@@ -119,17 +136,39 @@ def _setup_bin_hello_buildroot() -> None:
     shutil.copy2(_LIB_HELLO / "libhello.a", buildroot / "lib" / "libhello.a")
     shutil.copy2(_LIB_HELLO / "src" / "hello.h", buildroot / "include" / "hello.h")
 
-    cfg = {
-        "NANVIX_TARGET": "x86",
-        "NANVIX_MACHINE": "microvm",
-        "NANVIX_DEPLOYMENT_MODE": "standalone",
-        "NANVIX_MEMORY_SIZE": "256mb",
-        "NANVIX_SYSROOT": str(sysroot_src),
-        "NANVIX_TOOLCHAIN": "/opt/nanvix",
-        "NANVIX_DOCKER_IMAGE": _DOCKER_IMAGE,
-    }
-    nanvix_dir.mkdir(parents=True, exist_ok=True)
-    (nanvix_dir / "env.json").write_text(json.dumps(cfg, indent=2))
+    _write_env_json(nanvix_dir, sysroot_src)
+
+
+def _setup_windows_sysroot() -> Path:
+    """Download sysroot and Windows host binaries for test-only runs.
+
+    On Windows CI, build artifacts are downloaded from the Linux job but
+    the sysroot is not included.  This helper downloads the sysroot and
+    Windows-native binaries (``nanvixd.exe``, etc.) so that functional
+    tests can run.
+
+    Returns the resolved sysroot path.
+    """
+    from nanvix_zutil.sysroot import Sysroot
+
+    sysroot_dir = _LIB_HELLO / ".nanvix" / "sysroot"
+    gh_token = os.environ.get("GH_TOKEN")
+
+    sysroot = Sysroot.download(
+        machine="microvm",
+        deployment_mode="standalone",
+        memory_size="256mb",
+        tag=f"v{_NANVIX_VERSION}",
+        gh_token=gh_token,
+        dest=sysroot_dir,
+    )
+    sysroot.download_windows_binaries(
+        machine="microvm",
+        deployment_mode="standalone",
+        memory_size="256mb",
+        gh_token=gh_token,
+    )
+    return sysroot.path
 
 
 # ===================================================================
@@ -207,10 +246,13 @@ class TestLibHelloLifecycle(unittest.TestCase):
             (_LIB_HELLO / "libhello.a").exists(),
             "libhello.a should exist after build",
         )
+        self.assertIn("Build complete", r.stderr)
 
         # test
         r = _run_z(_LIB_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("is a valid ar archive", r.stderr)
+        self.assertIn("Test complete", r.stderr)
 
 
 @unittest.skipUnless(_CAN_LIFECYCLE, _SKIP_NO_DOCKER)
@@ -237,10 +279,14 @@ class TestBinHelloLifecycle(unittest.TestCase):
             (_BIN_HELLO / "hello.elf").exists(),
             "hello.elf should exist after build",
         )
+        self.assertIn("Build complete", r.stderr)
 
         # test
         r = _run_z(_BIN_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("is a valid ELF binary", r.stderr)
+        self.assertIn("PASS: bin-hello functional tests", r.stderr)
+        self.assertIn("Test complete", r.stderr)
 
 
 # ===================================================================
@@ -261,17 +307,35 @@ class TestLibHelloTestOnly(unittest.TestCase):
             self.skipTest("libhello.a not found — build first or download artifacts")
         r = _run_z(_LIB_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("is a valid ar archive", r.stderr)
+        self.assertIn("Test complete", r.stderr)
 
 
 @unittest.skipIf(_CAN_LIFECYCLE, "covered by lifecycle tests above")
 class TestBinHelloTestOnly(unittest.TestCase):
-    """Run ``nanvix-zutil test`` against pre-built bin-hello artifacts."""
+    """Run ``nanvix-zutil test`` against pre-built bin-hello artifacts.
+
+    On Windows, the sysroot is downloaded so that functional tests run
+    under ``nanvixd.exe`` rather than being silently skipped.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not (_BIN_HELLO / "hello.elf").exists():
+            raise unittest.SkipTest(
+                "hello.elf not found — build first or download artifacts"
+            )
+        # Download sysroot + Windows binaries so functional tests can run.
+        if sys.platform == "win32":
+            sysroot = _setup_windows_sysroot()
+            _write_env_json(_BIN_HELLO / ".nanvix", sysroot)
 
     def test_bin_hello(self) -> None:
-        if not (_BIN_HELLO / "hello.elf").exists():
-            self.skipTest("hello.elf not found — build first or download artifacts")
         r = _run_z(_BIN_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("is a valid ELF binary", r.stderr)
+        self.assertIn("PASS: bin-hello functional tests", r.stderr)
+        self.assertIn("Test complete", r.stderr)
 
 
 # ===================================================================

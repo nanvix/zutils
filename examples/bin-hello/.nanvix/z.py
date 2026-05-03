@@ -170,16 +170,17 @@ class BinHello(ZScript):
         log.info("=== bin-hello functional tests (Windows) ===")
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
-            log.warning("Sysroot not configured — skipping functional tests.")
-            return
-        sysroot = Path(sysroot_str)
+            log.fatal(
+                "Sysroot not configured — run 'nanvix-zutil setup' first.",
+                code=EXIT_TEST_FAILURE,
+            )
+        sysroot = Path(sysroot_str)  # type: ignore[arg-type]
         nanvixd = sysroot / "bin" / "nanvixd.exe"
         if not nanvixd.exists():
-            log.warning(
-                f"{nanvixd} not found — skipping functional tests."
-                " Run 'nanvix-zutil setup' to download nanvixd.exe.",
+            log.fatal(
+                f"{nanvixd} not found — run 'nanvix-zutil setup' to download it.",
+                code=EXIT_TEST_FAILURE,
             )
-            return
         self.run(
             str(nanvixd),
             "-bin-dir",
