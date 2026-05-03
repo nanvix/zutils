@@ -34,8 +34,9 @@ htmlcov/
 # Type checker caches
 .basedpyright/
 .pyright/
-pyrightconfig.json
-!src/nanvix_zutil/configs/pyrightconfig.json
+!pyrightconfig.json
+examples/lib-hello/.nanvix/pyrightconfig.json
+examples/bin-hello/.nanvix/pyrightconfig.json
 
 # Editor
 /.vscode
