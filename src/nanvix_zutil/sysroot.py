@@ -10,6 +10,7 @@ machine, deployment mode, and memory-size configuration.
 
 from __future__ import annotations
 
+import shutil
 import tarfile
 from pathlib import Path
 
@@ -100,13 +101,8 @@ class Sysroot:
         """
         sysroot_dir = dest if dest is not None else _DEFAULT_SYSROOT_DIR
 
-        if sysroot_dir.exists():
-            if sysroot_dir.is_dir():
-                log.info(f"Sysroot already present at {sysroot_dir}")
-                cached_tag = (
-                    config.get("sysroot_tag", "") or "" if config is not None else ""
-                )
-                return Sysroot(sysroot_dir.resolve(), tag=cached_tag)
+        # Fail early if the path exists but is not a directory.
+        if sysroot_dir.exists() and not sysroot_dir.is_dir():
             log.fatal(
                 f"Sysroot path '{sysroot_dir}' exists but is not a directory.",
                 code=EXIT_MISSING_DEP,
@@ -114,9 +110,25 @@ class Sysroot:
                 " `./z setup` to download the Nanvix sysroot.",
             )
 
+        # Resolve the requested specifier to a canonical release tag so
+        # that comparisons against the cached tag are format-independent
+        # (e.g. "0.12.410" vs. "v0.12.410", or "latest").
         release = github.resolve_release(_SYSROOT_REPO, tag, gh_token, semver=True)
         tag_name = release.get("tag_name", "")
         resolved_tag = tag_name if isinstance(tag_name, str) else ""
+
+        if sysroot_dir.is_dir():
+            cached_tag = (
+                (config.get("sysroot_tag", "") or "") if config is not None else ""
+            )
+            if cached_tag and resolved_tag == cached_tag:
+                log.info(f"Sysroot already present at {sysroot_dir}")
+                return Sysroot(sysroot_dir.resolve(), tag=cached_tag)
+            log.info(
+                f"Sysroot tag mismatch (cached={cached_tag!r},"
+                f" resolved={resolved_tag!r}), re-downloading…"
+            )
+            shutil.rmtree(sysroot_dir)
 
         asset_prefix = _SYSROOT_ASSET_PREFIX.format(
             target=target,
@@ -159,6 +171,7 @@ class Sysroot:
         memory_size: str,
         gh_token: str | None = None,
         target: str = DEFAULT_TARGET,
+        config: Config | None = None,
     ) -> None:
         """Download Windows host binaries from the Nanvix release.
 
@@ -168,14 +181,33 @@ class Sysroot:
         ``mkramfs.exe``, and ``kernel.elf`` into the sysroot ``bin/``
         directory.
 
-        Skips silently if all required binaries are already present.
+        Skips silently if all required binaries are already present
+        and the persisted tag matches the current sysroot tag.  When
+        *config* is ``None`` the check falls back to file presence
+        alone (no tag comparison).
+
+        Args:
+            machine: Target machine identifier.
+            deployment_mode: Deployment mode string.
+            memory_size: Memory size string.
+            gh_token: Optional GitHub personal access token.
+            target: Target architecture (default: ``"x86"``).
+            config: Optional :class:`Config` used to persist the
+                ``windows_binaries_tag``.  When provided the tag is
+                checked on entry and written back on success.
         """
         import zipfile
 
         bin_dir = self.path / "bin"
-        if all((bin_dir / b).is_file() for b in WINDOWS_HOST_BINARIES):
-            log.info("Windows host binaries already present in sysroot")
-            return
+        all_present = all((bin_dir / b).is_file() for b in WINDOWS_HOST_BINARIES)
+        if all_present:
+            if config is None:
+                log.info("Windows host binaries already present in sysroot")
+                return
+            cached_win_tag = config.get("windows_binaries_tag", "") or ""
+            if cached_win_tag == self.tag:
+                log.info("Windows host binaries already present in sysroot")
+                return
 
         tag = self.tag
         if not tag:
@@ -218,8 +250,6 @@ class Sysroot:
                 if basename in wanted:
                     dest = bin_dir / basename
                     with zf.open(entry) as src, open(dest, "wb") as dst:
-                        import shutil
-
                         shutil.copyfileobj(src, dst)
                     log.info(f"Extracted {basename} to sysroot/bin/")
 
@@ -235,6 +265,9 @@ class Sysroot:
                 ),
             )
         else:
+            if config is not None:
+                config.set("windows_binaries_tag", tag)
+                config.save()
             log.success("Windows host binaries installed")
 
     # ------------------------------------------------------------------
@@ -264,8 +297,6 @@ class Sysroot:
                 f"--with-nanvix path is not a directory: {local_path}",
                 code=EXIT_MISSING_DEP,
             )
-
-        import shutil
 
         overlaid: list[str] = []
         for subdir in ("bin", "lib"):
