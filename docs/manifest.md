@@ -38,6 +38,7 @@ name (e.g. `zlib`); the repo is inferred as `nanvix/<name>`.
 | `dep = { tag = "v1.0" }` | `TAG` | no | Tag `v1.0` (exact) |
 | `dep = { commitish = "abc1234" }` | `COMMITISH` | no | Search `target_commitish` |
 | `dep = { id = 12345678 }` | `ID` | no | `GET /releases/12345678` |
+| *(env override is a path)* | `LOCAL` | no | Filesystem path — no GitHub resolution |
 
 Only **one** specifier key is allowed per table.
 
@@ -56,8 +57,12 @@ If that tag is not found and the sysroot commitish hash is available,
 the resolver falls back to `1.2.3-nanvix-{hash}` (e.g.
 `1.2.3-nanvix-e63706b`).
 
-`TAG`, `COMMITISH`, and `ID` refs are never suffixed — they resolve
-exactly as written.
+`TAG`, `COMMITISH`, `ID`, and `LOCAL` refs are never suffixed — they
+resolve exactly as written.
+
+When the sysroot ref is `LOCAL` (i.e. `NANVIX_VERSION` is a filesystem
+path), the auto-suffix step is skipped entirely — `VERSION` deps keep
+their bare version string.
 
 Refs that already contain `-nanvix-` are rejected to prevent accidental
 double-suffixing.
@@ -70,8 +75,11 @@ double-suffixing.
 | `NANVIX_VERSION_<NAME>` | Dependency `<name>` ref value (uppercase) |
 
 Overrides replace the **value** but keep the `RefKind` from the
-manifest.  `NANVIX_VERSION` bypasses semver validation (intended for
-development use).
+manifest — **unless** the override value looks like a filesystem path
+(absolute Unix path, Windows drive path, or relative `./`/`../` path),
+in which case the `RefKind` is changed to `LOCAL`.
+`NANVIX_VERSION` bypasses semver validation (intended for development
+use).
 
 ## Full example
 

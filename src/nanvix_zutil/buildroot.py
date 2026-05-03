@@ -70,6 +70,7 @@ class RefKind(Enum):
     COMMITISH = "commitish"
     ID = "id"
     VERSION = "version"
+    LOCAL = "local"
 
 
 @dataclass
@@ -79,8 +80,9 @@ class Ref:
     Attributes:
         kind: The specifier type — :attr:`RefKind.TAG` (exact tag match),
             :attr:`RefKind.COMMITISH` (match ``target_commitish``),
-            :attr:`RefKind.ID` (direct release fetch), or
-            :attr:`RefKind.VERSION` (suffixed with nanvix version).
+            :attr:`RefKind.ID` (direct release fetch),
+            :attr:`RefKind.VERSION` (suffixed with nanvix version), or
+            :attr:`RefKind.LOCAL` (filesystem path, no GitHub resolution).
         value: The version string, tag name, commitish, or release ID.
     """
 
@@ -122,8 +124,9 @@ class Dependency:
 def suffix_dep(dep: Dependency, version: str) -> Dependency:
     """Return a copy of *dep* with its VERSION ref suffixed with *version*.
 
-    If *dep* has a non-VERSION ref kind, or its value already contains
-    ``-nanvix-`` (e.g. from an env-var override), it is returned unchanged.
+    If *dep* has a non-VERSION ref kind (e.g. TAG, COMMITISH, ID, or
+    LOCAL), or its value already contains ``-nanvix-`` (e.g. from an
+    env-var override), it is returned unchanged.
 
     Args:
         dep: The dependency to suffix.

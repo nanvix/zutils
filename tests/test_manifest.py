@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
-from nanvix_zutil.manifest import load_manifest
+from nanvix_zutil.manifest import load_manifest, is_local_path
 
 from tests.testutils import make_toml
 
@@ -658,6 +658,152 @@ class TestLoadManifestTypeValidation(unittest.TestCase):
             load_manifest(path)
 
         self.assertEqual(ctx.exception.code, 2)
+
+
+class TestIsLocalPath(unittest.TestCase):
+    """is_local_path detects filesystem paths correctly."""
+
+    def test_unix_absolute(self) -> None:
+        self.assertTrue(is_local_path("/home/me/zlib-build"))
+
+    def test_unix_root(self) -> None:
+        self.assertTrue(is_local_path("/"))
+
+    def test_windows_drive_backslash(self) -> None:
+        self.assertTrue(is_local_path("C:\\Users\\me\\build"))
+
+    def test_windows_drive_forward_slash(self) -> None:
+        self.assertTrue(is_local_path("D:/builds/zlib"))
+
+    def test_windows_lowercase_drive(self) -> None:
+        self.assertTrue(is_local_path("c:\\builds"))
+
+    def test_relative_dot_slash(self) -> None:
+        self.assertTrue(is_local_path("./build"))
+
+    def test_relative_dot_dot_slash(self) -> None:
+        self.assertTrue(is_local_path("../build"))
+
+    def test_semver_not_path(self) -> None:
+        self.assertFalse(is_local_path("1.3.1"))
+
+    def test_tag_not_path(self) -> None:
+        self.assertFalse(is_local_path("v1.0.0"))
+
+    def test_commitish_not_path(self) -> None:
+        self.assertFalse(is_local_path("b7a6a3c"))
+
+    def test_latest_not_path(self) -> None:
+        self.assertFalse(is_local_path("latest"))
+
+    def test_empty_not_path(self) -> None:
+        self.assertFalse(is_local_path(""))
+
+
+class TestLoadManifestLocalRef(unittest.TestCase):
+    """Env var overrides with filesystem paths produce RefKind.LOCAL."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_dep_env_unix_path_produces_local(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "/some/path"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "/some/path")
+
+    def test_dep_env_windows_path_produces_local(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "C:\\Users\\me\\build"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "C:\\Users\\me\\build")
+
+    def test_dep_env_relative_path_produces_local(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "./build/zlib"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "./build/zlib")
+
+    def test_dep_env_version_string_still_works(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "2.0.0"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.VERSION)
+
+    def test_sysroot_env_unix_path_produces_local(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml())
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "/path/to/sysroot"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.sysroot_ref.value, "/path/to/sysroot")
+
+    def test_sysroot_env_windows_path_produces_local(self) -> None:
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml())
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "C:\\nanvix\\sysroot"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.sysroot_ref.value, "C:\\nanvix\\sysroot")
+
+    def test_sysroot_env_version_still_works(self) -> None:
+        # make_toml default nanvix-version is a semver string, which
+        # _parse_nanvix_version maps to RefKind.TAG.  The env override
+        # keeps the manifest RefKind (TAG) and only replaces the value.
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(nanvix_version="0.12.257"))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "0.12.258"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.TAG)
+
+    def test_local_sysroot_skips_dep_suffix(self) -> None:
+        """When sysroot is LOCAL, VERSION deps must NOT be auto-suffixed."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": "/path/to/sysroot"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
+        # Dep should NOT be suffixed — sysroot is local.
+        self.assertEqual(m.dependencies[0].ref.value, "1.3.1")
+
+    def test_local_dep_no_suffix(self) -> None:
+        """LOCAL dep refs are never suffixed, even with a concrete sysroot."""
+        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path.write_text(make_toml(nanvix_version="0.12.410", deps={"zlib": '"1.3.1"'}))
+
+        with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "/my/zlib"}):
+            m = load_manifest(path)
+
+        self.assertEqual(m.dependencies[0].ref.kind, RefKind.LOCAL)
+        self.assertEqual(m.dependencies[0].ref.value, "/my/zlib")
 
 
 if __name__ == "__main__":

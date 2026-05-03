@@ -510,5 +510,33 @@ class TestInstallDepPreResolvedRelease(unittest.TestCase):
         self.assertEqual(captured_releases[0], fake_release)
 
 
+class TestRefKindLocal(unittest.TestCase):
+    """RefKind.LOCAL exists and round-trips correctly."""
+
+    def test_local_variant_exists(self) -> None:
+        self.assertEqual(RefKind.LOCAL.value, "local")
+
+    def test_local_ref_round_trip(self) -> None:
+        ref = Ref(kind=RefKind.LOCAL, value="/home/me/zlib-build")
+        self.assertEqual(ref.kind, RefKind.LOCAL)
+        self.assertEqual(ref.value, "/home/me/zlib-build")
+
+    def test_local_ref_windows_path(self) -> None:
+        ref = Ref(kind=RefKind.LOCAL, value="C:\\Users\\me\\build")
+        self.assertEqual(ref.kind, RefKind.LOCAL)
+        self.assertEqual(ref.value, "C:\\Users\\me\\build")
+
+    def test_suffix_dep_skips_local(self) -> None:
+        """suffix_dep returns LOCAL refs unchanged."""
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.LOCAL, value="/tmp/zlib"),
+        )
+        result = suffix_dep(dep, "0.12.410")
+        self.assertEqual(result.ref.kind, RefKind.LOCAL)
+        self.assertEqual(result.ref.value, "/tmp/zlib")
+
+
 if __name__ == "__main__":
     unittest.main()
