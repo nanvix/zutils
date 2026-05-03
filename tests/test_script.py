@@ -300,6 +300,28 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         self.assertFalse((repo_root / "pyrightconfig.json").exists())
         self.assertFalse((repo_root / ".yamllint.yml").exists())
 
+    def test_pyright_config_includes_dot_directory(self) -> None:
+        """Synced pyrightconfig.json includes '.' so .nanvix/*.py is analyzed."""
+        import json
+
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        cfg = json.loads((nanvix_dir / "pyrightconfig.json").read_text())
+        self.assertIn(".", cfg["include"])
+
+    def test_pyright_config_scoped_to_nanvix_dir(self) -> None:
+        """Synced pyrightconfig.json does not include paths outside .nanvix/."""
+        import json
+
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        cfg = json.loads((nanvix_dir / "pyrightconfig.json").read_text())
+        for entry in cfg["include"]:
+            self.assertFalse(
+                entry.startswith(".."),
+                f"include entry '{entry}' escapes .nanvix/",
+            )
+
 
 class TestZScriptLifecycleHooks(unittest.TestCase):
     """Default consumer lifecycle hooks are no-ops."""
