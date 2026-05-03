@@ -46,6 +46,9 @@ from nanvix_zutil.utils import SEMVER_RE
 # Constants
 # ---------------------------------------------------------------------------
 
+HELP: str = "Query release info from GitHub"
+"""One-line description surfaced in ``nanvix-zutil --help``."""
+
 _DEFAULT_REPO = "nanvix/nanvix"
 _DEFAULT_VERSION = "latest"
 

@@ -57,6 +57,21 @@ CFG_GH_TOKEN: str = "GH_TOKEN"
 CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
 """Docker image persisted by ``setup --with-docker``."""
 
+#: Curated mapping of the most common environment variables recognised by
+#: nanvix-zutil to human-readable descriptions.  Rendered in the ``--help``
+#: epilog.  Not exhaustive — consumers and other modules may honour additional
+#: ``NANVIX_*`` variables (e.g. ``NANVIX_VERSION`` in ``manifest.py``).
+ENV_VARS: dict[str, str] = {
+    "NANVIX_TARGET": f"Target architecture (default: {DEFAULT_TARGET})",
+    "NANVIX_MACHINE": f"Target machine (default: {DEFAULT_MACHINE})",
+    "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE})",
+    "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE})",
+    "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
+    "NANVIX_TOOLCHAIN": "Path to cross-compilation toolchain",
+    "NANVIX_DOCKER_IMAGE": "Docker image override (set by setup --with-docker)",
+    "GH_TOKEN": "GitHub token for API rate limits",
+}
+
 
 # ---------------------------------------------------------------------------
 # Public class

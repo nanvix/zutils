@@ -16,6 +16,9 @@ from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
 from nanvix_zutil.resolver import resolve
 
+HELP: str = "Resolve manifest and emit CI-ready metadata"
+"""One-line description surfaced in ``nanvix-zutil --help``."""
+
 
 def _build_parser() -> argparse.ArgumentParser:
     """Build and return the argument parser for ``nanvix-zutil resolve``.

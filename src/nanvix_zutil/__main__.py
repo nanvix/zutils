@@ -5,36 +5,29 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
 
 from nanvix_zutil import log
+from nanvix_zutil.cli import SUBCOMMAND_HELP, build_parser
+from nanvix_zutil.config import ENV_VARS
 from nanvix_zutil.exitcodes import (
     EXIT_GENERAL_ERROR,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.info import HELP as _INFO_HELP
 from nanvix_zutil.lockfile import get_zutil_version
+from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
 from nanvix_zutil.script import ZScript
 
-# Subcommands that require .nanvix/z.py (consumer dispatch).
-_CONSUMER_COMMANDS: frozenset[str] = frozenset(
-    {
-        "setup",
-        "distclean",
-        "build",
-        "test",
-        "benchmark",
-        "release",
-        "clean",
-        "lock",
-        "help",
-    }
-)
-
-# Subcommands handled directly (standalone).
-_STANDALONE_COMMANDS: frozenset[str] = frozenset({"info", "resolve"})
+# Standalone command help text, keyed by subcommand name.
+_STANDALONE_HELP: dict[str, str] = {
+    "info": _INFO_HELP,
+    "resolve": _RESOLVE_HELP,
+}
 
 
 def discover_script_class(z_py: Path) -> type[ZScript]:
@@ -72,84 +65,102 @@ def discover_script_class(z_py: Path) -> type[ZScript]:
     )
 
 
-def _print_help() -> None:
-    """Print top-level help text."""
-    version = get_zutil_version()
-    standalone = sorted(_STANDALONE_COMMANDS)
-    consumer = sorted(_CONSUMER_COMMANDS - {"help"})
+def _build_env_var_epilog() -> str:
+    """Build the epilog string listing all recognised environment variables."""
+    lines = ["", "environment variables:"]
+    for var, desc in ENV_VARS.items():
+        lines.append(f"  {var:<30s} {desc}")
+    return "\n".join(lines)
 
-    print(f"nanvix-zutil {version}")
-    print()
-    print("Usage: nanvix-zutil <command> [options]")
-    print()
-    print("Standalone commands (no .nanvix/z.py required):")
-    for cmd in standalone:
-        print(f"  {cmd}")
-    print()
-    print("Consumer commands (require .nanvix/z.py in working directory):")
-    for cmd in consumer:
-        print(f"  {cmd}")
-    print()
-    print("Options:")
-    print("  --version    Show version and exit")
-    print("  --help, -h   Show this help message")
-    print()
-    print("Run 'nanvix-zutil <command> --help' for command-specific help.")
+
+def _build_top_level_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser with all subcommands registered.
+
+    Returns:
+        Fully configured :class:`argparse.ArgumentParser`.
+    """
+    parser = argparse.ArgumentParser(
+        prog="nanvix-zutil",
+        description=(
+            "Nanvix build orchestration utility.\n"
+            "\n"
+            "Consumer commands require a .nanvix/z.py file in the "
+            "working directory.\n"
+            "Standalone commands (info, resolve) work anywhere."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_build_env_var_epilog(),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"nanvix-zutil {get_zutil_version()}",
+    )
+
+    subparsers = parser.add_subparsers(dest="subcommand", title="commands")
+
+    # Register consumer commands.
+    for name in sorted(SUBCOMMAND_HELP):
+        subparsers.add_parser(name, help=SUBCOMMAND_HELP[name], add_help=False)
+
+    # Register standalone commands.
+    for name in sorted(_STANDALONE_HELP):
+        subparsers.add_parser(name, help=_STANDALONE_HELP[name], add_help=False)
+
+    return parser
 
 
 def main() -> None:
     """Entry point for the ``nanvix-zutil`` command."""
-    args = sys.argv[1:]
+    parser = _build_top_level_parser()
+    args, remaining = parser.parse_known_args()
 
-    # Determine the subcommand (first positional arg).
-    positional = [a for a in args if not a.startswith("-")]
-    subcmd = positional[0] if positional else None
+    subcmd = args.subcommand
 
-    # --- Version flag ---
-    if "--version" in args:
-        print(f"nanvix-zutil {get_zutil_version()}")
+    # No subcommand → print help (or error on unknown args).
+    if subcmd is None:
+        if remaining:
+            log.fatal(f"Unknown argument: {remaining[0]}", code=EXIT_INVALID_ARGS)
+        parser.print_help()
         return
 
-    # --- Help flag or no subcommand ---
-    if subcmd is None or subcmd in ("-h", "--help"):
-        _print_help()
-        return
-
-    if "-h" in args or "--help" in args:
-        # Let the subcommand's own parser handle --help.
-        pass
+    help_requested = "-h" in remaining or "--help" in remaining
 
     # --- Standalone commands ---
     if subcmd == "info":
         from nanvix_zutil.info import main as info_main
 
-        sys.argv = ["nanvix-zutil info", *args[args.index("info") + 1 :]]
+        sys.argv = ["nanvix-zutil info", *remaining]
         info_main()
         return
 
     if subcmd == "resolve":
         from nanvix_zutil.resolve_cmd import main as resolve_main
 
-        sys.argv = ["nanvix-zutil resolve", *args[args.index("resolve") + 1 :]]
+        sys.argv = ["nanvix-zutil resolve", *remaining]
         resolve_main()
         return
 
-    # --- Consumer commands ---
-    z_py = Path.cwd() / ".nanvix" / "z.py"
-
-    if subcmd in _CONSUMER_COMMANDS:
-        if not z_py.exists():
-            log.fatal(
-                f".nanvix/z.py not found in {Path.cwd()}",
-                code=EXIT_MISSING_DEP,
-                hint="Run this command from a Nanvix consumer repo root.",
-            )
-        script_cls = discover_script_class(z_py)
-        script_cls.main(repo_root=Path.cwd())
+    if subcmd == "help":
+        parser.print_help()
         return
 
-    # --- Unknown subcommand ---
-    log.fatal(f"Unknown command: {subcmd}", code=EXIT_INVALID_ARGS)
+    # --- Consumer commands ---
+    # --help / -h can be answered from the static parser without .nanvix/z.py.
+    if help_requested:
+        build_parser().parse_args([subcmd, "--help"])
+        return
+
+    z_py = Path.cwd() / ".nanvix" / "z.py"
+
+    if not z_py.exists():
+        log.fatal(
+            f".nanvix/z.py not found in {Path.cwd()}",
+            code=EXIT_MISSING_DEP,
+            hint="Run this command from a Nanvix consumer repo root.",
+        )
+    script_cls = discover_script_class(z_py)
+    script_cls.main(repo_root=Path.cwd())
 
 
 if __name__ == "__main__":
