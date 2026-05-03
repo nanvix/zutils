@@ -333,6 +333,7 @@ class ZScript:
                 deployment_mode=self.config.deployment_mode,
                 memory_size=self.config.memory_size,
                 gh_token=self.config.get(CFG_GH_TOKEN),
+                config=self.config,
             )
 
         # When --with-nanvix PATH is passed, overlay local build artifacts

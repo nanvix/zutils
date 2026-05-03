@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.config import DEFAULT_TARGET
-from nanvix_zutil.sysroot import Sysroot
+from nanvix_zutil.config import Config, DEFAULT_TARGET
+from nanvix_zutil.sysroot import WINDOWS_HOST_BINARIES, Sysroot
 
 
 def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
@@ -45,21 +45,250 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
         log_mod.set_json_mode(False)
 
     def test_skips_download_when_dest_exists(self) -> None:
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
 
-        with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+        config = Config(nanvix_dir)
+        config.set("sysroot_tag", "v1.0.0")
+        config.save()
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v1.0.0"},
+            ),
+            patch("nanvix_zutil.github.download_release_asset") as mock_dl,
+        ):
             sysroot = Sysroot.download(
                 machine="hyperlight",
                 deployment_mode="multi-process",
                 memory_size="128mb",
                 tag="v1.0.0",
                 dest=dest,
+                config=config,
             )
             mock_dl.assert_not_called()
 
         self.assertEqual(sysroot.path, dest.resolve())
-        self.assertEqual(sysroot.tag, "")
+        self.assertEqual(sysroot.tag, "v1.0.0")
+
+
+class TestSysrootDownloadStaleDetection(unittest.TestCase):
+    """Sysroot.download() re-downloads when the cached tag differs from the requested tag."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_redownloads_when_tag_mismatches(self) -> None:
+        """If sysroot exists but cached tag != requested tag, re-download."""
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        dest.mkdir()
+        (dest / "lib").mkdir()
+        (dest / "lib" / "old.a").write_bytes(b"old")
+
+        config = Config(nanvix_dir)
+        config.set("sysroot_tag", "v1.0.0")
+        config.save()
+
+        archive = _make_tar_bz2({"lib/new.a": b"new"})
+        archive_path = Path(self._tmpdir.name) / "nanvix.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v2.0.0"},
+            ),
+            patch(
+                "nanvix_zutil.github.download_release_asset",
+                return_value=archive_path,
+            ) as mock_dl,
+        ):
+            sysroot = Sysroot.download(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                tag="v2.0.0",
+                dest=dest,
+                config=config,
+            )
+            mock_dl.assert_called_once()
+
+        self.assertEqual(sysroot.tag, "v2.0.0")
+        self.assertTrue((sysroot.path / "lib" / "new.a").exists())
+
+    def test_skips_download_when_tag_matches(self) -> None:
+        """If sysroot exists and cached tag == requested tag, skip download."""
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        dest.mkdir()
+
+        config = Config(nanvix_dir)
+        config.set("sysroot_tag", "v1.0.0")
+        config.save()
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v1.0.0"},
+            ),
+            patch("nanvix_zutil.github.download_release_asset") as mock_dl,
+        ):
+            sysroot = Sysroot.download(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                tag="v1.0.0",
+                dest=dest,
+                config=config,
+            )
+            mock_dl.assert_not_called()
+
+        self.assertEqual(sysroot.tag, "v1.0.0")
+
+    def test_skips_when_bare_semver_resolves_to_cached_v_tag(self) -> None:
+        """Requesting '1.0.0' that resolves to 'v1.0.0' should cache-hit."""
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        dest.mkdir()
+
+        config = Config(nanvix_dir)
+        config.set("sysroot_tag", "v1.0.0")
+        config.save()
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v1.0.0"},
+            ),
+            patch("nanvix_zutil.github.download_release_asset") as mock_dl,
+        ):
+            sysroot = Sysroot.download(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                tag="1.0.0",
+                dest=dest,
+                config=config,
+            )
+            mock_dl.assert_not_called()
+
+        self.assertEqual(sysroot.tag, "v1.0.0")
+
+    def test_skips_when_latest_resolves_to_cached_tag(self) -> None:
+        """Requesting 'latest' that resolves to the cached tag should cache-hit."""
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
+        dest = Path(self._tmpdir.name) / "sysroot"
+        dest.mkdir()
+
+        config = Config(nanvix_dir)
+        config.set("sysroot_tag", "v0.12.410")
+        config.save()
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v0.12.410"},
+            ),
+            patch("nanvix_zutil.github.download_release_asset") as mock_dl,
+        ):
+            sysroot = Sysroot.download(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                tag="latest",
+                dest=dest,
+                config=config,
+            )
+            mock_dl.assert_not_called()
+
+        self.assertEqual(sysroot.tag, "v0.12.410")
+
+
+class TestWindowsBinariesStaleDetection(unittest.TestCase):
+    """download_windows_binaries() re-downloads when the tag changes."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_redownloads_when_tag_changes(self) -> None:
+        """If Windows binaries exist but persisted tag differs, re-download."""
+        import zipfile
+
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir.mkdir()
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        bin_dir = sysroot_dir / "bin"
+        bin_dir.mkdir(parents=True)
+        for b in WINDOWS_HOST_BINARIES:
+            (bin_dir / b).write_bytes(b"old-binary")
+
+        config = Config(nanvix_dir)
+        config.set("windows_binaries_tag", "v1.0.0")
+        config.save()
+
+        sysroot = Sysroot(sysroot_dir, tag="v2.0.0")
+
+        zip_path = Path(self._tmpdir.name) / "win.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for b in WINDOWS_HOST_BINARIES:
+                zf.writestr(f"bin/{b}", "new-binary")
+
+        with (
+            patch(
+                "nanvix_zutil.github.resolve_release",
+                return_value={"tag_name": "v2.0.0"},
+            ),
+            patch(
+                "nanvix_zutil.github.download_release_asset",
+                return_value=zip_path,
+            ) as mock_dl,
+        ):
+            sysroot.download_windows_binaries(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+                config=config,
+            )
+            mock_dl.assert_called_once()
+
+        self.assertEqual((bin_dir / "nanvixd.exe").read_bytes(), b"new-binary")
+        self.assertEqual(config.get("windows_binaries_tag"), "v2.0.0")
+
+    def test_skips_without_config_when_files_present(self) -> None:
+        """When config is None, skip based on file presence alone."""
+        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        bin_dir = sysroot_dir / "bin"
+        bin_dir.mkdir(parents=True)
+        for b in WINDOWS_HOST_BINARIES:
+            (bin_dir / b).write_bytes(b"binary")
+
+        sysroot = Sysroot(sysroot_dir, tag="v1.0.0")
+
+        with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+            sysroot.download_windows_binaries(
+                machine="microvm",
+                deployment_mode="standalone",
+                memory_size="256mb",
+            )
+            mock_dl.assert_not_called()
 
 
 class TestSysrootDownloadFetches(unittest.TestCase):
