@@ -8,55 +8,48 @@ base class with lifecycle hooks (`setup`, `distclean`, `build`, `test`, `benchma
 artifact downloading, lockfile-based dependency resolution, and deterministic
 exit codes.
 
-## Installation
-
-Install from the latest [GitHub Release](https://github.com/nanvix/zutils/releases):
-
-```bash
-# Requires gh CLI (https://cli.github.com)
-WHEEL_URL=$(gh api repos/nanvix/zutils/releases/latest \
-  --jq '.assets[] | select(.name | endswith(".whl")) | .browser_download_url')
-pip install "$WHEEL_URL"
-```
-
-Or install a specific version directly:
-
-```bash
-pip install "https://github.com/nanvix/zutils/releases/download/v0.3.0/nanvix_zutil-0.3.0-py3-none-any.whl"
-```
-
-## Usage
+## Quick Start
 
 Consumer repositories subclass `ZScript` in `.nanvix/z.py`:
 
 ```python
-from nanvix_zutil import ZScript, Buildroot, Sysroot
+from nanvix_zutil import ZScript
 
 class MyBuild(ZScript):
-    def setup(self) -> None:
-        sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag="v1.0.0",
-        )
-        self.config.set("NANVIX_SYSROOT", str(sysroot.path))
-        self.config.save()
-
     def build(self) -> None:
         self.run("make", "-f", "Makefile.nanvix", "all")
+
+    def test(self) -> None:
+        self.run("make", "-f", "Makefile.nanvix", "test")
 
 if __name__ == "__main__":
     MyBuild.main()
 ```
 
-Then invoke via the `nanvix-zutil` CLI:
+Then invoke via the bootstrap wrapper or the `nanvix-zutil` CLI:
 
 ```bash
-nanvix-zutil lock
-nanvix-zutil setup
-nanvix-zutil build
-nanvix-zutil test
+./z setup            # download sysroot + install dependencies
+./z build            # cross-compile (Docker auto-enabled)
+./z test             # run tests
+./z clean            # remove build artifacts
+```
+
+Or directly with `nanvix-zutil`:
+
+```bash
+nanvix-zutil lock    # resolve dependency graph → nanvix.lock
+nanvix-zutil setup   # download sysroot + install deps
+nanvix-zutil build   # cross-compile
+nanvix-zutil test    # run tests
+```
+
+## Installation
+
+Install from the latest [GitHub Release](https://github.com/nanvix/zutils/releases):
+
+```bash
+pip install "https://github.com/nanvix/zutils/releases/download/v0.7.30/nanvix_zutil-0.7.30-py3-none-any.whl"
 ```
 
 Or with `uvx` for zero-install usage:
@@ -65,114 +58,32 @@ Or with `uvx` for zero-install usage:
 uvx nanvix-zutil build
 ```
 
-### Lockfile
+Consumer repos typically don't install manually — the bootstrap wrappers
+(`z`, `z.sh`, `z.ps1`) auto-create a virtualenv and install the pinned
+version into `.nanvix/venv/`.
 
-`nanvix-zutil lock` resolves the full dependency graph (including transitive
-dependencies) and writes a pinned `nanvix.lock` file to `.nanvix/`.
-Use `--check` in CI to verify the lockfile is up-to-date, or `--shallow`
-to resolve only direct dependencies (for publishing as a release asset).
+## Documentation
 
-```bash
-nanvix-zutil lock              # resolve all deps and write nanvix.lock
-nanvix-zutil lock --check      # verify lockfile is fresh (exit 3 if missing, 2 if stale)
-nanvix-zutil lock --shallow    # resolve direct deps only (for CI release assets)
-```
+| Document | Description |
+|----------|-------------|
+| [Design Overview](doc/design.md) | Architecture, module graph, data flow |
+| [Setup](doc/setup.md) | Developer environment setup |
+| [Build](doc/build.md) | How to build the project |
+| [Test](doc/test.md) | How to run tests |
+| [Troubleshooting](doc/troubleshooting.md) | Solutions to common problems |
 
-## Docker Integration
+Additional references:
 
-Consumer build scripts can enable Docker mode by passing `--with-docker`
-to the `setup` subcommand.  The chosen image is persisted in
-`.nanvix/env.json` and automatically loaded by subsequent commands
-(`build`, `test`, `release`).
-
-| Flag | Image used |
-| --- | --- |
-| `--with-docker` | `docker_image()` (defaults to `nanvix/toolchain:latest-minimal`) |
-| `--with-docker IMAGE` | Custom image |
-
-The flag is only available on the `setup` subcommand.  Once configured,
-all lifecycle hooks that use `self.run()` transparently execute inside
-the container.
-
-```bash
-nanvix-zutil setup --with-docker              # download sysroot + enable Docker (default image)
-nanvix-zutil setup --with-docker my/img:tag   # download sysroot + enable Docker (custom image)
-nanvix-zutil build                            # cross-compile inside Docker (auto)
-nanvix-zutil test                             # run tests inside Docker (auto)
-nanvix-zutil clean                            # clean (host)
-```
-
-### How it works
-
-`ZScript.run()` accepts two extra keyword arguments:
-
-* `docker=False` — opt out of Docker for a single command (e.g. `clean`)
-
-The default `DockerConfig` mounts:
-
-* `repo_root` → `/mnt/workspace` (writable, default workdir)
-* sysroot path → `/mnt/sysroot` (read-only)
-* `.nanvix/buildroot` → `/mnt/buildroot` (read-only; auto-added when present)
-
-Use `self.translate_path(host_path)` to obtain the container-equivalent of any
-host path when Docker is active.
-
-### Customising Docker config
-
-Override `docker_image()` to change the default image, or override
-`docker_config(image)` to add extra mounts or environment variables:
-
-```python
-from nanvix_zutil import DockerConfig, Mount, ZScript
-from pathlib import Path
-
-class MyBuild(ZScript):
-    def docker_image(self) -> str:
-        return "my-registry/nanvix-toolchain:v2"
-
-    def docker_config(self, image: str) -> DockerConfig:
-        cfg = super().docker_config(image)
-        cfg.extra_env["MY_VAR"] = "value"
-        return cfg
-```
+| Document | Description |
+|----------|-------------|
+| [Manifest Reference](docs/manifest.md) | `nanvix.toml` format and options |
+| [Local Development (`--with-nanvix`)](docs/with-nanvix.md) | Using local Nanvix builds |
+| [Contributing](CONTRIBUTING.md) | Contribution guidelines and release process |
 
 ## Examples
 
-* [`examples/lib-hello/`](examples/lib-hello/) — builds a static library
-  (`libhello.a`) using `ZScript`.
-* [`examples/bin-hello/`](examples/bin-hello/) — depends on `lib-hello` and
-  cross-compiles a binary that uses it.
-
-## Developer Setup
-
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
-```bash
-git clone https://github.com/nanvix/zutils
-cd zutils
-uv sync                       # install project + dev dependencies
-uv run tasks.py setup         # configure git hooks
-```
-
-### Dev Commands
-
-| Command                      | Description                         |
-| ---------------------------- | ----------------------------------- |
-| `uv run tasks.py lint`       | Check formatting (black)            |
-| `uv run tasks.py format`     | Fix formatting (black)              |
-| `uv run tasks.py typecheck`  | Strict type checking (pyright)      |
-| `uv run tasks.py test`       | Run test suite (pytest)             |
-| `uv run tasks.py clean`      | Remove caches and build artifacts   |
-
-### Git Hooks
-
-`uv run tasks.py setup` points Git at the `.githooks/` directory, which
-contains:
-
-| Hook         | What it does                                                    |
-| ------------ | --------------------------------------------------------------- |
-| `commit-msg` | Validates `[module] type: Description` format (B, E, F, or W)   |
-| `pre-push`   | Runs formatting (black) and type checking (pyright) checks      |
+* [`examples/lib-hello/`](examples/lib-hello/) — cross-compiles a static library (`libhello.a`).
+* [`examples/bin-hello/`](examples/bin-hello/) — depends on `lib-hello` and cross-compiles a binary.
 
 ## License
 
