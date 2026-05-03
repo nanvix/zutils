@@ -55,8 +55,9 @@ The public-facing orchestrator and base class for all consumer build scripts.
 
 Builds the `argparse` parser for `ZScript.main()`. Registers subcommands
 dynamically based on which hooks the consumer overrides. Handles `--json`,
-`--version`, `--mode`, and per-subcommand Docker flags (`--with-docker`
-on `build` and `release`).
+`--version`, `--mode`, and `--with-docker` (registered only on `setup`).
+Docker is auto-enabled for `setup`, `build`, `release`, and `clean`;
+`test` and `benchmark` always run on the host.
 
 ### `config.py` — Configuration
 
@@ -143,14 +144,16 @@ setup
   └── Sync canonical tool configs
 ```
 
-### Build/Test Phase
+### Build/Release Phase
 
 ```
-build / test / release / clean
+setup / build / release / clean   (Docker auto-enabled)
   ├── Load persisted Docker image from config
   ├── Configure DockerConfig with mounts
   └── Dispatch to consumer hook
         └── self.run("make", ...) → transparently wrapped in docker run
+
+test / benchmark                  (always run on host)
 ```
 
 ## Data Flow
