@@ -143,14 +143,12 @@ class BinHello(ZScript):
         # Functional: run under nanvixd on the appropriate platform.
         if sys.platform == "win32":
             self._test_functional_windows(binary)
-        elif self.docker:
-            self._test_functional_docker(binary)
         else:
-            log.info("=== skipping functional tests (Docker not configured) ===")
+            self._test_functional_linux(binary)
 
-    def _test_functional_docker(self, binary: Path) -> None:
-        """Run functional tests inside a Docker container (Linux)."""
-        log.info("=== bin-hello functional tests (Docker) ===")
+    def _test_functional_linux(self, binary: Path) -> None:
+        """Run functional tests under nanvixd.elf (native or Docker)."""
+        log.info("=== bin-hello functional tests (Linux) ===")
         sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
         self.run(
