@@ -32,7 +32,7 @@ Then invoke via the bootstrap wrapper or the `nanvix-zutil` CLI:
 ./z setup            # download sysroot + install dependencies
 ./z build            # cross-compile (Docker auto-enabled)
 ./z test             # run tests
-./z clean            # remove build artifacts
+./z distclean        # remove all generated artifacts
 ```
 
 Or directly with `nanvix-zutil`:
@@ -46,10 +46,11 @@ nanvix-zutil test    # run tests
 
 ## Installation
 
-Install from the latest [GitHub Release](https://github.com/nanvix/zutils/releases):
+Install from the [GitHub Releases](https://github.com/nanvix/zutils/releases)
+page — pick the `.whl` URL for the version you need:
 
 ```bash
-pip install "https://github.com/nanvix/zutils/releases/download/v0.7.30/nanvix_zutil-0.7.30-py3-none-any.whl"
+pip install "https://github.com/nanvix/zutils/releases/download/v<VERSION>/nanvix_zutil-<VERSION>-py3-none-any.whl"
 ```
 
 Or with `uvx` for zero-install usage:
