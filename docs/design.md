@@ -257,7 +257,7 @@ from nanvix_zutil import ZScript, Config, Buildroot, log
 
 1. User runs `./z <command>` at a consumer repo root.
 2. The bootstrap wrapper (`z`/`z.sh`/`z.ps1`) finds Python >= 3.12,
-   creates `.nanvix/venv/`, installs the pinned `nanvix-zutil` wheel,
+   creates `.venv/`, installs the pinned `nanvix-zutil` wheel,
    and re-execs under the venv Python.
 3. `.nanvix/z.py` defines a `ZScript` subclass and calls
    `MyScript.main()`.
@@ -320,12 +320,12 @@ nanvix/<project>/
 ├── z              # Bash bootstrap
 ├── z.sh           # Bash bootstrap (alternative)
 ├── z.ps1          # PowerShell bootstrap
+├── .venv/         # Auto-created virtualenv
 └── .nanvix/
     ├── z.py       # ZScript subclass implementing hooks
     ├── nanvix.toml # Declarative dependencies
     ├── nanvix.lock # Pinned dependency graph (committed)
     ├── env.json   # Persistent config (generated)
-    ├── venv/      # Auto-created virtualenv
     ├── sysroot/   # Downloaded runtime artifacts
     └── buildroot/ # Downloaded build-time deps
 ```

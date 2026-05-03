@@ -61,7 +61,7 @@ uvx nanvix-zutil build
 
 Consumer repos typically don't install manually — the bootstrap wrappers
 (`z`, `z.sh`, `z.ps1`) auto-create a virtualenv and install the pinned
-version into `.nanvix/venv/`.
+version into `.venv/`.
 
 ## Documentation
 

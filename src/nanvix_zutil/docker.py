@@ -177,7 +177,7 @@ class DockerConfig:
     tar_excludes: list[str] = field(
         default_factory=lambda: [
             ".git",
-            ".nanvix/venv",
+            ".venv",
             ".nanvix/cache",
             ".nanvix/sysroot",
             ".nanvix/buildroot",

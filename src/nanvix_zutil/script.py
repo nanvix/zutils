@@ -444,11 +444,12 @@ class ZScript:
             log.note(f"Synced .nanvix/{dst_rel}")
 
     def distclean(self) -> None:
-        """Remove all transient ``.nanvix/`` artifacts.
+        """Remove all transient ``.nanvix/`` artifacts and the ``.venv``.
 
-        Deletes the ``sysroot``, ``buildroot``, ``cache``, ``venv``, and
+        Deletes the ``sysroot``, ``buildroot``, ``cache``, and
         ``__pycache__`` directories and the ``env.json`` config file inside
-        ``.nanvix/``.  Only the manifest (``nanvix.toml``) and lockfile
+        ``.nanvix/``, plus the ``.venv`` virtual environment at the repo
+        root.  Only the manifest (``nanvix.toml``) and lockfile
         (``nanvix.lock``) are preserved.
 
         Removal is best-effort: artifacts that cannot be deleted (e.g. a
@@ -460,7 +461,6 @@ class ZScript:
             "buildroot",
             "cache",
             "env.json",
-            "venv",
             "__pycache__",
         ):
             path = self.nanvix_dir / artifact
@@ -476,6 +476,18 @@ class ZScript:
                 log.info(f"Removed {path}")
             except OSError as exc:
                 log.warning(f"Could not remove {path}: {exc}")
+
+        # Remove the .venv at the repo root (lives outside .nanvix/).
+        venv_path = self.repo_root / ".venv"
+        if venv_path.exists() or venv_path.is_symlink():
+            try:
+                if venv_path.is_symlink() or venv_path.is_file():
+                    venv_path.unlink()
+                elif venv_path.is_dir():
+                    shutil.rmtree(venv_path)
+                log.info(f"Removed {venv_path}")
+            except OSError as exc:
+                log.warning(f"Could not remove {venv_path}: {exc}")
 
     def lock(self, *, shallow: bool = False) -> None:
         """Resolve the dependency graph and write ``nanvix.lock``.

@@ -364,7 +364,7 @@ class TestDockerConfigWindowsFields(unittest.TestCase):
     def test_tar_excludes_has_defaults(self) -> None:
         cfg = DockerConfig(image="test-image")
         self.assertIn(".git", cfg.tar_excludes)
-        self.assertIn(".nanvix/venv", cfg.tar_excludes)
+        self.assertIn(".venv", cfg.tar_excludes)
 
     def test_container_build_dir_default(self) -> None:
         cfg = DockerConfig(image="test-image")

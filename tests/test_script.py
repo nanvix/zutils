@@ -376,7 +376,7 @@ class TestZScriptDistclean(unittest.TestCase):
         self.assertFalse(config_file.exists())
 
     def test_distclean_removes_venv(self) -> None:
-        venv_dir = self._nanvix() / "venv"
+        venv_dir = Path(self._tmpdir.name) / ".venv"
         venv_dir.mkdir()
         (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin")
         self._make_script().distclean()
@@ -427,7 +427,7 @@ class TestZScriptDistclean(unittest.TestCase):
 
     def test_distclean_continues_on_permission_error(self) -> None:
         """distclean() warns and skips artifacts it cannot remove."""
-        venv_dir = self._nanvix() / "venv"
+        venv_dir = Path(self._tmpdir.name) / ".venv"
         venv_dir.mkdir()
         cache_dir = self._nanvix() / "cache"
         cache_dir.mkdir()
@@ -435,7 +435,7 @@ class TestZScriptDistclean(unittest.TestCase):
         original_rmtree = __import__("shutil").rmtree
 
         def _rmtree_fail_on_venv(path: object, *args: object, **kwargs: object) -> None:
-            if Path(str(path)).name == "venv":
+            if Path(str(path)).name == ".venv":
                 raise PermissionError("locked by running process")
             original_rmtree(path, *args, **kwargs)  # type: ignore[arg-type]
 

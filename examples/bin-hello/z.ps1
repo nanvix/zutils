@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # Thin wrapper that delegates to the nanvix-zutil CLI.
-# Self-bootstraps nanvix-zutil into .nanvix\venv\ if it is not already installed.
+# Self-bootstraps nanvix-zutil into .venv\ if it is not already installed.
 
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -22,7 +22,7 @@ $zutilVersion = $zutilVersion -replace "^v", ""
 # z.ps1 lives at the repository root, so use its directory directly
 # instead of relying on git to discover the top-level checkout directory.
 $repoRoot = $PSScriptRoot
-$venvDir = Join-Path $repoRoot ".nanvix\venv"
+$venvDir = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $venvZutil = Join-Path $venvDir "Scripts\nanvix-zutil.exe"
 

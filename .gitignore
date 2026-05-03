@@ -17,7 +17,6 @@ examples/**/*.elf
 # Virtual environments
 .venv/
 venv/
-.nanvix/venv/
 
 # Nanvix build artifacts (downloaded sysroot, buildroot, cache, config)
 **/.nanvix/sysroot/

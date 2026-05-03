@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 
 # Thin wrapper that delegates to the nanvix-zutil CLI.
-# Self-bootstraps nanvix-zutil into .nanvix/venv/ if it is not already installed.
+# Self-bootstraps nanvix-zutil into .venv/ if it is not already installed.
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ PINNED_VERSION="{{ZUTIL_VERSION}}"
 RAW_ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-$PINNED_VERSION}"
 ZUTIL_VERSION="${RAW_ZUTIL_VERSION#v}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
-VENV="$REPO_ROOT/.nanvix/venv"
+VENV="$REPO_ROOT/.venv"
 
 # Resolve venv layout (bin/ vs Scripts/) based on what exists on disk.
 # Can be called before venv creation to initialize default paths; call it

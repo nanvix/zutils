@@ -40,17 +40,17 @@ cd /path/to/consumer   # e.g. usr/lib/zlib
 
 # Bootstrap venv and install feature-branch zutils
 ./z setup
-.nanvix/venv/bin/pip install -e /path/to/zutils
+.venv/bin/pip install -e /path/to/zutils
 
 # Clean sysroot and re-run with local override
 rm -rf .nanvix/sysroot .nanvix/env.json
-WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil setup
+WITH_NANVIX=~/src/nanvix/nanvix .venv/bin/nanvix-zutil setup
 
 # Verify
 cmp .nanvix/sysroot/bin/nanvixd.elf ~/src/nanvix/nanvix/bin/nanvixd.elf
 
 # Build using the overlaid sysroot
-WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil build
+WITH_NANVIX=~/src/nanvix/nanvix .venv/bin/nanvix-zutil build
 ```
 
 ## Using the Shell Wrapper

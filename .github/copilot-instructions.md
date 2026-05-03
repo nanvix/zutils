@@ -39,7 +39,7 @@ script.py  ←  CLI entry point (ZScript.main)
 
 1. User runs `./z <command>` at a consumer repo root.
 2. `z` (Bash), `z.sh` (Bash), or `z.ps1` (PowerShell) finds Python ≥ 3.12 and execs `.nanvix/z.py`.
-3. `z.py` self-bootstraps: creates `.nanvix/venv/`, installs the pinned `nanvix-zutil` version, re-execs under the venv Python.
+3. `z.py` self-bootstraps: creates `.venv/`, installs the pinned `nanvix-zutil` version, re-execs under the venv Python.
 4. Consumer's `ZScript` subclass dispatches to the appropriate lifecycle hook.
 
 ### Consumer Pattern
@@ -51,11 +51,11 @@ nanvix/<project>/
 ├── z              # Bash bootstrap (repo root)
 ├── z.sh           # Bash bootstrap (repo root, alternative)
 ├── z.ps1          # PowerShell bootstrap (repo root)
+├── .venv/         # Auto-created virtualenv
 └── .nanvix/
     ├── z.py       # Subclasses ZScript, implements hooks
     ├── nanvix.toml # Declarative dependencies
     ├── nanvix.lock # Pinned dependency graph (committed to VCS)
-    ├── venv/      # Auto-created virtualenv
     └── env.json   # Persistent config
 ```
 
