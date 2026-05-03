@@ -13,6 +13,8 @@ import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.manifest import load_manifest
 
+from tests.testutils import make_toml
+
 
 class TestLoadManifestFileNotFound(unittest.TestCase):
     """load_manifest exits 3 when the file does not exist."""
@@ -47,14 +49,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_single_dependency_commitish(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { commitish = "b7a6a3c" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ commitish = "b7a6a3c" }'}))
 
         m = load_manifest(path)
 
@@ -70,14 +65,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_single_dependency_version_string(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.2.3"\n'
-            "[dependencies]\n"
-            'zlib = "4.5.6"\n'
-        )
+        path.write_text(make_toml(nanvix_version="1.2.3", deps={"zlib": '"4.5.6"'}))
 
         m = load_manifest(path)
 
@@ -89,12 +77,7 @@ class TestLoadManifestBasic(unittest.TestCase):
     def test_single_dependency_version_table(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.2.3"\n'
-            "[dependencies]\n"
-            'zlib = { version = "4.5.6" }\n'
+            make_toml(nanvix_version="1.2.3", deps={"zlib": '{ version = "4.5.6" }'})
         )
 
         m = load_manifest(path)
@@ -104,14 +87,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_single_dependency_tag(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { tag = "675d8f2-nanvix-e63706b" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ tag = "675d8f2-nanvix-e63706b" }'}))
 
         m = load_manifest(path)
 
@@ -120,14 +96,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_single_dependency_id(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            "zlib = { id = 12345678 }\n"
-        )
+        path.write_text(make_toml(deps={"zlib": "{ id = 12345678 }"}))
 
         m = load_manifest(path)
 
@@ -137,13 +106,10 @@ class TestLoadManifestBasic(unittest.TestCase):
     def test_mixed_dependencies(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.0.0"\n'
-            "[dependencies]\n"
-            'zlib = { commitish = "aaa" }\n'
-            'openssl = "2.0.0"\n'
+            make_toml(
+                nanvix_version="1.0.0",
+                deps={"zlib": '{ commitish = "aaa" }', "openssl": '"2.0.0"'},
+            )
         )
 
         m = load_manifest(path)
@@ -157,12 +123,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_no_dependencies_section(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-        )
+        path.write_text(make_toml())
 
         m = load_manifest(path)
 
@@ -171,13 +132,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_empty_dependencies_section(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-        )
+        path.write_text(make_toml(deps={}))
 
         m = load_manifest(path)
 
@@ -185,13 +140,7 @@ class TestLoadManifestBasic(unittest.TestCase):
 
     def test_empty_system_dependencies_section(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[system-dependencies]\n"
-        )
+        path.write_text(make_toml(sys_deps={}))
 
         m = load_manifest(path)
 
@@ -211,9 +160,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_empty_string_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            '[package]\nname = "myapp"\nversion = "1.0.0"\nnanvix-version = ""\n'
-        )
+        path.write_text(make_toml(nanvix_version=""))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -222,12 +169,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_whitespace_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "has space"\n'
-        )
+        path.write_text(make_toml(nanvix_version="has space"))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -236,9 +178,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_non_semver_nanvix_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            '[package]\nname = "myapp"\nversion = "1.0.0"\nnanvix-version = "abc123"\n'
-        )
+        path.write_text(make_toml(nanvix_version="abc123"))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -247,12 +187,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_latest_nanvix_version_accepted(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "latest"\n'
-        )
+        path.write_text(make_toml(nanvix_version="latest"))
 
         m = load_manifest(path)
 
@@ -261,14 +196,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_latest_sysroot_skips_dep_suffix(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "latest"\n'
-            "[dependencies]\n"
-            'zlib = "1.3.1"\n'
-        )
+        path.write_text(make_toml(nanvix_version="latest", deps={"zlib": '"1.3.1"'}))
 
         m = load_manifest(path)
 
@@ -278,14 +206,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_latest_sysroot_env_override_suffixes_normally(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "latest"\n'
-            "[dependencies]\n"
-            'zlib = "1.3.1"\n'
-        )
+        path.write_text(make_toml(nanvix_version="latest", deps={"zlib": '"1.3.1"'}))
 
         with patch.dict("os.environ", {"NANVIX_VERSION": "0.12.258"}):
             m = load_manifest(path)
@@ -309,14 +230,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_whitespace_dep_version_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "has space"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"has space"'}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -325,14 +239,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_empty_commitish_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { commitish = "" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ commitish = "" }'}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -341,14 +248,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_non_string_commitish_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            "zlib = { commitish = 123 }\n"
-        )
+        path.write_text(make_toml(deps={"zlib": "{ commitish = 123 }"}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -357,14 +257,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_multiple_specifier_keys_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { version = "1.0", tag = "v1.0" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ version = "1.0", tag = "v1.0" }'}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -373,14 +266,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_non_integer_id_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { id = "abc" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ id = "abc" }'}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -389,14 +275,7 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 
     def test_unknown_table_key_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { foo = "bar" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ foo = "bar" }'}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -417,14 +296,7 @@ class TestLoadManifestLatestWarning(unittest.TestCase):
 
     def test_latest_dep_version_warns(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "latest"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"latest"'}))
 
         with patch("nanvix_zutil.manifest.log") as mock_log:
             m = load_manifest(path)
@@ -524,14 +396,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
 
     def test_nanvix_version_overrides_sysroot(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "1.0.0"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"1.0.0"'}))
 
         with patch.dict(os.environ, {"NANVIX_VERSION": "override_sha"}):
             m = load_manifest(path)
@@ -542,14 +407,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
     def test_nanvix_version_v_prefix_stripped_in_suffix(self) -> None:
         """NANVIX_VERSION with 'v' prefix must strip it for dep suffix."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "latest"\n'
-            "[dependencies]\n"
-            'zlib = "1.3.1"\n'
-        )
+        path.write_text(make_toml(nanvix_version="latest", deps={"zlib": '"1.3.1"'}))
 
         with patch.dict(os.environ, {"NANVIX_VERSION": "v0.12.291"}):
             m = load_manifest(path)
@@ -559,14 +417,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
 
     def test_nanvix_version_dep_overrides_dep(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "1.0.0"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"1.0.0"'}))
 
         with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "env_sha"}):
             m = load_manifest(path)
@@ -576,14 +427,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
 
     def test_env_overrides_both(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "1.0.0"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"1.0.0"'}))
 
         with patch.dict(
             os.environ,
@@ -597,14 +441,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
     def test_env_override_with_nanvix_suffix_skips_auto_suffix(self) -> None:
         """NANVIX_VERSION_<NAME> with -nanvix- suffix bypasses auto-suffixing."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.410"\n'
-            "[dependencies]\n"
-            'zlib = "1.3.1"\n'
-        )
+        path.write_text(make_toml(nanvix_version="0.12.410", deps={"zlib": '"1.3.1"'}))
 
         with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "1.3.1-nanvix-99.99.99"}):
             m = load_manifest(path)
@@ -615,14 +452,7 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
     def test_env_override_without_suffix_still_gets_suffixed(self) -> None:
         """NANVIX_VERSION_<NAME> without -nanvix- still gets auto-suffixed."""
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.410"\n'
-            "[dependencies]\n"
-            'zlib = "1.3.1"\n'
-        )
+        path.write_text(make_toml(nanvix_version="0.12.410", deps={"zlib": '"1.3.1"'}))
 
         with patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": "2.0.0"}):
             m = load_manifest(path)
@@ -644,14 +474,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_version_string_dep_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.0.0"\n'
-            "[dependencies]\n"
-            'zlib = "4.5.6"\n'
-        )
+        path.write_text(make_toml(nanvix_version="1.0.0", deps={"zlib": '"4.5.6"'}))
 
         m = load_manifest(path)
 
@@ -661,12 +484,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
     def test_version_table_dep_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.0.0"\n'
-            "[dependencies]\n"
-            'zlib = { version = "4.5.6" }\n'
+            make_toml(nanvix_version="1.0.0", deps={"zlib": '{ version = "4.5.6" }'})
         )
 
         m = load_manifest(path)
@@ -676,14 +494,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_commitish_dep_not_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { commitish = "b7a6a3c" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ commitish = "b7a6a3c" }'}))
 
         m = load_manifest(path)
 
@@ -692,14 +503,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_tag_dep_not_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { tag = "v1.0.0-nanvix-abc" }\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '{ tag = "v1.0.0-nanvix-abc" }'}))
 
         m = load_manifest(path)
 
@@ -708,14 +512,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_id_dep_not_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            "zlib = { id = 99999 }\n"
-        )
+        path.write_text(make_toml(deps={"zlib": "{ id = 99999 }"}))
 
         m = load_manifest(path)
 
@@ -724,14 +521,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_full_ref_with_nanvix_rejected(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = "b7a6a3c-nanvix-fa06b88"\n'
-        )
+        path.write_text(make_toml(deps={"zlib": '"b7a6a3c-nanvix-fa06b88"'}))
 
         log_mod.set_json_mode(True)
         with self.assertRaises(SystemExit) as ctx:
@@ -743,13 +533,10 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
     def test_multiple_version_deps_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "1.0.0"\n'
-            "[dependencies]\n"
-            'zlib = "1.2.3"\n'
-            'openssl = "2.0.0"\n'
+            make_toml(
+                nanvix_version="1.0.0",
+                deps={"zlib": '"1.2.3"', "openssl": '"2.0.0"'},
+            )
         )
 
         m = load_manifest(path)
@@ -759,14 +546,7 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
     def test_system_deps_version_suffixed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[system-dependencies]\n"
-            'foobar = "1.2.3"\n'
-        )
+        path.write_text(make_toml(sys_deps={"foobar": '"1.2.3"'}))
 
         m = load_manifest(path)
 
@@ -789,13 +569,9 @@ class TestLoadManifestSystemDependencies(unittest.TestCase):
     def test_system_deps_parsed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[system-dependencies]\n"
-            'foobar = "1.2.3"\n'
-            'bazqux = { commitish = "deadbeef" }\n'
+            make_toml(
+                sys_deps={"foobar": '"1.2.3"', "bazqux": '{ commitish = "deadbeef" }'},
+            )
         )
 
         m = load_manifest(path)
@@ -812,14 +588,10 @@ class TestLoadManifestSystemDependencies(unittest.TestCase):
     def test_both_dep_sections_parsed(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
         path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            'zlib = { commitish = "aaa" }\n'
-            "[system-dependencies]\n"
-            'foobar = "1.2.3"\n'
+            make_toml(
+                deps={"zlib": '{ commitish = "aaa" }'},
+                sys_deps={"foobar": '"1.2.3"'},
+            )
         )
 
         m = load_manifest(path)
@@ -841,14 +613,7 @@ class TestLoadManifestTypeValidation(unittest.TestCase):
 
     def test_integer_dependency_value_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            "zlib = 123\n"
-        )
+        path.write_text(make_toml(deps={"zlib": "123"}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
@@ -857,14 +622,7 @@ class TestLoadManifestTypeValidation(unittest.TestCase):
 
     def test_boolean_dependency_value_exits_2(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.toml"
-        path.write_text(
-            "[package]\n"
-            'name = "myapp"\n'
-            'version = "1.0.0"\n'
-            'nanvix-version = "0.12.257"\n'
-            "[dependencies]\n"
-            "zlib = true\n"
-        )
+        path.write_text(make_toml(deps={"zlib": "true"}))
 
         with self.assertRaises(SystemExit) as ctx:
             load_manifest(path)
