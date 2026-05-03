@@ -51,9 +51,6 @@ git config --local core.hooksPath
 **Solution:** Install the tools:
 
 ```bash
-# macOS
-brew install shfmt shellcheck
-
 # Ubuntu/Debian
 sudo apt-get install shfmt shellcheck
 
@@ -144,10 +141,8 @@ git commit -m "[project] E: Update lockfile"
 
 1. Install Python 3.12+:
    ```bash
-   # Ubuntu
+   # Ubuntu/Debian
    sudo apt-get install python3.12
-   # macOS
-   brew install python@3.12
    ```
 2. Ensure it's on PATH or set `PYTHON` environment variable:
    ```bash
