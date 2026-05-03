@@ -50,6 +50,11 @@ The public-facing orchestrator and base class for all consumer build scripts.
   `docker run` when Docker mode is active.
 - **Path translation**: `translate_path()` maps host paths to container
   paths when running inside Docker.
+- **Windows test runner**: `run_tests_windows()` discovers `.elf` test
+  binaries in `build/`, creates per-binary ramfs images via `mkramfs.exe`,
+  and executes each under `nanvixd.exe` with timeout handling. Subclasses
+  filter which binaries run via the `WINDOWS_TEST_ALLOWLIST` class attribute
+  (a `frozenset[str]`; empty means run all).
 
 ### `cli.py` — Argument Parsing
 

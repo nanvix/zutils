@@ -44,6 +44,34 @@ nanvix-zutil build   # cross-compile
 nanvix-zutil test    # run tests
 ```
 
+### Windows Testing
+
+For consumer repos that produce `.elf` test binaries, `ZScript` provides a
+built-in `run_tests_windows()` method that discovers binaries in `build/`,
+builds per-test ramfs images, and runs each under `nanvixd.exe`:
+
+```python
+import sys
+from nanvix_zutil import ZScript
+
+class MyBuild(ZScript):
+    # Optional: only run these binaries (skip others like CLI tools).
+    WINDOWS_TEST_ALLOWLIST = frozenset({"test_core.elf", "test_utils.elf"})
+
+    def test(self) -> None:
+        if sys.platform == "win32":
+            self.run_tests_windows()
+            return
+        self.run("make", "-f", "Makefile.nanvix", "test")
+
+if __name__ == "__main__":
+    MyBuild.main()
+```
+
+When `WINDOWS_TEST_ALLOWLIST` is empty (the default), all `.elf` files in
+`build/` are executed. The method exits with code 6 (`EXIT_TEST_FAILURE`)
+if any test fails.
+
 ## Installation
 
 Install from the [GitHub Releases](https://github.com/nanvix/zutils/releases)
