@@ -60,6 +60,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_DEGRADED_SETUP,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
+    EXIT_TEST_FAILURE,
 )
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
@@ -128,7 +129,7 @@ class ZScript:
     #: When non-empty, only ``.elf`` files whose names are in this set
     #: will be executed by :meth:`run_tests_windows`.  When empty (the
     #: default), all ``.elf`` files discovered in ``build/`` are run.
-    WINDOWS_TEST_ALLOWLIST: set[str] = set()
+    WINDOWS_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
@@ -600,12 +601,11 @@ class ZScript:
         To filter test binaries (e.g. skip CLI tools)::
 
             class ZlibBuild(ZScript):
-                WINDOWS_TEST_ALLOWLIST = {"example.elf"}
+                WINDOWS_TEST_ALLOWLIST = frozenset({"example.elf"})
 
         Raises:
-            RuntimeError: If one or more tests fail.
-            SystemExit: If sysroot binaries are missing (via
-                :func:`~nanvix_zutil.log.fatal`).
+            SystemExit: If one or more tests fail (exit code 6) or if
+                sysroot binaries are missing (exit code 3).
         """
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
@@ -637,18 +637,25 @@ class ZScript:
         allowlist = self.WINDOWS_TEST_ALLOWLIST
         if allowlist:
             test_binaries = [b for b in all_elfs if b.name in allowlist]
+            if all_elfs and not test_binaries:
+                log.fatal(
+                    "WINDOWS_TEST_ALLOWLIST matched no binaries in build/.",
+                    code=EXIT_TEST_FAILURE,
+                    hint="Found .elf files but none matched the allowlist: "
+                    + ", ".join(sorted(p.name for p in all_elfs)),
+                )
         else:
             test_binaries = all_elfs
 
         if not test_binaries:
-            print("No test binaries found in build/ -- smoke test only.")
-            print("OK: library-only repo, no functional tests to run on Windows")
+            log.info("No test binaries found in build/ -- smoke test only.")
+            log.info("OK: library-only repo, no functional tests to run on Windows")
             return
 
         failed: list[str] = []
         for binary in test_binaries:
             name = binary.stem
-            print(f"RUN  {name}...")
+            log.info(f"RUN  {name}...")
             with tempfile.TemporaryDirectory(prefix=f"nanvix_{name}_") as tmpdir:
                 tmpdir_path = Path(tmpdir)
                 ramfs_dir = tmpdir_path / "ramfs"
@@ -671,11 +678,11 @@ class ZScript:
                         timeout=60,
                     )
                 except subprocess.CalledProcessError as e:
-                    print(f"FAIL {name} (mkramfs exit code {e.returncode})")
+                    log.warning(f"FAIL {name} (mkramfs exit code {e.returncode})")
                     failed.append(name)
                     continue
                 except subprocess.TimeoutExpired:
-                    print(f"FAIL {name} (mkramfs timeout)")
+                    log.warning(f"FAIL {name} (mkramfs timeout)")
                     failed.append(name)
                     continue
                 try:
@@ -693,18 +700,21 @@ class ZScript:
                         timeout=120,
                     )
                     if result.returncode != 0:
-                        print(f"FAIL {name} (exit code {result.returncode})")
+                        log.warning(f"FAIL {name} (exit code {result.returncode})")
                         failed.append(name)
                     else:
-                        print(f"OK   {name}")
+                        log.info(f"OK   {name}")
                 except subprocess.TimeoutExpired:
-                    print(f"FAIL {name} (timeout)")
+                    log.warning(f"FAIL {name} (timeout)")
                     failed.append(name)
 
         if failed:
             msg = " ".join(failed)
-            raise RuntimeError(f"{len(failed)} test(s) failed: {msg}")
-        print(f"\t\t*** All {len(test_binaries)} tests PASSED ***")
+            log.fatal(
+                f"{len(failed)} test(s) failed: {msg}",
+                code=EXIT_TEST_FAILURE,
+            )
+        log.success(f"All {len(test_binaries)} tests PASSED")
 
     # ------------------------------------------------------------------
     # Subprocess helper

@@ -1334,7 +1334,7 @@ class TestRunTestsWindows(unittest.TestCase):
         mock_run.return_value = sp.CompletedProcess(args=[], returncode=0)
 
         class Filtered(ZScript):
-            WINDOWS_TEST_ALLOWLIST = {"example.elf"}
+            WINDOWS_TEST_ALLOWLIST = frozenset({"example.elf"})
 
         script = Filtered(self._repo)
         script.config.set(CFG_SYSROOT, self._sysroot_path)
@@ -1344,8 +1344,8 @@ class TestRunTestsWindows(unittest.TestCase):
         self.assertEqual(mock_run.call_count, 2)
 
     @patch("nanvix_zutil.script.subprocess.run")
-    def test_failure_raises_runtime_error(self, mock_run: MagicMock) -> None:
-        """run_tests_windows() raises RuntimeError on test failure."""
+    def test_failure_exits_with_test_failure_code(self, mock_run: MagicMock) -> None:
+        """run_tests_windows() exits with EXIT_TEST_FAILURE on test failure."""
         build_dir = self._repo / "build"
         build_dir.mkdir()
         (build_dir / "failing.elf").write_bytes(b"\x7fELF")
@@ -1359,9 +1359,9 @@ class TestRunTestsWindows(unittest.TestCase):
 
         mock_run.side_effect = side_effect
         script = self._make_script()
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(SystemExit) as ctx:
             script.run_tests_windows()
-        self.assertIn("1 test(s) failed", str(ctx.exception))
+        self.assertEqual(ctx.exception.code, 6)
 
     @patch("nanvix_zutil.script.subprocess.run")
     def test_mkramfs_failure_continues(self, mock_run: MagicMock) -> None:
@@ -1372,8 +1372,24 @@ class TestRunTestsWindows(unittest.TestCase):
 
         mock_run.side_effect = sp.CalledProcessError(1, "mkramfs")
         script = self._make_script()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(SystemExit) as ctx:
             script.run_tests_windows()
+        self.assertEqual(ctx.exception.code, 6)
+
+    def test_allowlist_mismatch_fatals(self) -> None:
+        """run_tests_windows() fatals when allowlist matches nothing."""
+        build_dir = self._repo / "build"
+        build_dir.mkdir()
+        (build_dir / "other.elf").write_bytes(b"\x7fELF")
+
+        class Mismatched(ZScript):
+            WINDOWS_TEST_ALLOWLIST = frozenset({"nonexistent.elf"})
+
+        script = Mismatched(self._repo)
+        script.config.set(CFG_SYSROOT, self._sysroot_path)
+        with self.assertRaises(SystemExit) as ctx:
+            script.run_tests_windows()
+        self.assertEqual(ctx.exception.code, 6)
 
 
 if __name__ == "__main__":
