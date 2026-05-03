@@ -70,7 +70,7 @@ process is handled by the CI workflow (see [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ## Version Bumping
 
-Bump the version across `pyproject.toml` and all template files:
+Bump the version in `pyproject.toml` (template files use a `{{ZUTIL_VERSION}}` placeholder stamped by the release workflow):
 
 ```bash
 uv run tasks.py version patch       # 0.7.30 → 0.7.31
