@@ -34,7 +34,7 @@ _CONSUMER_COMMANDS: frozenset[str] = frozenset(
 )
 
 # Subcommands handled directly (standalone).
-_STANDALONE_COMMANDS: frozenset[str] = frozenset({"info", "resolve", "matrix"})
+_STANDALONE_COMMANDS: frozenset[str] = frozenset({"info", "resolve"})
 
 
 def discover_script_class(z_py: Path) -> type[ZScript]:
@@ -132,13 +132,6 @@ def main() -> None:
 
         sys.argv = ["nanvix-zutil resolve", *args[args.index("resolve") + 1 :]]
         resolve_main()
-        return
-
-    if subcmd == "matrix":
-        from nanvix_zutil.matrix_cmd import main as matrix_main
-
-        sys.argv = ["nanvix-zutil matrix", *args[args.index("matrix") + 1 :]]
-        matrix_main()
         return
 
     # --- Consumer commands ---

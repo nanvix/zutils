@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.lockfile import Lockfile, LockfileMetadata, ResolvedPackage
-from nanvix_zutil.manifest import BuildMatrix, Manifest
+from nanvix_zutil.manifest import Manifest
 from nanvix_zutil.resolve_cmd import main
 
 # ---------------------------------------------------------------------------
@@ -33,14 +33,6 @@ def _make_manifest() -> Manifest:
         name=_NAME,
         version=_VERSION,
         sysroot_ref=Ref(kind=RefKind.TAG, value="0.12.266"),
-        builds=BuildMatrix(
-            dimensions={
-                "platforms": ["hyperlight"],
-                "modes": ["multi-process"],
-                "memory": ["128mb"],
-            },
-            exclude=[],
-        ),
     )
 
 
@@ -50,14 +42,6 @@ def _make_lockfile() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
-        ),
-        builds=BuildMatrix(
-            dimensions={
-                "platforms": ["hyperlight"],
-                "modes": ["multi-process"],
-                "memory": ["128mb"],
-            },
-            exclude=[],
         ),
         packages=[
             ResolvedPackage(
@@ -79,14 +63,6 @@ def _make_lockfile_no_sysroot() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
-        ),
-        builds=BuildMatrix(
-            dimensions={
-                "platforms": ["hyperlight"],
-                "modes": ["multi-process"],
-                "memory": ["128mb"],
-            },
-            exclude=[],
         ),
         packages=[],
     )

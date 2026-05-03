@@ -43,7 +43,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: nanvix/toolchain:latest-minimal
-      options: --device /dev/kvm
     env:
       NANVIX_TOOLCHAIN: /opt/nanvix
       USER: runner

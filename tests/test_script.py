@@ -363,13 +363,6 @@ class TestZScriptDistclean(unittest.TestCase):
         self._make_script().distclean()
         self.assertFalse(cache_dir.exists())
 
-    def test_distclean_removes_builds(self) -> None:
-        builds_dir = self._nanvix() / "_builds"
-        builds_dir.mkdir()
-        (builds_dir / "microvm-standalone-256mb").mkdir()
-        self._make_script().distclean()
-        self.assertFalse(builds_dir.exists())
-
     def test_distclean_preserves_manifest(self) -> None:
         manifest = self._nanvix() / "nanvix.toml"
         self.assertTrue(manifest.exists())
@@ -540,24 +533,6 @@ class TestZScriptRun(unittest.TestCase):
         try:
             with self.assertRaises(SystemExit) as ctx:
                 script.run(sys.executable, "-c", "raise SystemExit(1)")
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
-
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
-    def test_run_kvm_fatal_on_windows(self, _mock: object) -> None:
-        """run() with kvm=True exits fatally on Windows."""
-        script = ZScript(Path(self._tmpdir.name))
-        script.docker = DockerConfig(
-            image="test-image",
-            mounts=[],
-            uid=0,
-            gid=0,
-        )
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                script.run("echo", kvm=True)
             self.assertEqual(ctx.exception.code, 5)
         finally:
             log_mod.set_json_mode(False)
@@ -901,8 +876,8 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIn("MY_VAR=hello", cmd)
 
 
-class TestZScriptWindowsAutoDocker(unittest.TestCase):
-    """On Windows, build/release/clean auto-enable Docker without --with-docker."""
+class TestZScriptAutoDocker(unittest.TestCase):
+    """Docker is always enabled for setup/build/release/clean (hard fail)."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -914,7 +889,7 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_build_auto_enables_docker_on_windows(self) -> None:
-        """build on Windows uses the default Docker image even without setup --with-docker."""
+        """build on Windows uses the default Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -938,8 +913,8 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
 
         self.assertTrue(docker_configured)
 
-    def test_build_no_auto_docker_on_linux(self) -> None:
-        """build on Linux without persisted image does NOT auto-enable Docker."""
+    def test_build_auto_enables_docker_on_linux(self) -> None:
+        """build on Linux also uses the default Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -954,12 +929,14 @@ class TestZScriptWindowsAutoDocker(unittest.TestCase):
         with (
             patch("sys.argv", ["z.py", "build"]),
             patch("nanvix_zutil.script.is_windows", return_value=False),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
             BuildScript.main(repo_root=Path(self._tmpdir.name))
 
-        self.assertFalse(docker_configured)
+        self.assertTrue(docker_configured)
 
 
 class TestZScriptCleanWindows(unittest.TestCase):
@@ -1126,6 +1103,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", _setup_with_fallback),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1139,6 +1118,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=True),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1150,6 +1131,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         """main() with setup subcommand completes normally when no fallback."""
         with (
             patch("sys.argv", ["z.py", "setup"]),
+            patch("nanvix_zutil.script.docker_available", return_value=True),
+            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=False),
             patch("nanvix_zutil.script.log") as mock_log,
         ):
@@ -1175,6 +1158,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         try:
             with (
                 patch("sys.argv", ["z.py", "--json", "setup"]),
+                patch("nanvix_zutil.script.docker_available", return_value=True),
+                patch("nanvix_zutil.script.image_exists", return_value=True),
                 patch.object(ZScript, "setup", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):

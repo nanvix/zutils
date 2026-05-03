@@ -1,0 +1,9 @@
+[package]
+name = "bin-hello"
+version = "0.1.0"
+nanvix-version = "0.12.410"
+
+[dependencies]
+lib-hello = { commitish = "HEAD" }
+
+[system-dependencies]

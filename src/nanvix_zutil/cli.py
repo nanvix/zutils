@@ -40,10 +40,11 @@ SUBCOMMANDS: tuple[str, ...] = (
 
 #: Subcommands that accept the ``--with-docker`` flag.
 #:
-#: Docker is configured once during ``setup`` and persisted to
-#: ``.nanvix/env.json``.  Only ``build``, ``release``, and ``clean``
-#: auto-reload the saved image; ``test`` and ``benchmark`` always run
-#: on the host (they need KVM / direct hardware access).
+#: Docker mode is always enabled for ``setup``, ``build``, ``release``,
+#: and ``clean`` — if Docker or the image is unavailable the command
+#: fails immediately.  The ``--with-docker`` flag on ``setup`` allows
+#: the consumer to override the default Docker image with a custom one.
+#: ``test`` and ``benchmark`` run natively on the host.
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.
@@ -96,22 +97,6 @@ def build_parser(
         version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
     )
 
-    parser.add_argument(
-        "--all-builds",
-        action="store_true",
-        default=False,
-        dest="all_builds",
-        help="Expand the [builds] matrix and run the hook for every combo in parallel",
-    )
-    parser.add_argument(
-        "--mode",
-        metavar="MODE",
-        default=None,
-        dest="mode",
-        help="Filter the build matrix to only combos matching this"
-        " deployment mode (also settable via NANVIX_DEPLOYMENT_MODE)",
-    )
-
     subparsers = parser.add_subparsers(dest="subcommand")
 
     if available is None:
@@ -161,11 +146,12 @@ def build_parser(
                 default=None,
                 metavar="IMAGE",
                 dest="with_docker",
-                help="Enable Docker mode. Optionally specify a custom"
-                " image (default: nanvix/toolchain:latest-minimal)."
-                " The image is persisted to .nanvix/env.json so that"
-                " build and release automatically run inside Docker."
-                " test and benchmark always run on the host.",
+                help="Override the default Docker image"
+                " (nanvix/toolchain:latest-minimal). Docker mode is"
+                " always enabled for setup/build/release/clean; this"
+                " flag only changes the image. The image is persisted"
+                " to .nanvix/env.json so that subsequent commands use"
+                " it. test and benchmark always run on the host.",
             )
 
     return parser
