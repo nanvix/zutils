@@ -9,6 +9,10 @@ updates:
       interval: "daily"
     open-pull-requests-limit: 20
 
+  # Covers [project].dependencies in pyproject.toml (e.g. tomli-w).
+  # [dependency-groups] (dev tools: black, pyright, pytest, yamllint) are not
+  # monitored here because Dependabot's pip ecosystem does not support PEP 735
+  # dependency groups or uv.lock. Update those manually via `uv lock --upgrade`.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
