@@ -115,8 +115,9 @@ class BinHello(ZScript):
 
         The functional test phase runs under ``nanvixd.elf`` inside a
         Docker container on Linux, or natively under ``nanvixd.exe`` on
-        Windows.  It is skipped only when Docker is not configured **and**
-        the platform is not Windows.
+        Windows.  On Linux, functional tests are skipped when Docker is
+        not configured (the ``test`` subcommand does not enable Docker
+        automatically).
         """
         binary = self.repo_root / "hello.elf"
 
@@ -141,14 +142,24 @@ class BinHello(ZScript):
         log.success(f"OK: {binary.name} is a valid ELF binary")
 
         # Functional: run under nanvixd on the appropriate platform.
+        #
+        # On Linux the functional test requires Docker (nanvixd.elf
+        # cannot run directly on the CI host).  The ``test`` subcommand
+        # does not enable Docker, so functional tests are skipped unless
+        # Docker was explicitly configured.
+        #
+        # On Windows, nanvixd.exe is a native host binary and runs
+        # without Docker.
         if sys.platform == "win32":
             self._test_functional_windows(binary)
+        elif self.docker:
+            self._test_functional_docker(binary)
         else:
-            self._test_functional_linux(binary)
+            log.info("=== skipping functional tests (Docker not configured) ===")
 
-    def _test_functional_linux(self, binary: Path) -> None:
-        """Run functional tests under nanvixd.elf (native or Docker)."""
-        log.info("=== bin-hello functional tests (Linux) ===")
+    def _test_functional_docker(self, binary: Path) -> None:
+        """Run functional tests inside a Docker container (Linux)."""
+        log.info("=== bin-hello functional tests (Docker) ===")
         sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
         self.run(

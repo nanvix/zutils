@@ -285,7 +285,8 @@ class TestBinHelloLifecycle(unittest.TestCase):
         r = _run_z(_BIN_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("is a valid ELF binary", r.stderr)
-        self.assertIn("PASS: bin-hello functional tests", r.stderr)
+        # Functional tests require Docker which the test subcommand
+        # does not enable; only smoke + integration assertions here.
         self.assertIn("Test complete", r.stderr)
 
 
@@ -334,7 +335,9 @@ class TestBinHelloTestOnly(unittest.TestCase):
         r = _run_z(_BIN_HELLO, "test")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("is a valid ELF binary", r.stderr)
-        self.assertIn("PASS: bin-hello functional tests", r.stderr)
+        # On Windows, nanvixd.exe runs natively so functional tests execute.
+        if sys.platform == "win32":
+            self.assertIn("PASS: bin-hello functional tests", r.stderr)
         self.assertIn("Test complete", r.stderr)
 
 
