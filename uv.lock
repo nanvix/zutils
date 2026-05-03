@@ -75,7 +75,7 @@ wheels = [
 
 [[package]]
 name = "nanvix-zutil"
-version = "0.7.39"
+version = "0.7.40"
 source = { editable = "." }
 dependencies = [
     { name = "tomli-w" },
