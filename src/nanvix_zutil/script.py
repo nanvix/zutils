@@ -755,7 +755,21 @@ class ZScript:
         # For build/release/clean, load persisted image or fall back to
         # the default.  setup uses the default when --with-docker was
         # not supplied.
-        if docker_image is None and subcommand_name_for_docker in _DOCKER_COMMANDS:
+        #
+        # Exception: on Windows, setup downloads host-native binaries
+        # via the GitHub API and does not invoke Docker.  Skip Docker
+        # auto-loading for setup on Windows unless the user explicitly
+        # requested it via --with-docker.
+        _skip_docker = (
+            is_windows()
+            and subcommand_name_for_docker == "setup"
+            and with_docker_val is None
+        )
+        if (
+            docker_image is None
+            and subcommand_name_for_docker in _DOCKER_COMMANDS
+            and not _skip_docker
+        ):
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
             docker_image = persisted_image or instance.docker_image()
 
