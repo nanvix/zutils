@@ -50,7 +50,7 @@ SUBCOMMANDS: tuple[str, ...] = (
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.
-_SUBCOMMAND_HELP: dict[str, str] = {
+SUBCOMMAND_HELP: dict[str, str] = {
     "setup": "Prepare the build environment",
     "distclean": "Remove all transient .nanvix/ artifacts",
     "build": "Build the project",
@@ -127,7 +127,7 @@ def build_parser(
         cmds = tuple(deduped)
 
     for name in cmds:
-        sub = subparsers.add_parser(name, help=_SUBCOMMAND_HELP[name])
+        sub = subparsers.add_parser(name, help=SUBCOMMAND_HELP[name])
         if name == "lock":
             lock_group = sub.add_mutually_exclusive_group()
             lock_group.add_argument(

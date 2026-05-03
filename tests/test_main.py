@@ -22,10 +22,14 @@ class TestVersionFlag(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with patch("sys.argv", ["nanvix-zutil", "--version"]):
+            with (
+                patch("sys.argv", ["nanvix-zutil", "--version"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
+        self.assertEqual(ctx.exception.code, 0)
         output = buf.getvalue().strip()
         self.assertIn(get_zutil_version(), output)
 
@@ -37,10 +41,14 @@ class TestHelpFlag(unittest.TestCase):
         buf = StringIO()
         sys.stdout = buf
         try:
-            with patch("sys.argv", ["nanvix-zutil", "--help"]):
+            with (
+                patch("sys.argv", ["nanvix-zutil", "--help"]),
+                self.assertRaises(SystemExit) as ctx,
+            ):
                 main()
         finally:
             sys.stdout = sys.__stdout__
+        self.assertEqual(ctx.exception.code, 0)
         output = buf.getvalue()
         self.assertIn("nanvix-zutil", output)
         self.assertIn("info", output)
@@ -55,7 +63,7 @@ class TestHelpFlag(unittest.TestCase):
         finally:
             sys.stdout = sys.__stdout__
         output = buf.getvalue()
-        self.assertIn("Usage:", output)
+        self.assertIn("usage:", output)
 
 
 class TestInfoDispatch(unittest.TestCase):
