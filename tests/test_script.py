@@ -272,6 +272,22 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         self.assertTrue((nanvix_dir / "pyrightconfig.json").exists())
         self.assertTrue((nanvix_dir / ".yamllint.yml").exists())
         self.assertTrue((nanvix_dir / "black.toml").exists())
+        self.assertTrue((nanvix_dir / ".gitignore").exists())
+
+    def test_gitignore_contains_expected_patterns(self) -> None:
+        """Synced .gitignore includes transient artifact patterns."""
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        content = (nanvix_dir / ".gitignore").read_text()
+        for pattern in ("venv/", "cache/", "sysroot/", "__pycache__/"):
+            self.assertIn(pattern, content)
+
+    def test_gitignore_does_not_ignore_lockfile(self) -> None:
+        """Synced .gitignore must not ignore nanvix.lock (committed for reproducibility)."""
+        self._run_setup()
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        content = (nanvix_dir / ".gitignore").read_text()
+        self.assertNotIn("nanvix.lock", content)
 
     def test_setup_skips_identical_configs(self) -> None:
         """setup() is a no-op for configs when content already matches."""
