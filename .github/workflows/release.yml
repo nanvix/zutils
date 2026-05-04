@@ -223,7 +223,7 @@ jobs:
   update-consumers:
     name: Update consumer repos
     needs: [release]
-    uses: nanvix/workflows/.github/workflows/nanvix-update-zutils.yml@v1.13.0
+    uses: nanvix/workflows/.github/workflows/nanvix-update-zutils.yml@v1.14.0
     with:
       tag: v${{ needs.release.outputs.version }}
     secrets:
