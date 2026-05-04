@@ -37,6 +37,7 @@ from nanvix_zutil import log
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
+    RefKind,
     extract_nanvix_version,
     extract_nanvix_version_base,
     suffix_dep,
@@ -313,15 +314,21 @@ class ZScript:
         """
         self._used_fallback = False
 
-        self.sysroot = Sysroot.download(
-            machine=self.config.machine,
-            deployment_mode=self.config.deployment_mode,
-            memory_size=self.config.memory_size,
-            tag=self.manifest.sysroot_ref.value,
-            gh_token=self.config.get(CFG_GH_TOKEN),
-            dest=self.nanvix_dir / "sysroot",
-            config=self.config,
-        )
+        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
+            self.sysroot = Sysroot.from_local(
+                Path(str(self.manifest.sysroot_ref.value)),
+                config=self.config,
+            )
+        else:
+            self.sysroot = Sysroot.download(
+                machine=self.config.machine,
+                deployment_mode=self.config.deployment_mode,
+                memory_size=self.config.memory_size,
+                tag=self.manifest.sysroot_ref.value,
+                gh_token=self.config.get(CFG_GH_TOKEN),
+                dest=self.nanvix_dir / "sysroot",
+                config=self.config,
+            )
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
 
         # On Windows, download host-native binaries (nanvixd.exe, mkramfs.exe)
@@ -362,6 +369,19 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
             for dep in deps:
+                # LOCAL deps: install from the filesystem path directly.
+                if dep.ref.kind == RefKind.LOCAL:
+                    local_dep_path = Path(str(dep.ref.value))
+                    if not self.buildroot.install_local_nanvix(dep, local_dep_path):
+                        log.fatal(
+                            f"Local dependency path has no artifacts for"
+                            f" '{dep.name}': {local_dep_path}",
+                            code=EXIT_MISSING_DEP,
+                            hint=f"Ensure '{local_dep_path}/deps/{dep.name}/' "
+                            "contains lib/ and/or include/ directories.",
+                        )
+                    continue
+
                 # When --with-nanvix is active, try local artifacts first (only for nanvix-owned
                 # dependencies).
                 if (

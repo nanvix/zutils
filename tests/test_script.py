@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     DEFAULT_DOCKER_IMAGE,
@@ -1497,6 +1498,147 @@ class TestZScriptLintInAutoHooks(unittest.TestCase):
     def test_format_always_available(self) -> None:
         script = ZScript(Path(self._tmpdir.name))
         self.assertIn("format", script.available_subcommands())
+
+
+class TestZScriptSetupLocalSysroot(unittest.TestCase):
+    """setup() with RefKind.LOCAL sysroot uses from_local, no GitHub."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_local_sysroot_skips_github(self) -> None:
+        """When sysroot ref is LOCAL, Sysroot.from_local is used."""
+        repo_root = Path(self._tmpdir.name)
+        # Create a local sysroot directory.
+        local_sysroot = repo_root / "my-sysroot"
+        local_sysroot.mkdir()
+
+        write_manifest(repo_root)
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
+            script = ZScript(repo_root)
+
+        # Verify manifest parsed as LOCAL.
+        self.assertEqual(script.manifest.sysroot_ref.kind, RefKind.LOCAL)
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download") as mock_download,
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=MagicMock(path=local_sysroot, tag=""),
+            ) as mock_from_local,
+        ):
+            script.setup()
+            mock_download.assert_not_called()
+            mock_from_local.assert_called_once()
+
+    def test_local_sysroot_no_dep_suffix(self) -> None:
+        """When sysroot is LOCAL, VERSION deps are not suffixed."""
+        repo_root = Path(self._tmpdir.name)
+        local_sysroot = repo_root / "my-sysroot"
+        local_sysroot.mkdir()
+
+        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+
+        with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
+            script = ZScript(repo_root)
+
+        # VERSION dep should NOT be suffixed (sysroot is LOCAL).
+        self.assertEqual(script.manifest.dependencies[0].ref.value, "1.0")
+
+
+class TestZScriptSetupLocalDep(unittest.TestCase):
+    """setup() with RefKind.LOCAL dep installs from filesystem."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_local_dep_uses_install_local_nanvix(self) -> None:
+        """LOCAL deps call install_local_nanvix instead of GitHub."""
+        repo_root = Path(self._tmpdir.name)
+        local_dep_path = repo_root / "local-zlib"
+        # Create the expected local layout.
+        (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
+        (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
+
+        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.tag = "v0.1.0"
+
+        with (
+            patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": str(local_dep_path)}),
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+        ):
+            script = ZScript(repo_root)
+            script.setup()
+
+        # Dep was installed locally, buildroot should exist.
+        self.assertIsNotNone(script.buildroot)
+        # The local lib should have been copied into the buildroot.
+        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        self.assertTrue(buildroot_lib.exists())
+
+    def test_local_dep_no_github_call(self) -> None:
+        """LOCAL deps do not call resolve_release or download_release_asset."""
+        repo_root = Path(self._tmpdir.name)
+        local_dep_path = repo_root / "local-zlib"
+        (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
+        (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
+
+        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.tag = "v0.1.0"
+
+        with (
+            patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": str(local_dep_path)}),
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.resolve_release") as mock_resolve,
+            patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_fallback,
+        ):
+            script = ZScript(repo_root)
+            script.setup()
+
+        mock_resolve.assert_not_called()
+        mock_fallback.assert_not_called()
+
+    def test_local_dep_missing_artifacts_exits(self) -> None:
+        """LOCAL dep with no artifacts at the path exits with code 3."""
+        repo_root = Path(self._tmpdir.name)
+        local_dep_path = repo_root / "empty-dir"
+        local_dep_path.mkdir()
+
+        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.tag = "v0.1.0"
+
+        log_mod.set_json_mode(True)
+        with (
+            patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": str(local_dep_path)}),
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            script = ZScript(repo_root)
+            script.setup()
+
+        self.assertEqual(ctx.exception.code, 3)
 
 
 if __name__ == "__main__":
