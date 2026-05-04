@@ -451,6 +451,7 @@ class ZScript:
         "pyrightconfig.json": "pyrightconfig.json",
         ".yamllint.yml": ".yamllint.yml",
         "black.toml": "black.toml",
+        ".gitignore": ".gitignore",
     }
 
     def _sync_configs(self) -> None:
