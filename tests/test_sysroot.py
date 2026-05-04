@@ -513,5 +513,53 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
 
 
+class TestSysrootFromLocal(unittest.TestCase):
+    """Sysroot.from_local() uses a directory as-is, no download."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_returns_sysroot_pointing_at_path(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "my-sysroot"
+        sysroot_dir.mkdir()
+
+        sysroot = Sysroot.from_local(sysroot_dir)
+
+        self.assertEqual(sysroot.path, sysroot_dir.resolve())
+        self.assertEqual(sysroot.tag, "")
+
+    def test_does_not_call_github(self) -> None:
+        sysroot_dir = Path(self._tmpdir.name) / "my-sysroot"
+        sysroot_dir.mkdir()
+
+        with patch("nanvix_zutil.github.resolve_release") as mock_resolve:
+            with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
+                Sysroot.from_local(sysroot_dir)
+                mock_resolve.assert_not_called()
+                mock_dl.assert_not_called()
+
+    def test_exits_if_path_not_directory(self) -> None:
+        log_mod.set_json_mode(True)
+        bad_path = Path(self._tmpdir.name) / "nonexistent"
+
+        with self.assertRaises(SystemExit) as ctx:
+            Sysroot.from_local(bad_path)
+        self.assertEqual(ctx.exception.code, 3)
+
+    def test_exits_if_path_is_file(self) -> None:
+        log_mod.set_json_mode(True)
+        file_path = Path(self._tmpdir.name) / "a-file"
+        file_path.write_text("not a dir")
+
+        with self.assertRaises(SystemExit) as ctx:
+            Sysroot.from_local(file_path)
+        self.assertEqual(ctx.exception.code, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

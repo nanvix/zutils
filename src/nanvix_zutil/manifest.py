@@ -24,6 +24,7 @@ deferred to the resolver (which resolves the actual version first).
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -65,6 +66,29 @@ class Manifest:
 # We are intentionally keeping the semver matching simple for now.
 _SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
+
+# Matches absolute Unix paths, Windows drive paths, and relative ./ or ../ paths.
+_LOCAL_PATH_RE = re.compile(
+    r"^(?:/|\./|\.\./|[A-Za-z]:[/\\])",
+)
+
+
+def is_local_path(value: str) -> bool:
+    """Return ``True`` if *value* looks like a filesystem path.
+
+    Recognised patterns:
+
+    - Absolute Unix paths: ``/home/me/build``
+    - Windows drive paths: ``C:\\Users\\me\\build`` or ``C:/build``
+    - Relative paths: ``./build`` or ``../build``
+
+    Args:
+        value: The raw environment variable value.
+
+    Returns:
+        ``True`` if *value* matches a filesystem path pattern.
+    """
+    return _LOCAL_PATH_RE.match(value) is not None
 
 
 def _validate_version_string(raw: str, context: str, path: Path) -> str:
@@ -257,7 +281,10 @@ def _parse_dependencies(
         if env_val is not None:
             # Env overrides MAY include "-nanvix-" for full control.
             # suffix_dep() will skip values that already contain it.
-            ref = Ref(kind=ref.kind, value=env_val)
+            if is_local_path(env_val):
+                ref = Ref(kind=RefKind.LOCAL, value=env_val)
+            else:
+                ref = Ref(kind=ref.kind, value=env_val)
 
         deps.append(Dependency(name=name, repo=f"nanvix/{name}", ref=ref))
     return deps
@@ -347,7 +374,10 @@ def load_manifest(path: Path) -> Manifest:
         # NOTE: NANVIX_VERSION intentionally bypasses semver validation.
         # This is a development escape hatch — CI may pass with a non-semver
         # sysroot version if this env var is set.
-        sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
+        if is_local_path(env_sysroot):
+            sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot)
+        else:
+            sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})
@@ -376,7 +406,11 @@ def load_manifest(path: Path) -> Manifest:
     # (which resolves the sysroot first and knows the actual version).
     # Strip the leading "v" from the sysroot version to match the release
     # tag format used by nanvix-zutil (e.g. "1.3.1-nanvix-0.12.291").
-    if sysroot_ref.value != "latest" and isinstance(sysroot_ref.value, str):
+    if (
+        sysroot_ref.value != "latest"
+        and isinstance(sysroot_ref.value, str)
+        and sysroot_ref.kind != RefKind.LOCAL
+    ):
         version_suffix = sysroot_ref.value.removeprefix("v")
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):

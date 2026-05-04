@@ -66,6 +66,34 @@ class Sysroot:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def from_local(local_path: Path, config: Config | None = None) -> "Sysroot":
+        """Use an existing local directory as the sysroot (no download).
+
+        Args:
+            local_path: Absolute or relative path to the sysroot directory.
+            config: Optional :class:`Config` instance; if provided the
+                resolved sysroot path is persisted.
+
+        Returns:
+            A :class:`Sysroot` pointing at *local_path*.
+
+        Raises:
+            SystemExit: If *local_path* does not exist or is not a directory.
+        """
+        resolved = Path(local_path).resolve()
+        if not resolved.is_dir():
+            log.fatal(
+                f"Local sysroot path is not a directory: {local_path}",
+                code=EXIT_MISSING_DEP,
+                hint="Set NANVIX_VERSION to a valid sysroot directory path.",
+            )
+        log.info(f"Using local sysroot at {resolved}")
+        if config is not None:
+            config.set("sysroot_tag", "")
+            config.save()
+        return Sysroot(resolved, tag="")
+
+    @staticmethod
     def download(
         machine: str,
         deployment_mode: str,
