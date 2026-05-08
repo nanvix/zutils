@@ -107,4 +107,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# On Windows (Git Bash / MSYS2) the venv's python.exe is locked while it runs,
+# so the Python distclean command cannot delete it.  Run without exec so the
+# shell can remove the venv after the interpreter exits.
+if [[ "${ARGS[0]:-}" == "distclean" ]]; then
+    "$BIN" "${ARGS[@]}"
+    EC=$?
+    if [ -d "$VENV" ]; then
+        rm -rf "$VENV" 2>/dev/null || true
+    fi
+    exit $EC
+fi
+
 exec "$BIN" "${ARGS[@]}"
