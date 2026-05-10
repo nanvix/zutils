@@ -57,27 +57,25 @@ uv run tasks.py shell-lint
 uv run tasks.py yaml-lint
 ```
 
-## Building Release Artifacts
+## Releasing
 
-Build a wheel (`.whl`) and source distribution (`.tar.gz`):
-
-```bash
-uv run tasks.py release
-```
-
-This produces artifacts in `dist/` for inspection. The actual release
-process is handled by the CI workflow (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
-
-## Version Bumping
-
-Bump the version in `pyproject.toml` (template files use a `{{ZUTIL_VERSION}}` placeholder stamped by the release workflow):
+Cut a new release (bump version, validate, commit, push):
 
 ```bash
-uv run tasks.py version patch       # 0.7.30 → 0.7.31
-uv run tasks.py version minor       # 0.7.30 → 0.8.0
-uv run tasks.py version major       # 0.7.30 → 1.0.0
-uv run tasks.py version patch --dry-run  # preview without writing
+uv run tasks.py release              # patch bump (default)
+uv run tasks.py release minor        # minor bump
+uv run tasks.py release major        # major bump
+uv run tasks.py release --dry-run    # preview without committing
 ```
+
+This checks preconditions (dev branch, clean tree), bumps the version in
+`pyproject.toml`, runs validation (lint, typecheck, tests), ensures the
+tag is available, then commits and pushes. CI then builds artifacts,
+creates the GitHub Release, and updates downstream consumers.
+
+In CI mode (`--ci`), the command additionally builds wheel/sdist, patches
+and packages templates, creates the GitHub Release, and triggers consumer
+updates directly.
 
 ## All Dev Commands
 
@@ -90,8 +88,7 @@ uv run tasks.py version patch --dry-run  # preview without writing
 | `uv run tasks.py test` | Run test suite (pytest) |
 | `uv run tasks.py ci` | Run CI locally via `gh act` |
 | `uv run tasks.py clean` | Remove caches and build artifacts |
-| `uv run tasks.py release` | Build wheel + sdist |
-| `uv run tasks.py version` | Bump version |
+| `uv run tasks.py release` | Cut a new release (bump, validate, tag, push) |
 | `uv run tasks.py shell-lint` | Lint shell scripts |
 | `uv run tasks.py shell-format` | Format shell scripts |
 | `uv run tasks.py yaml-lint` | Lint YAML files |
