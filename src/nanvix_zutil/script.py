@@ -819,18 +819,19 @@ class ZScript:
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags or persisted config.
         #
-        # Docker mode is always enabled for setup, build, release, and
-        # clean.  The --with-docker flag on setup allows overriding the
-        # default image.  If Docker or the image is unavailable the
-        # command fails immediately — there is no fallback to native
-        # execution.  test and benchmark run natively on the host.
+        # Docker mode is enabled only for build — the cross-compiler is
+        # needed to produce object files.  The --with-docker flag on
+        # setup allows persisting the image choice.  If Docker or the
+        # image is unavailable the command fails immediately — there is
+        # no fallback to native execution.  setup, test, benchmark,
+        # release, and clean all run natively on the host.
         # ------------------------------------------------------------------
         docker_image: str | None = None
         subcommand_name_for_docker: str | None = args.subcommand
 
         #: Subcommands that always run inside Docker.
         _DOCKER_COMMANDS: frozenset[str | None] = frozenset(
-            {"setup", "build", "release", "clean"}
+            {"build"}
         )
 
         # Subcommand-level flag (only present for setup).
@@ -842,9 +843,8 @@ class ZScript:
             # --with-docker  (no argument → use default image)
             docker_image = instance.docker_image()
 
-        # For build/release/clean, load persisted image or fall back to
-        # the default.  setup uses the default when --with-docker was
-        # not supplied.
+        # For build, load persisted image or fall back to the default.
+        # setup uses the default when --with-docker was not supplied.
         #
         # Exception: on Windows, setup downloads host-native binaries
         # via the GitHub API and does not invoke Docker.  Skip Docker
