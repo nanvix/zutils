@@ -88,6 +88,18 @@ class TestIntegrationLifecycle(unittest.TestCase):
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
         argv = [fake_script, subcommand] + (extra_argv or [])
 
+        # setup requires --with-docker IMAGE on the CLI.
+        if subcommand == "setup" and "--with-docker" not in argv:
+            argv += ["--with-docker", "test/image:tag"]
+
+        # build/release/clean need a persisted Docker image.
+        _DOCKER_COMMANDS = {"build", "release", "clean"}
+        if subcommand in _DOCKER_COMMANDS:
+            nanvix_dir = self._repo_root / ".nanvix"
+            env_json = nanvix_dir / "env.json"
+            if not env_json.exists():
+                env_json.write_text('{"NANVIX_DOCKER_IMAGE": "test/image:tag"}')
+
         created: list[_MockConsumer] = []
         original_init = _MockConsumer.__init__
 
@@ -138,10 +150,13 @@ class TestIntegrationLifecycle(unittest.TestCase):
         from io import StringIO
 
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
-        # build hook records "build" but doesn't log — capture info from run()
-        # Instead verify that the --json flag propagates by checking log output
-        # of a info call that happens internally (e.g. no-op build emits nothing,
-        # but we can check the mode was set by attempting a direct log call).
+
+        # build needs a persisted Docker image.
+        nanvix_dir = self._repo_root / ".nanvix"
+        (nanvix_dir / "env.json").write_text(
+            '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
+        )
+
         with (
             patch("sys.argv", [fake_script, "--json", "build"]),
             patch("nanvix_zutil.script.docker_available", return_value=True),
@@ -201,6 +216,12 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def test_repo_root_inferred_from_nanvix_dir(self) -> None:
         """Repo root is the parent of the .nanvix/ directory."""
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
+
+        # build needs a persisted Docker image.
+        nanvix_dir = self._repo_root / ".nanvix"
+        (nanvix_dir / "env.json").write_text(
+            '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
+        )
 
         captured: list[Path] = []
         original_init = _MockConsumer.__init__

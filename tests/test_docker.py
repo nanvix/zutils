@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
-    DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -264,9 +263,6 @@ class TestWellKnownPaths(unittest.TestCase):
 
     def test_toolchain_path(self) -> None:
         self.assertEqual(TOOLCHAIN_CONTAINER_PATH, PurePosixPath("/opt/nanvix"))
-
-    def test_default_image(self) -> None:
-        self.assertEqual(DEFAULT_DOCKER_IMAGE, "nanvix/toolchain:latest-minimal")
 
 
 class TestPlatformUidGid(unittest.TestCase):

@@ -62,7 +62,6 @@ from nanvix_zutil.config import (
 )
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
-    DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -108,7 +107,6 @@ __all__ = [
     "CFG_TOOLCHAIN",
     "Config",
     "DEFAULT_DEPLOYMENT_MODE",
-    "DEFAULT_DOCKER_IMAGE",
     "DEFAULT_FORMATS",
     "DEFAULT_MACHINE",
     "DEFAULT_MEMORY_SIZE",
