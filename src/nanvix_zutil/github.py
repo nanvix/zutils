@@ -642,8 +642,8 @@ def download_release_asset(
     assets = cast(list[object], raw_assets)
 
     # When using prefix matching, collect all candidates first so we can
-    # pick deterministically (prefer .tar.bz2 over .tar.gz).
-    _PREFIX_PREFERENCE = (".tar.bz2", ".tar.gz")
+    # pick deterministically (prefer .tar.bz2 over .tar.gz over .zip).
+    _PREFIX_PREFERENCE = (".tar.bz2", ".tar.gz", ".zip")
 
     prefix_candidates: list[tuple[str, str]] = []  # (name, url)
 

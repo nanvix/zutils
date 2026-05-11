@@ -4,8 +4,8 @@
 """Nanvix runtime sysroot management.
 
 :class:`Sysroot` downloads and verifies the Nanvix runtime artifact from
-GitHub releases.  The artifact is a tarball (either ``.tar.bz2`` or
-``.tar.gz``) identified by machine, deployment mode, and memory-size
+GitHub releases.  The artifact is an archive (``.tar.bz2``, ``.tar.gz``,
+or ``.zip``) identified by machine, deployment mode, and memory-size
 configuration.
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import shutil
 import tarfile
+import zipfile
 from pathlib import Path
 
 from nanvix_zutil import github, log
@@ -180,8 +181,17 @@ class Sysroot:
 
         log.info(f"Extracting sysroot from {asset_path.name}…")
         sysroot_dir.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(asset_path, "r:*") as tf:
-            tf.extractall(path=sysroot_dir, filter="data")
+        if zipfile.is_zipfile(asset_path):
+            resolved_sysroot = sysroot_dir.resolve()
+            with zipfile.ZipFile(asset_path, "r") as zf:
+                for member in zf.namelist():
+                    target_path = (sysroot_dir / member).resolve()
+                    if not target_path.is_relative_to(resolved_sysroot):
+                        continue
+                    zf.extract(member, path=sysroot_dir)
+        else:
+            with tarfile.open(asset_path, "r:*") as tf:
+                tf.extractall(path=sysroot_dir, filter="data")
 
         log.success(f"Sysroot extracted to {sysroot_dir}")
         if config is not None:

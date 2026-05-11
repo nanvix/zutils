@@ -60,18 +60,20 @@ class _QueueItem:
     required_by: str = ""
 
 
-def _collect_assets(release: dict[str, object]) -> list[ResolvedAsset]:
-    """Extract tarball assets from a GitHub release.
+_ARCHIVE_EXTENSIONS = (".tar.bz2", ".tar.gz", ".zip")
 
-    Keeps ``.tar.bz2`` and ``.tar.gz`` archives.  Filters out
-    ``nanvix.lock``, source archives (``*.zip``), and any
-    non-tarball files.
+
+def _collect_assets(release: dict[str, object]) -> list[ResolvedAsset]:
+    """Extract archive assets from a GitHub release.
+
+    Keeps ``.tar.bz2``, ``.tar.gz``, and ``.zip`` archives.  Filters out
+    ``nanvix.lock`` and any non-archive files.
 
     Args:
         release: GitHub release metadata dictionary.
 
     Returns:
-        List of :class:`ResolvedAsset` for tarball files.
+        List of :class:`ResolvedAsset` for archive files.
     """
     raw_assets: object = release.get("assets", [])
     if not isinstance(raw_assets, list):
@@ -86,7 +88,7 @@ def _collect_assets(release: dict[str, object]) -> list[ResolvedAsset]:
         url = asset.get("browser_download_url")
         if not isinstance(name, str) or not isinstance(url, str):
             continue
-        if not (name.endswith(".tar.bz2") or name.endswith(".tar.gz")):
+        if not any(name.endswith(ext) for ext in _ARCHIVE_EXTENSIONS):
             continue
         result.append(ResolvedAsset(name=name, url=url))
     return result

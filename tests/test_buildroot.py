@@ -7,6 +7,7 @@ import io
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,6 +39,22 @@ def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
             info = tarfile.TarInfo(name=name)
             info.size = len(data)
             tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _make_zip(members: dict[str, bytes]) -> bytes:
+    """Return a ``.zip`` archive containing the given *members*.
+
+    Args:
+        members: Mapping of archive member name → file contents.
+
+    Returns:
+        Zip archive bytes.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
     return buf.getvalue()
 
 
@@ -536,6 +553,123 @@ class TestRefKindLocal(unittest.TestCase):
         result = suffix_dep(dep, "0.12.410")
         self.assertEqual(result.ref.kind, RefKind.LOCAL)
         self.assertEqual(result.ref.value, "/tmp/zlib")
+
+
+class TestBuildrootInstallDepZip(unittest.TestCase):
+    """Buildroot.install_dep() extracts libs and headers from .zip archives."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def _setup_buildroot(self) -> Buildroot:
+        dest = Path(self._tmpdir.name) / "br"
+        return Buildroot.create(dest=dest)
+
+    def test_install_dep_zip_extracts_lib(self) -> None:
+        br = self._setup_buildroot()
+        archive = _make_zip(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
+        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertEqual((br.path / "lib" / "libz.a").read_bytes(), b"lib-content")
+
+    def test_install_dep_zip_extracts_header(self) -> None:
+        br = self._setup_buildroot()
+        archive = _make_zip(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
+        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "include" / "zlib.h").exists())
+        self.assertEqual(
+            (br.path / "include" / "zlib.h").read_bytes(), b"header-content"
+        )
+
+    def test_install_dep_zip_selective_libs(self) -> None:
+        br = self._setup_buildroot()
+        archive = _make_zip(
+            {
+                "sysroot/lib/libz.a": b"libz",
+                "sysroot/lib/libextra.a": b"libextra",
+            }
+        )
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+            install_libs=["libz.a"],
+        )
+        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertFalse((br.path / "lib" / "libextra.a").exists())
+
+    def test_install_dep_zip_preserves_header_subdirectory(self) -> None:
+        br = self._setup_buildroot()
+        archive = _make_zip(
+            {
+                "sysroot/include/openssl/ssl.h": b"ssl-header",
+                "sysroot/include/openssl/crypto.h": b"crypto-header",
+                "sysroot/lib/libssl.a": b"ssl-lib",
+            }
+        )
+        dep = Dependency(
+            name="openssl",
+            repo="nanvix/openssl",
+            ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
+        )
+        archive_path = Path(self._tmpdir.name) / "openssl.zip"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        self.assertTrue((br.path / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((br.path / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((br.path / "lib" / "libssl.a").exists())
 
 
 if __name__ == "__main__":

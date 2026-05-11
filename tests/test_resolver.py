@@ -618,7 +618,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
 @patch("nanvix_zutil.resolver.download_lockfile_asset")
 @patch("nanvix_zutil.resolver.github.resolve_release")
 class TestAssetFiltering(unittest.TestCase):
-    """Resolver filters out non-tarball assets and nanvix.lock."""
+    """Resolver filters out non-archive assets and nanvix.lock."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -645,11 +645,8 @@ class TestAssetFiltering(unittest.TestCase):
             assets=[
                 _archive_asset("nanvix-hyperlight-multi-process-release-128mb.tar.bz2"),
                 _archive_asset("nanvix-hyperlight-multi-process-release-128mb.tar.gz"),
+                _archive_asset("nanvix-hyperlight-multi-process-release-128mb.zip"),
                 _lockfile_asset(),
-                {
-                    "name": "source.zip",
-                    "browser_download_url": "https://example.com/source.zip",
-                },
                 {
                     "name": "notes.txt",
                     "browser_download_url": "https://example.com/notes.txt",
@@ -667,11 +664,12 @@ class TestAssetFiltering(unittest.TestCase):
         )
 
         sysroot_pkg = lockfile.packages[0]
-        # Both .tar.bz2 and .tar.gz are collected; .zip, .txt, and nanvix.lock are not.
-        self.assertEqual(len(sysroot_pkg.assets), 2)
+        # .tar.bz2, .tar.gz, and .zip are collected; .txt and nanvix.lock are not.
+        self.assertEqual(len(sysroot_pkg.assets), 3)
         names = {a.name for a in sysroot_pkg.assets}
         self.assertIn("nanvix-hyperlight-multi-process-release-128mb.tar.bz2", names)
         self.assertIn("nanvix-hyperlight-multi-process-release-128mb.tar.gz", names)
+        self.assertIn("nanvix-hyperlight-multi-process-release-128mb.zip", names)
 
 
 class TestUnsuffixDeps(unittest.TestCase):

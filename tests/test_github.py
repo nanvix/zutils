@@ -539,6 +539,62 @@ class TestDownloadReleaseAssetPrefixPreference(unittest.TestCase):
 
         self.assertEqual(result.name, bz2_name)
 
+    def test_prefers_tar_over_zip(self) -> None:
+        """Tarballs are preferred over .zip."""
+        dest = Path(self._tmpdir.name)
+        prefix = "zlib-microvm-standalone-256mb"
+        zip_name = f"{prefix}.zip"
+        gz_name = f"{prefix}.tar.gz"
+        file_content = b"gz-content"
+
+        metadata_resp = _make_urlopen_response(
+            self._make_multi_asset_release(
+                [
+                    (zip_name, f"https://example.com/{zip_name}"),
+                    (gz_name, f"https://example.com/{gz_name}"),
+                ]
+            )
+        )
+        file_resp = _make_urlopen_response(file_content, chunked=True)
+
+        with patch("urllib.request.urlopen", side_effect=[metadata_resp, file_resp]):
+            result = github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                version_specifier="v1.0.0",
+                asset_name=prefix,
+                dest=dest,
+                match_prefix=True,
+            )
+
+        self.assertEqual(result.name, gz_name)
+
+    def test_falls_back_to_zip_when_no_tarballs(self) -> None:
+        """When only .zip matches the prefix, it is selected."""
+        dest = Path(self._tmpdir.name)
+        prefix = "zlib-microvm-standalone-256mb"
+        zip_name = f"{prefix}.zip"
+        file_content = b"zip-content"
+
+        metadata_resp = _make_urlopen_response(
+            self._make_multi_asset_release(
+                [
+                    (zip_name, f"https://example.com/{zip_name}"),
+                ]
+            )
+        )
+        file_resp = _make_urlopen_response(file_content, chunked=True)
+
+        with patch("urllib.request.urlopen", side_effect=[metadata_resp, file_resp]):
+            result = github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                version_specifier="v1.0.0",
+                asset_name=prefix,
+                dest=dest,
+                match_prefix=True,
+            )
+
+        self.assertEqual(result.name, zip_name)
+
 
 # ---------------------------------------------------------------------------
 # _is_commit_hash
