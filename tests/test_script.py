@@ -17,7 +17,6 @@ import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
-    DEFAULT_DOCKER_IMAGE,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
@@ -751,10 +750,6 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         script = self._make_script()
         self.assertIsNone(script.docker)
 
-    def test_docker_image_default(self) -> None:
-        script = self._make_script()
-        self.assertEqual(script.docker_image(), DEFAULT_DOCKER_IMAGE)
-
     def test_docker_config_returns_dockerconfig(self) -> None:
         script = self._make_script()
         cfg = script.docker_config("test-image")
@@ -929,7 +924,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_build_auto_enables_docker_on_windows(self) -> None:
-        """build on Windows uses the default Docker image."""
+        """build on Windows uses the persisted Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -940,6 +935,12 @@ class TestZScriptAutoDocker(unittest.TestCase):
         def _fake_build(self_inner: ZScript) -> None:
             nonlocal docker_configured
             docker_configured = self_inner.docker is not None
+
+        # Pre-persist Docker image so build can find it.
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        (nanvix_dir / "env.json").write_text(
+            '{"NANVIX_DOCKER_IMAGE": "nanvix/toolchain:latest-minimal"}'
+        )
 
         with (
             patch("sys.argv", ["z.py", "build"]),
@@ -954,7 +955,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         self.assertTrue(docker_configured)
 
     def test_build_auto_enables_docker_on_linux(self) -> None:
-        """build on Linux also uses the default Docker image."""
+        """build on Linux uses the persisted Docker image."""
 
         class BuildScript(ZScript):
             def build(self) -> None:
@@ -965,6 +966,12 @@ class TestZScriptAutoDocker(unittest.TestCase):
         def _fake_build(self_inner: ZScript) -> None:
             nonlocal docker_configured
             docker_configured = self_inner.docker is not None
+
+        # Pre-persist Docker image so build can find it.
+        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        (nanvix_dir / "env.json").write_text(
+            '{"NANVIX_DOCKER_IMAGE": "nanvix/toolchain:latest-minimal"}'
+        )
 
         with (
             patch("sys.argv", ["z.py", "build"]),
@@ -1142,7 +1149,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
             return True
 
         with (
-            patch("sys.argv", ["z.py", "setup"]),
+            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
             patch("nanvix_zutil.script.docker_available", return_value=True),
             patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", _setup_with_fallback),
@@ -1157,7 +1164,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
 
         with (
-            patch("sys.argv", ["z.py", "setup"]),
+            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
             patch("nanvix_zutil.script.docker_available", return_value=True),
             patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=True),
@@ -1170,7 +1177,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
     def test_main_exits_0_on_clean_setup(self) -> None:
         """main() with setup subcommand completes normally when no fallback."""
         with (
-            patch("sys.argv", ["z.py", "setup"]),
+            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
             patch("nanvix_zutil.script.docker_available", return_value=True),
             patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=False),
@@ -1197,7 +1204,10 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         sys.stderr = buf
         try:
             with (
-                patch("sys.argv", ["z.py", "--json", "setup"]),
+                patch(
+                    "sys.argv",
+                    ["z.py", "--json", "setup", "--with-docker", "test/image:tag"],
+                ),
                 patch("nanvix_zutil.script.docker_available", return_value=True),
                 patch("nanvix_zutil.script.image_exists", return_value=True),
                 patch.object(ZScript, "setup", return_value=True),

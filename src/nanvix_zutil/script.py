@@ -46,7 +46,6 @@ from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
-    DEFAULT_DOCKER_IMAGE,
     SYSROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
@@ -203,17 +202,6 @@ class ZScript:
     # ------------------------------------------------------------------
     # Docker hooks — override in subclass to customise
     # ------------------------------------------------------------------
-
-    def docker_image(self) -> str:
-        """Return the default Docker image name for this build script.
-
-        Override in a subclass to change the default.  The value is only
-        used when ``--with-docker`` is passed without an explicit image.
-
-        Returns:
-            Docker image reference string.
-        """
-        return DEFAULT_DOCKER_IMAGE
 
     def docker_config(self, image: str) -> DockerConfig:
         """Build the :class:`~nanvix_zutil.DockerConfig` for *image*.
@@ -819,11 +807,10 @@ class ZScript:
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags or persisted config.
         #
-        # Docker mode is always enabled for setup, build, release, and
-        # clean.  The --with-docker flag on setup allows overriding the
-        # default image.  If Docker or the image is unavailable the
-        # command fails immediately — there is no fallback to native
-        # execution.  test and benchmark run natively on the host.
+        # setup requires --with-docker IMAGE explicitly.  build, release,
+        # and clean load the persisted image from .nanvix/env.json (set
+        # during setup).  If no persisted image exists the command fails.
+        # test and benchmark run natively on the host.
         # ------------------------------------------------------------------
         docker_image: str | None = None
         subcommand_name_for_docker: str | None = args.subcommand
@@ -833,37 +820,34 @@ class ZScript:
             {"setup", "build", "release", "clean"}
         )
 
-        # Subcommand-level flag (only present for setup).
+        # Subcommand-level flag (only present for setup — now required).
         with_docker_val = getattr(args, "with_docker", None)
         if isinstance(with_docker_val, str):
-            # --with-docker IMAGE  (explicit custom image)
             docker_image = with_docker_val
-        elif with_docker_val is True:
-            # --with-docker  (no argument → use default image)
-            docker_image = instance.docker_image()
 
-        # For build/release/clean, load persisted image or fall back to
-        # the default.  setup uses the default when --with-docker was
-        # not supplied.
+        # For build/release/clean, load persisted image.
         #
         # Exception: on Windows, setup downloads host-native binaries
         # via the GitHub API and does not invoke Docker.  Skip Docker
-        # auto-loading for setup on Windows unless the user explicitly
-        # requested it via --with-docker.
-        _skip_docker = (
-            is_windows()
-            and subcommand_name_for_docker == "setup"
-            and with_docker_val is None
-        )
+        # entirely for setup on Windows — the image is still persisted
+        # to .nanvix/env.json so that subsequent commands can use it,
+        # but we do not require Docker to be installed or the image to
+        # exist locally.
+        _skip_docker = is_windows() and subcommand_name_for_docker == "setup"
         if (
             docker_image is None
             and subcommand_name_for_docker in _DOCKER_COMMANDS
             and not _skip_docker
         ):
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
-            docker_image = persisted_image or instance.docker_image()
+            if not persisted_image:
+                log.fatal(
+                    "No Docker image configured — run 'setup --with-docker IMAGE' first.",
+                    code=EXIT_INVALID_ARGS,
+                )
+            docker_image = persisted_image
 
-        if docker_image is not None:
+        if docker_image is not None and not _skip_docker:
             if not docker_available():
                 log.fatal(
                     "Docker is not available — install Docker to continue.",
@@ -877,11 +861,12 @@ class ZScript:
                 )
             instance.docker = instance.docker_config(docker_image)
 
-            # Persist Docker image on setup so subsequent commands
-            # automatically use the same image.
-            if subcommand_name_for_docker == "setup":
-                instance.config.set(CFG_DOCKER_IMAGE, docker_image)
-                instance.config.save()
+        # Persist Docker image on setup so subsequent commands
+        # automatically use the same image.  This runs even on
+        # Windows where Docker checks are skipped.
+        if docker_image is not None and subcommand_name_for_docker == "setup":
+            instance.config.set(CFG_DOCKER_IMAGE, docker_image)
+            instance.config.save()
 
         # ------------------------------------------------------------------
         # Dispatch to lifecycle hook

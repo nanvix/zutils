@@ -9,10 +9,9 @@ Docker mode is always enabled for ``setup``, ``build``, ``release``, and
 ``clean`` — if Docker or the required image is unavailable the command
 fails immediately.  ``test`` and ``benchmark`` run natively on the host.
 
-Use ``--with-docker IMAGE`` during setup to override the default image::
+Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 
-    ./z setup                                     # default image
-    ./z setup --with-docker nanvix/toolchain:v1.2.3  # custom image
+    ./z setup --with-docker nanvix/toolchain:v1.2.3
 """
 
 from __future__ import annotations
@@ -41,11 +40,6 @@ BUILDROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/buildroot")
 
 #: Container path for the Nanvix cross-compilation toolchain.
 TOOLCHAIN_CONTAINER_PATH: PurePosixPath = PurePosixPath("/opt/nanvix")
-
-#: Default Docker image used when ``--with-docker`` is passed
-#: without an explicit image argument.
-DEFAULT_DOCKER_IMAGE: str = "nanvix/toolchain:latest-minimal"
-
 
 # ---------------------------------------------------------------------------
 # Platform helpers

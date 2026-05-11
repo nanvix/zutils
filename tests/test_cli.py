@@ -30,7 +30,10 @@ class TestBuildParser(unittest.TestCase):
     def test_subcommands_registered(self) -> None:
         parser = build_parser()
         for cmd in SUBCOMMANDS:
-            args = parser.parse_args([cmd])
+            argv = [cmd]
+            if cmd == "setup":
+                argv += ["--with-docker", "test/image:tag"]
+            args = parser.parse_args(argv)
             self.assertEqual(args.subcommand, cmd)
 
     def test_no_subcommand(self) -> None:
@@ -56,7 +59,10 @@ class TestBuildParser(unittest.TestCase):
         parser = build_parser(available=available)
         # Registered commands parse correctly.
         for cmd in ("setup", "distclean", "build", "help"):
-            args = parser.parse_args([cmd])
+            argv = [cmd]
+            if cmd == "setup":
+                argv += ["--with-docker", "test/image:tag"]
+            args = parser.parse_args(argv)
             self.assertEqual(args.subcommand, cmd)
         # Unregistered command raises SystemExit.
         with self.assertRaises(SystemExit):
@@ -66,27 +72,35 @@ class TestBuildParser(unittest.TestCase):
         """available=None (default) registers every subcommand."""
         parser = build_parser(available=None)
         for cmd in SUBCOMMANDS:
-            args = parser.parse_args([cmd])
+            argv = [cmd]
+            # setup requires --with-docker IMAGE
+            if cmd == "setup":
+                argv += ["--with-docker", "test/image:tag"]
+            args = parser.parse_args(argv)
             self.assertEqual(args.subcommand, cmd)
 
 
 class TestDockerFlags(unittest.TestCase):
     """Tests for Docker CLI flags (subcommand-level)."""
 
-    def test_with_docker_flag(self) -> None:
+    def test_with_docker_requires_image(self) -> None:
+        """--with-docker without an image argument is rejected."""
         parser = build_parser()
-        args = parser.parse_args(["setup", "--with-docker"])
-        self.assertTrue(args.with_docker)
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["setup", "--with-docker"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_with_docker_custom_image(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["setup", "--with-docker", "my/image:tag"])
         self.assertEqual(args.with_docker, "my/image:tag")
 
-    def test_docker_flags_default_to_off(self) -> None:
+    def test_setup_requires_with_docker(self) -> None:
+        """setup without --with-docker is rejected."""
         parser = build_parser()
-        args = parser.parse_args(["setup"])
-        self.assertIsNone(args.with_docker)
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["setup"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_docker_flags_rejected_on_build(self) -> None:
         """build subcommand does not accept Docker flags (moved to setup)."""

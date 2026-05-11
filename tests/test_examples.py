@@ -236,7 +236,7 @@ class TestLibHelloLifecycle(unittest.TestCase):
     def test_full_lifecycle(self) -> None:
         """Run setup → build → test and verify each step."""
         # setup
-        r = _run_z(_LIB_HELLO, "setup", "--with-docker")
+        r = _run_z(_LIB_HELLO, "setup", "--with-docker", _DOCKER_IMAGE)
         self.assertEqual(r.returncode, 0, r.stderr)
 
         # build

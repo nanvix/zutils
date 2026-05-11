@@ -1,7 +1,6 @@
 __pycache__/
 venv/
 cache/
-sysroot
 sysroot/
 buildroot/
 .yamllint.yml
