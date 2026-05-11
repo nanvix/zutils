@@ -4,14 +4,17 @@
 name: Release
 
 on:
-  push:
-    branches: ["dev"]
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release (must match pyproject.toml, e.g. 0.1.0)"
+      bump:
+        description: "Version bump type"
         required: true
-        type: string
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
 
 permissions:
   contents: write  # create tags and GitHub releases
@@ -92,8 +95,6 @@ jobs:
     concurrency:
       group: release-zutils
       cancel-in-progress: false
-    outputs:
-      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -109,122 +110,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Resolve version
-        id: version
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-            # Verify input matches pyproject.toml
-            actual=$(uv run python -c \
-              "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])")
-            if [ "$actual" != "$VERSION" ]; then
-              echo "::error::Version mismatch: pyproject.toml=$actual expected=$VERSION"
-              exit 1
-            fi
-          else
-            # Auto-bump patch version
-            VERSION=$(uv run python scripts/bump-version.py)
-          fi
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
-            echo "::error::Invalid semver: $VERSION"
-            exit 1
-          fi
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing version: $VERSION"
-
-      - name: Check tag does not already exist
-        run: |
-          tag="v${{ steps.version.outputs.value }}"
-          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-            echo "::error::Tag $tag already exists on origin. Bump the version in pyproject.toml before releasing."
-            exit 1
-          fi
-
-      - name: Build wheel and sdist
-        run: uv build
-
-      - name: Patch template versions
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Replace {{ZUTIL_VERSION}} placeholder with the release version
-          sed -i "s/{{ZUTIL_VERSION}}/${VERSION}/g" \
-            templates/z.sh \
-            templates/z.ps1 \
-            templates/nanvix-ci.yml
-
-          # Fetch latest nanvix/workflows release and patch {{WORKFLOW_VERSION}}
-          WFLOW_VER=$(gh release view --repo nanvix/workflows --json tagName -q .tagName | sed 's/^v//')
-          sed -i "s/{{WORKFLOW_VERSION}}/${WFLOW_VER}/g" templates/nanvix-ci.yml
-
-          # Verify patches applied correctly
-          grep -qF "${VERSION}" templates/z.sh \
-            || { echo "::error::Failed to patch z.sh"; exit 1; }
-          grep -qF "${VERSION}" templates/z.ps1 \
-            || { echo "::error::Failed to patch z.ps1"; exit 1; }
-          grep -qF "v${VERSION}" templates/nanvix-ci.yml \
-            || { echo "::error::Failed to patch nanvix-ci.yml"; exit 1; }
-          grep -qF "@v${WFLOW_VER}" templates/nanvix-ci.yml \
-            || { echo "::error::Failed to patch workflow version"; exit 1; }
-          if grep -rq '{{ZUTIL_VERSION}}\|{{WORKFLOW_VERSION}}' templates/; then
-            echo "::error::Unreplaced {{ZUTIL_VERSION}} or {{WORKFLOW_VERSION}} placeholder found"; exit 1
-          fi
-
-          echo "Patched template versions to ${VERSION}:"
-          grep "PINNED_VERSION" templates/z.sh
-          grep -F "$VERSION" templates/z.ps1
-          grep "zutil-version" templates/nanvix-ci.yml
-
-      - name: Package templates
-        run: |
-          tar czf "templates.tar.gz" -C templates .
-          (cd templates && zip -r ../templates.zip .)
-          # Restore placeholders so the working tree is clean for rebase
-          git checkout -- templates/
-
-      - name: Commit and push version bump
-        if: github.event_name == 'push'
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml uv.lock
-          git commit -m "[release] Bump version to v${VERSION} [skip ci]"
-          git fetch origin dev
-          git rebase origin/dev
-          git push origin HEAD:dev
-
-      - name: Create and push release tag
+      - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.version.outputs.value }}"
-          git push origin "v${{ steps.version.outputs.value }}"
 
-      - name: Create GitHub release
-        run: |
-          gh release create "v${{ steps.version.outputs.value }}" \
-            dist/*.whl dist/*.tar.gz \
-            "templates.tar.gz" \
-            "templates.zip" \
-            --title "nanvix-zutil v${{ steps.version.outputs.value }}" \
-            --generate-notes
+      - name: Release
         env:
-          GH_TOKEN: ${{ github.token }}
-
-  # TODO: PyPI repo not yet set up
-  # - name: Publish to PyPI
-  #   run: uv publish
-
-  update-consumers:
-    name: Update consumer repos
-    needs: [release]
-    uses: nanvix/workflows/.github/workflows/nanvix-update-zutils.yml@v1.14.0
-    with:
-      tag: v${{ needs.release.outputs.version }}
-    secrets:
-      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: uv run tasks.py release --ci ${{ inputs.bump }}

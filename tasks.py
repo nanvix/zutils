@@ -14,14 +14,12 @@ Commands:
   test          Run the test suite with pytest
   ci            Run CI locally using gh act (requires Docker + nanvix toolchain image)
   clean         Remove Python bytecode caches and build artifacts
-  release       Build distribution artifacts (wheel + sdist) for release
-  version       Bump version across pyproject.toml and templates
+  release       Cut a new release (bump, validate, tag, push)
   shell-lint    Check shell script formatting and correctness
   shell-format  Auto-fix shell script formatting with shfmt
   yaml-lint     Lint YAML files with yamllint
 """
 
-import re
 import shutil
 import subprocess
 import sys
@@ -156,28 +154,330 @@ def ci() -> int:
     return 0
 
 
-def release() -> int:
-    """Build distribution artifacts (wheel and sdist) for release.
+def _read_version() -> str:
+    """Read the current version from pyproject.toml."""
+    with (_REPO_ROOT / "pyproject.toml").open("rb") as f:
+        return tomllib.load(f)["project"]["version"]
 
-    Produces a wheel (.whl) and source distribution (.tar.gz) inside
-    dist/.  To publish, trigger the 'Release' GitHub Actions workflow
-    (workflow_dispatch) which builds, tags, creates a GitHub release,
-    and publishes to PyPI via ``uv publish``.
+
+def _run_checked(
+    *args: str,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command rooted at the repo directory, raising on failure."""
+    print(f"> {' '.join(args)}")
+    return subprocess.run(
+        args,
+        cwd=_REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=capture,
+    )
+
+
+def _step(label: str) -> None:
+    """Print a release step header."""
+    print(f"\n{'=' * 60}")
+    print(f"  {label}")
+    print(f"{'=' * 60}")
+
+
+def _bump_version(uv: str, bump: str) -> None:
+    """Bump pyproject.toml version via uv and sync example bootstrappers."""
+    _run_checked(uv, "version", "--bump", bump)
+
+    # Sync bootstrapper templates into each example directory.
+    templates_dir = _REPO_ROOT / "templates"
+    examples_dir = _REPO_ROOT / "examples"
+    for example in sorted(examples_dir.iterdir()):
+        if not example.is_dir():
+            continue
+        for name in ("z", "z.sh", "z.ps1"):
+            src = templates_dir / name
+            if src.exists():
+                shutil.copy(src, example / name)
+        nanvix_dir = example / ".nanvix"
+        if nanvix_dir.is_dir():
+            gi = templates_dir / ".gitignore"
+            if gi.exists():
+                shutil.copy(gi, nanvix_dir / ".gitignore")
+
+
+def _patch_templates(version: str) -> None:
+    """Replace version placeholders in template files and verify."""
+    templates = _REPO_ROOT / "templates"
+
+    # Replace {{ZUTIL_VERSION}}
+    for name in ("z.sh", "z.ps1", "nanvix-ci.yml"):
+        path = templates / name
+        content = path.read_text()
+        path.write_text(content.replace("{{ZUTIL_VERSION}}", version))
+
+    # Fetch latest nanvix/workflows version and replace {{WORKFLOW_VERSION}}
+    result = subprocess.run(
+        [
+            "gh",
+            "release",
+            "view",
+            "--repo",
+            "nanvix/workflows",
+            "--json",
+            "tagName",
+            "-q",
+            ".tagName",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=_REPO_ROOT,
+    )
+    wflow_ver = result.stdout.strip().lstrip("v")
+    ci_yml = templates / "nanvix-ci.yml"
+    content = ci_yml.read_text()
+    ci_yml.write_text(content.replace("{{WORKFLOW_VERSION}}", wflow_ver))
+
+    # Verify no unreplaced placeholders remain
+    for path in templates.iterdir():
+        if path.is_file():
+            content = path.read_text()
+            if "{{ZUTIL_VERSION}}" in content or "{{WORKFLOW_VERSION}}" in content:
+                raise RuntimeError(f"Unreplaced placeholder in {path.name}")
+
+    print(f"  Patched templates to {version} (workflows: {wflow_ver})")
+
+
+def _package_templates() -> None:
+    """Create template archives (.tar.gz and .zip) and restore originals."""
+    dist = _REPO_ROOT / "dist"
+    dist.mkdir(exist_ok=True)
+    base = str(dist / "templates")
+    shutil.make_archive(base, "gztar", str(_REPO_ROOT / "templates"))
+    shutil.make_archive(base, "zip", str(_REPO_ROOT / "templates"))
+    # Restore placeholders so the working tree stays clean
+    _run_checked("git", "checkout", "--", "templates/")
+    print("  Created dist/templates.tar.gz and dist/templates.zip")
+
+
+def _create_github_release(version: str) -> None:
+    """Create a GitHub release with build and template artifacts."""
+    tag = f"v{version}"
+    dist = _REPO_ROOT / "dist"
+    assets: list[str] = sorted(
+        str(p) for p in (*dist.glob("*.whl"), *dist.glob("*.tar.gz"))
+    )
+    assets.append(str(dist / "templates.tar.gz"))
+    assets.append(str(dist / "templates.zip"))
+    _run_checked(
+        "gh",
+        "release",
+        "create",
+        tag,
+        *assets,
+        "--title",
+        f"nanvix-zutil {tag}",
+        "--generate-notes",
+    )
+
+
+def _update_consumers(tag: str) -> None:
+    """Trigger the consumer-update workflow in nanvix/workflows."""
+    _run_checked(
+        "gh",
+        "workflow",
+        "run",
+        "nanvix-update-zutils.yml",
+        "--repo",
+        "nanvix/workflows",
+        "-f",
+        f"tag={tag}",
+    )
+
+
+def _check_preconditions(*, ci_mode: bool = False) -> None:
+    """Verify we are on dev (and, outside CI, that the tree is clean)."""
+    _step("Checking preconditions")
+    branch = _run_checked(
+        "git", "rev-parse", "--abbrev-ref", "HEAD", capture=True
+    ).stdout.strip()
+    if branch != "dev":
+        raise SystemExit(f"error: must be on 'dev' branch (currently on '{branch}')")
+    print("  Branch: dev")
+
+    if not ci_mode:
+        status = _run_checked(
+            "git", "status", "--porcelain", capture=True
+        ).stdout.strip()
+        if status:
+            raise SystemExit(
+                f"error: working tree is not clean — commit or stash changes first\n{status}"
+            )
+        print("  Working tree: clean")
+
+
+def _resolve_version(
+    uv: str,
+    bump: str,
+) -> str:
+    """Bump the version and return the new version string."""
+    _step(f"Bumping version ({bump})")
+    old = _read_version()
+    _bump_version(uv, bump)
+    version = _read_version()
+    print(f"\n  {old} -> {version}")
+    return version
+
+
+def _validate(uv: str) -> None:
+    """Run lint, typecheck, and tests."""
+    _step("Running validation")
+    _run_checked(uv, "run", "tasks.py", "lint")
+    _run_checked(uv, "run", "tasks.py", "typecheck")
+    _run_checked(uv, "run", "tasks.py", "test")
+
+
+def _check_tag_available(tag: str) -> None:
+    """Ensure the tag does not already exist on the remote."""
+    _step("Checking tag availability")
+    result = subprocess.run(
+        ["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    if result.stdout.strip():
+        raise SystemExit(f"error: tag {tag} already exists on origin")
+    print(f"  Tag {tag} is available")
+
+
+def _build_artifacts(uv: str, version: str) -> None:
+    """Build wheel/sdist, patch templates, and package template archives."""
+    _step("Building wheel and sdist")
+    _run_checked(uv, "build")
+
+    _step("Patching template versions")
+    _patch_templates(version)
+
+    _step("Packaging templates")
+    _package_templates()
+
+
+def _commit_and_push(tag: str, *, ci_mode: bool) -> None:
+    """Commit the version bump and push to dev (without tagging)."""
+    _step(f"Committing and pushing {tag}")
+    _run_checked("git", "add", "pyproject.toml", "uv.lock", "examples/")
+    if ci_mode:
+        _run_checked(
+            "git",
+            "commit",
+            "-m",
+            f"[build] F: Release {tag} [skip ci]",
+        )
+        _run_checked("git", "fetch", "origin", "dev")
+        _run_checked("git", "rebase", "origin/dev")
+    else:
+        _run_checked("git", "commit", "-m", f"[build] E: Release {tag}")
+    _run_checked("git", "push", "origin", "HEAD:dev")
+
+
+def _tag_and_push(tag: str) -> None:
+    """Create and push the release tag."""
+    _step(f"Tagging {tag}")
+    _run_checked("git", "tag", tag)
+    _run_checked("git", "push", "origin", tag)
+
+
+def release() -> int:
+    """Cut a new release: bump version, validate, build, tag, and publish.
+
+    Automates the full release process:
+      1. Checks preconditions (on dev branch, clean working tree).
+      2. Bumps the version in pyproject.toml (patch by default).
+      3. Runs validation (lint, typecheck, tests).
+      4. Ensures the tag does not already exist.
+      5. In CI mode: builds wheel/sdist, patches and packages templates.
+      6. Commits the version bump, creates and pushes the tag.
+      7. In CI mode: creates the GitHub Release with artifacts.
+
+    Usage:
+        uv run tasks.py release                          # patch bump (default)
+        uv run tasks.py release minor                    # minor bump
+        uv run tasks.py release major                    # major bump
+        uv run tasks.py release --dry-run                # preview without committing
+        uv run tasks.py release --ci                     # CI mode: full build+publish
     """
+    bump = "patch"
+    dry_run = False
+    ci_mode = False
+    for arg in sys.argv[2:]:
+        if arg == "--dry-run":
+            dry_run = True
+        elif arg == "--ci":
+            ci_mode = True
+        elif arg in ("major", "minor", "patch"):
+            bump = arg
+        else:
+            print(f"error: unknown argument '{arg}'")
+            print(
+                "Usage: uv run tasks.py release [major|minor|patch] [--dry-run] [--ci]"
+            )
+            return 2
+
+    if dry_run and ci_mode:
+        print("error: --dry-run and --ci are mutually exclusive")
+        return 2
+
     uv = shutil.which("uv")
     if uv is None:
         print("error: 'uv' not found on PATH. Install it from https://astral.sh/uv")
         return 1
-    code = _run(uv, "build")
-    if code != 0:
-        return code
-    dist = Path("dist")
-    artifacts = sorted(dist.glob("*"))
-    if artifacts:
-        print("Built artifacts:")
-        for f in artifacts:
-            print(f"  {f}")
-    return 0
+
+    try:
+        _check_preconditions(ci_mode=ci_mode)
+
+        new = _resolve_version(uv, bump)
+        tag = f"v{new}"
+
+        if not ci_mode:
+            _validate(uv)
+
+        _check_tag_available(tag)
+
+        if dry_run:
+            _step("Dry run — skipping commit and push")
+            print(f"  Would release {tag}")
+            print("  Resetting version bump...")
+            _run_checked("git", "checkout", "--", ".")
+            return 0
+
+        if ci_mode:
+            _build_artifacts(uv, new)
+
+        _commit_and_push(tag, ci_mode=ci_mode)
+
+        if ci_mode:
+            _step("Creating GitHub release")
+            _create_github_release(new)
+
+            _step("Updating consumer repos")
+            _update_consumers(tag)
+
+        _tag_and_push(tag)
+
+        _step("Done")
+        print(f"  Released {tag} — pushed to dev.")
+        if not ci_mode:
+            print("  To publish, trigger the Release workflow on GitHub:")
+            print("    gh workflow run release.yml -f bump=patch")
+        return 0
+
+    except subprocess.CalledProcessError as exc:
+        print(f"\nerror: command failed with exit code {exc.returncode}")
+        print(f"  {' '.join(str(a) for a in exc.cmd)}")
+        return 1
+    except KeyboardInterrupt:
+        print("\n\nAborted.")
+        return 130
 
 
 def _find_bash_scripts() -> list[str]:
@@ -315,131 +615,6 @@ def yaml_lint() -> int:
     )
 
 
-VERSION_REFS: list[tuple[str, str, str, int]] = [
-    # (filepath, pattern, replacement_template, re_flags)
-    # pattern must have a group so replacement can anchor to context
-    #
-    # Note: templates/z.sh, templates/z.ps1, and templates/nanvix-ci.yml
-    # use a {{ZUTIL_VERSION}} placeholder that is stamped by the release
-    # workflow — they are NOT bumped here.
-]
-
-
-def version() -> int:
-    """Bump the version across pyproject.toml and all template files.
-
-    Usage:
-        uv run tasks.py version <bump>            # bump = major | minor | patch | ...
-        uv run tasks.py version <bump> --dry-run   # preview changes without writing
-    """
-    if len(sys.argv) < 3:
-        print("Usage: uv run tasks.py version <bump> [--dry-run]")
-        print("  bump: major | minor | patch | alpha | beta | rc | post | dev | stable")
-        return 2
-
-    uv = shutil.which("uv")
-    if uv is None:
-        print("error: 'uv' not found on PATH. Install it from https://astral.sh/uv")
-        return 1
-
-    bump = sys.argv[2]
-    if bump.startswith("--"):
-        print(f"error: expected bump type, got flag '{bump}'")
-        print("Usage: uv run tasks.py version <bump> [--dry-run]")
-        return 2
-    dry_run = "--dry-run" in sys.argv[3:]
-
-    # Read current version from pyproject.toml
-    with (_REPO_ROOT / "pyproject.toml").open("rb") as f:
-        data = tomllib.load(f)
-    try:
-        current: str = data["project"]["version"]
-    except KeyError as exc:
-        print(f"error: pyproject.toml missing key: {exc}")
-        return 1
-
-    if dry_run:
-        result = subprocess.run(
-            [uv, "version", "--bump", bump, "--dry-run", "--short"],
-            capture_output=True,
-            text=True,
-            cwd=_REPO_ROOT,
-        )
-        if result.returncode != 0:
-            print(f"error: uv version failed: {result.stderr.strip()}")
-            return 1
-        new = result.stdout.strip()
-
-        print(f"Version: {current} -> {new}")
-        print("Files that would be updated:")
-        print(f"  pyproject.toml  (via uv version --bump {bump})")
-        for filepath, _, _, _ in VERSION_REFS:
-            print(f"  {filepath}")
-        return 0
-
-    # Apply bump to pyproject.toml (and uv.lock) via uv
-    print("> uv version --bump", bump)
-    result = subprocess.run(
-        [uv, "version", "--bump", bump],
-        cwd=_REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"error: uv version failed: {result.stderr.strip()}")
-        return 1
-
-    # Re-read the version from pyproject.toml to get the canonical new version.
-    pyproject_path = _REPO_ROOT / "pyproject.toml"
-    try:
-        with pyproject_path.open("rb") as f:
-            updated_data = tomllib.load(f)
-        new: str = updated_data["project"]["version"]
-    except (OSError, KeyError) as exc:
-        print(f"error: failed to read new version from pyproject.toml: {exc}")
-        return 1
-
-    # Update all version references
-    for filepath, pattern, repl_template, flags in VERSION_REFS:
-        path = _REPO_ROOT / filepath
-        content = path.read_text()
-        replacement = repl_template.format(new=new)
-        updated = re.sub(pattern, replacement, content, flags=flags)
-        if updated == content:
-            print(f"warning: no match in {filepath}")
-            continue
-        path.write_text(updated)
-        print(f"  Updated {filepath}")
-
-    # Sync bootstrapper templates into each example directory.
-    templates_dir = _REPO_ROOT / "templates"
-    examples_dir = _REPO_ROOT / "examples"
-    bootstrappers = ["z", "z.sh", "z.ps1"]
-    for example in sorted(examples_dir.iterdir()):
-        if not example.is_dir():
-            continue
-        for name in bootstrappers:
-            src = templates_dir / name
-            if src.exists():
-                shutil.copy(src, example / name)
-
-    # Sync .nanvix directory templates into each example.
-    nanvix_templates = [".gitignore"]
-    for example in sorted(examples_dir.iterdir()):
-        if not example.is_dir():
-            continue
-        nanvix_dir = example / ".nanvix"
-        if not nanvix_dir.is_dir():
-            continue
-        for name in nanvix_templates:
-            src = templates_dir / name
-            if src.exists():
-                shutil.copy(src, nanvix_dir / name)
-
-    print(f"\nVersion bumped: {current} -> {new}")
-    return 0
-
-
 COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
     "setup": (setup, "Configure git hooks and sync dev dependencies"),
     "lint": (
@@ -454,8 +629,7 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
         "Run CI locally using gh act (requires Docker + nanvix toolchain image)",
     ),
     "clean": (clean, "Remove Python bytecode caches and build artifacts"),
-    "release": (release, "Build distribution artifacts (wheel and sdist)"),
-    "version": (version, "Bump version across pyproject.toml and templates"),
+    "release": (release, "Cut a new release (bump, validate, tag, push)"),
     "shell-lint": (shell_lint, "Check shell script formatting and correctness"),
     "shell-format": (shell_format, "Auto-fix shell script formatting with shfmt"),
     "yaml-lint": (yaml_lint, "Lint YAML files with yamllint"),
@@ -465,6 +639,10 @@ COMMANDS: dict[str, tuple[Callable[[], int], str]] = {
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
+        sys.exit(0)
+
+    if sys.argv[1] == "--version":
+        print(_read_version())
         sys.exit(0)
 
     cmd = sys.argv[1]
