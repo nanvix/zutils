@@ -262,8 +262,11 @@ def _create_github_release(version: str) -> None:
     """Create a GitHub release with build and template artifacts."""
     tag = f"v{version}"
     dist = _REPO_ROOT / "dist"
+    template_names = {"templates.tar.gz", "templates.zip"}
     assets: list[str] = sorted(
-        str(p) for p in (*dist.glob("*.whl"), *dist.glob("*.tar.gz"))
+        str(p)
+        for p in (*dist.glob("*.whl"), *dist.glob("*.tar.gz"))
+        if p.name not in template_names
     )
     assets.append(str(dist / "templates.tar.gz"))
     assets.append(str(dist / "templates.zip"))
