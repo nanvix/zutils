@@ -282,7 +282,7 @@ def _create_github_release(version: str) -> None:
     )
 
 
-def _update_consumers(tag: str) -> None:
+def _update_consumers() -> None:
     """Trigger the consumer-update workflow in nanvix/workflows."""
     _run_checked(
         "gh",
@@ -291,8 +291,6 @@ def _update_consumers(tag: str) -> None:
         "nanvix-update-zutils.yml",
         "--repo",
         "nanvix/workflows",
-        "-f",
-        f"tag={tag}",
     )
 
 
@@ -463,7 +461,7 @@ def release() -> int:
             _create_github_release(new)
 
             _step("Updating consumer repos")
-            _update_consumers(tag)
+            _update_consumers()
 
         _tag_and_push(tag)
 
