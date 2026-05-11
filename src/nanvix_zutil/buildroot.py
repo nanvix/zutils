@@ -10,7 +10,9 @@ describes a single library fetched from a GitHub release.
 
 from __future__ import annotations
 
+import shutil
 import tarfile
+import zipfile
 from dataclasses import dataclass, replace as _dc_replace
 from enum import Enum
 from pathlib import Path
@@ -116,7 +118,7 @@ class Dependency:
     name: str
     repo: str
     ref: Ref
-    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}.tar.bz2"
+    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}"
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
 
@@ -292,11 +294,25 @@ class Buildroot:
             asset_name=asset_name,
             dest=cache_dir,
             gh_token=gh_token,
+            match_prefix=True,
             _release=_release,
         )
 
-        log.info(f"Extracting {asset_name}...")
-        with tarfile.open(asset_path, "r:bz2") as tf:
+        log.info(f"Extracting {asset_path.name}...")
+        if zipfile.is_zipfile(asset_path):
+            self._extract_dep_zip(asset_path, dep)
+        else:
+            self._extract_dep_tar(asset_path, dep)
+
+        log.success(f"Installed {dep.name} into buildroot")
+
+    # ------------------------------------------------------------------
+    # Archive extraction helpers
+    # ------------------------------------------------------------------
+
+    def _extract_dep_tar(self, asset_path: Path, dep: Dependency) -> None:
+        """Extract libraries and headers from a tarball."""
+        with tarfile.open(asset_path, "r:*") as tf:
             for member in tf.getmembers():
                 member_path = Path(member.name)
                 if member.isfile():
@@ -315,7 +331,34 @@ class Buildroot:
                                 member, path=self.path / "include", filter="data"
                             )
 
-        log.success(f"Installed {dep.name} into buildroot")
+    def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
+        """Extract libraries and headers from a zip archive."""
+        with zipfile.ZipFile(asset_path, "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                member_path = Path(info.filename)
+                # Reject absolute paths and directory traversal.
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    continue
+                if member_path.suffix == ".a":
+                    if dep.install_libs is None or member_path.name in (
+                        dep.install_libs
+                    ):
+                        rel = _relative_to_segment(member_path, "lib")
+                        dest = self.path / "lib" / rel
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        with zf.open(info) as src, dest.open("wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                elif member_path.suffix == ".h":
+                    if dep.install_headers is None or member_path.name in (
+                        dep.install_headers
+                    ):
+                        rel = _relative_to_segment(member_path, "include")
+                        dest = self.path / "include" / rel
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        with zf.open(info) as src, dest.open("wb") as dst:
+                            shutil.copyfileobj(src, dst)
 
     def install_local_nanvix(
         self,

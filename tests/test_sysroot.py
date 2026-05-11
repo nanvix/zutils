@@ -7,6 +7,7 @@ import io
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,6 +31,22 @@ def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
             info = tarfile.TarInfo(name=name)
             info.size = len(data)
             tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _make_zip(members: dict[str, bytes]) -> bytes:
+    """Return a ``.zip`` archive containing the given *members*.
+
+    Args:
+        members: Mapping of archive member name \u2192 file contents.
+
+    Returns:
+        Zip archive bytes.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
     return buf.getvalue()
 
 
@@ -559,6 +576,48 @@ class TestSysrootFromLocal(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             Sysroot.from_local(file_path)
         self.assertEqual(ctx.exception.code, 3)
+
+
+class TestSysrootDownloadZip(unittest.TestCase):
+    """Sysroot.download() extracts .zip archives correctly."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        log_mod.set_json_mode(False)
+        self._resolve_patcher = patch(
+            "nanvix_zutil.github.resolve_release",
+            return_value={"target_commitish": "abc1234def5678"},
+        )
+        self._resolve_patcher.start()
+
+    def tearDown(self) -> None:
+        self._resolve_patcher.stop()
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_downloads_and_extracts_zip(self) -> None:
+        dest = Path(self._tmpdir.name) / "sysroot"
+        archive = _make_zip({"lib/libposix.a": b"posix-lib"})
+        archive_path = Path(self._tmpdir.name) / "nanvix.zip"
+        archive_path.write_bytes(archive)
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            sysroot = Sysroot.download(
+                machine="hyperlight",
+                deployment_mode="multi-process",
+                memory_size="128mb",
+                tag="v1.0.0",
+                dest=dest,
+            )
+
+        self.assertTrue(sysroot.path.is_dir())
+        self.assertTrue((sysroot.path / "lib" / "libposix.a").exists())
+        self.assertEqual(
+            (sysroot.path / "lib" / "libposix.a").read_bytes(), b"posix-lib"
+        )
 
 
 if __name__ == "__main__":

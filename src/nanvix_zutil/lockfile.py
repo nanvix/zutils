@@ -69,7 +69,7 @@ class ResolvedPackage:
             full SHA, branch name, or tag name.
         release_id: GitHub release ID.
         dependencies: Names of packages this package depends on.
-        assets: List of downloadable ``.tar.bz2`` assets.
+        assets: List of downloadable archive assets.
         transitive: ``True`` if this package was discovered transitively.
         required_by: Names of packages that pulled this one in.
     """
