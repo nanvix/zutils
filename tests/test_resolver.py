@@ -53,8 +53,8 @@ def _make_manifest(
     )
 
 
-def _tar_asset(name: str) -> dict[str, object]:
-    """Build a fake .tar.bz2 asset entry."""
+def _archive_asset(name: str) -> dict[str, object]:
+    """Build a fake archive asset entry."""
     return {
         "name": name,
         "browser_download_url": f"https://example.com/{name}",
@@ -98,7 +98,7 @@ class TestResolveSysrootOnly(unittest.TestCase):
             commitish="aaa111",
             release_id=100,
             assets=[
-                _tar_asset(
+                _archive_asset(
                     "nanvix-hyperlight-multi-process-release-128mb-aaa111.tar.bz2"
                 )
             ],
@@ -152,7 +152,7 @@ class TestResolveDirectDep(unittest.TestCase):
             tag="v1.0.0",
             commitish="bbb222",
             release_id=200,
-            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+            assets=[_archive_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
         mock_resolve.side_effect = [sysroot_release, zlib_release]
         mock_download.return_value = None
@@ -216,7 +216,7 @@ class TestResolveTransitive(unittest.TestCase):
             commitish="ccc333",
             release_id=300,
             assets=[
-                _tar_asset("libfoo-hyperlight-multi-process-128mb.tar.bz2"),
+                _archive_asset("libfoo-hyperlight-multi-process-128mb.tar.bz2"),
                 _lockfile_asset(),
             ],
         )
@@ -224,7 +224,7 @@ class TestResolveTransitive(unittest.TestCase):
             tag="v2.0.0",
             commitish="ddd444",
             release_id=400,
-            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+            assets=[_archive_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
 
         mock_resolve.side_effect = [sysroot_release, libfoo_release, zlib_release]
@@ -569,7 +569,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
             tag="v1.3.1-nanvix-0.12.277",
             commitish="bbb222",
             release_id=200,
-            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+            assets=[_archive_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
         # resolve_release is only called for sysroot — zlib is served
         # from the probe cache, eliminating a duplicate API call.
@@ -618,7 +618,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
 @patch("nanvix_zutil.resolver.download_lockfile_asset")
 @patch("nanvix_zutil.resolver.github.resolve_release")
 class TestAssetFiltering(unittest.TestCase):
-    """Resolver filters out non-.tar.bz2 assets and nanvix.lock."""
+    """Resolver filters out non-tarball assets and nanvix.lock."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -643,15 +643,16 @@ class TestAssetFiltering(unittest.TestCase):
             tag="v0.1.0",
             release_id=100,
             assets=[
-                _tar_asset("nanvix-hyperlight-multi-process-release-128mb.tar.bz2"),
+                _archive_asset("nanvix-hyperlight-multi-process-release-128mb.tar.bz2"),
+                _archive_asset("nanvix-hyperlight-multi-process-release-128mb.tar.gz"),
                 _lockfile_asset(),
-                {
-                    "name": "source.tar.gz",
-                    "browser_download_url": "https://example.com/source.tar.gz",
-                },
                 {
                     "name": "source.zip",
                     "browser_download_url": "https://example.com/source.zip",
+                },
+                {
+                    "name": "notes.txt",
+                    "browser_download_url": "https://example.com/notes.txt",
                 },
             ],
         )
@@ -666,8 +667,11 @@ class TestAssetFiltering(unittest.TestCase):
         )
 
         sysroot_pkg = lockfile.packages[0]
-        self.assertEqual(len(sysroot_pkg.assets), 1)
-        self.assertTrue(sysroot_pkg.assets[0].name.endswith(".tar.bz2"))
+        # Both .tar.bz2 and .tar.gz are collected; .zip, .txt, and nanvix.lock are not.
+        self.assertEqual(len(sysroot_pkg.assets), 2)
+        names = {a.name for a in sysroot_pkg.assets}
+        self.assertIn("nanvix-hyperlight-multi-process-release-128mb.tar.bz2", names)
+        self.assertIn("nanvix-hyperlight-multi-process-release-128mb.tar.gz", names)
 
 
 class TestUnsuffixDeps(unittest.TestCase):
@@ -742,7 +746,7 @@ class TestResolveVersionFallback(unittest.TestCase):
             tag="v1.3.1-nanvix-0.12.291",
             commitish="ccc333",
             release_id=200,
-            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+            assets=[_archive_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
         # resolve_release: (1) sysroot@latest, (2) sysroot@0.12.291, (3) zlib
         mock_resolve.side_effect = [latest_sysroot, downgraded_sysroot, zlib_release]
@@ -859,7 +863,7 @@ class TestResolveVersionFallback(unittest.TestCase):
             tag="v1.3.1-nanvix-0.12.337",
             commitish="ccc333",
             release_id=200,
-            assets=[_tar_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
+            assets=[_archive_asset("zlib-hyperlight-multi-process-128mb.tar.bz2")],
         )
         # resolve_release only called for sysroot — zlib served from
         # probe cache.

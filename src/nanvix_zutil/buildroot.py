@@ -116,7 +116,7 @@ class Dependency:
     name: str
     repo: str
     ref: Ref
-    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}.tar.bz2"
+    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}"
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
 
@@ -292,11 +292,12 @@ class Buildroot:
             asset_name=asset_name,
             dest=cache_dir,
             gh_token=gh_token,
+            match_prefix=True,
             _release=_release,
         )
 
-        log.info(f"Extracting {asset_name}...")
-        with tarfile.open(asset_path, "r:bz2") as tf:
+        log.info(f"Extracting {asset_path.name}...")
+        with tarfile.open(asset_path, "r:*") as tf:
             for member in tf.getmembers():
                 member_path = Path(member.name)
                 if member.isfile():

@@ -640,6 +640,13 @@ def download_release_asset(
             code=EXIT_NETWORK_ERROR,
         )
     assets = cast(list[object], raw_assets)
+
+    # When using prefix matching, collect all candidates first so we can
+    # pick deterministically (prefer .tar.bz2 over .tar.gz).
+    _PREFIX_PREFERENCE = (".tar.bz2", ".tar.gz")
+
+    prefix_candidates: list[tuple[str, str]] = []  # (name, url)
+
     for item in assets:
         if not isinstance(item, dict):
             continue
@@ -649,7 +656,6 @@ def download_release_asset(
             continue
         if match_prefix:
             if name.startswith(asset_name):
-                resolved_name = name
                 raw_url = asset.get("browser_download_url")
                 if not isinstance(raw_url, str) or not raw_url:
                     log.fatal(
@@ -657,8 +663,7 @@ def download_release_asset(
                         code=EXIT_NETWORK_ERROR,
                         hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
                     )
-                asset_url = raw_url
-                break
+                prefix_candidates.append((name, raw_url))
         else:
             if name == asset_name:
                 raw_url = asset.get("browser_download_url")
@@ -671,6 +676,18 @@ def download_release_asset(
                 resolved_name = name
                 asset_url = raw_url
                 break
+
+    # When prefix-matching, pick the best candidate by preferred extension.
+    if match_prefix and prefix_candidates and asset_url is None:
+
+        def _ext_rank(n: str) -> int:
+            for i, ext in enumerate(_PREFIX_PREFERENCE):
+                if n.endswith(ext):
+                    return i
+            return len(_PREFIX_PREFERENCE)
+
+        prefix_candidates.sort(key=lambda c: (_ext_rank(c[0]), c[0]))
+        resolved_name, asset_url = prefix_candidates[0]
 
     if asset_url is None:
         if allow_missing:

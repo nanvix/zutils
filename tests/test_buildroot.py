@@ -56,7 +56,7 @@ class TestDependency(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
-        expected = "{name}-{machine}-{mode}-{mem}.tar.bz2"
+        expected = "{name}-{machine}-{mode}-{mem}"
         self.assertEqual(dep.artifact_pattern, expected)
 
     def test_default_install_libs_none(self) -> None:
@@ -297,7 +297,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
                 memory_size="256mb",
             )
 
-        self.assertEqual(captured[0], "zlib-microvm-single-process-256mb.tar.bz2")
+        self.assertEqual(captured[0], "zlib-microvm-single-process-256mb")
 
     def test_install_dep_preserves_header_subdirectory(self) -> None:
         """Headers in subdirectories are extracted with directory structure preserved."""
