@@ -19,10 +19,11 @@ nanvix-version = "0.12.257"
 |---|---|---|
 | `name` | yes | Package name (e.g. `"hello-world"`). |
 | `version` | yes | Package version string. |
-| `nanvix-version` | yes | Nanvix sysroot version — **must** be semver `X.Y.Z`. |
+| `nanvix-version` | yes | Nanvix sysroot version — semver `X.Y.Z`, or `"latest"`. |
 
 `nanvix-version` is validated at parse time.  Tables and non-semver
-strings are rejected.
+strings are rejected, with the exception of the literal `"latest"`,
+which resolves to the newest available sysroot release.
 
 ## `[dependencies]` and `[system-dependencies]`
 
@@ -53,9 +54,9 @@ zlib = "1.2.3"
 # → resolves tag "1.2.3-nanvix-0.12.257"
 ```
 
-If that tag is not found and the sysroot commitish hash is available,
-the resolver falls back to `1.2.3-nanvix-{hash}` (e.g.
-`1.2.3-nanvix-e63706b`).
+If that exact tag is not found, the resolver scans the repo for the
+newest release matching `1.2.3-nanvix-*` and uses it instead (e.g.
+`1.2.3-nanvix-0.12.291`).
 
 `TAG`, `COMMITISH`, `ID`, and `LOCAL` refs are never suffixed — they
 resolve exactly as written.

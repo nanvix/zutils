@@ -40,11 +40,22 @@ __main__.py    ←  nanvix-zutil CLI entry point
 ```
 __init__.py    ←  public library API (re-exports all public symbols)
   ├── script.py      ←  ZScript base class (subtree as above)
-  ├── release.py     ←  release artifact packaging (.tar.gz, .tar.bz2, .zip)
-  └── info.py        ←  NanvixInfo, get_nanvix_info (Nanvix release metadata)
+  ├── buildroot.py   ←  Buildroot, Dependency, suffix_dep, version helpers
+  ├── config.py      ←  Config
+  ├── docker.py      ←  DockerConfig, Mount
+  ├── exitcodes.py   ←  EXIT_* constants
+  ├── github.py      ←  resolve_release, resolve_release_with_fallback
+  ├── lockfile.py    ←  Lockfile, ResolvedPackage, read_lockfile, write_lockfile
+  ├── manifest.py    ←  Manifest, load_manifest
+  ├── release.py     ←  package, ArchiveFormat, DEFAULT_FORMATS (.tar.gz, .zip)
+  ├── resolver.py    ←  resolve, is_stale
+  ├── sysroot.py     ←  Sysroot
+  └── info.py        ←  NanvixInfo, get_nanvix_info
 ```
 
 `script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
+
+Hooks `setup`, `distclean`, `lock`, `lint`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them.
 
 ### Bootstrap Chain
 
@@ -91,4 +102,6 @@ nanvix/<project>/
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
 | `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
 | `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
+| `NANVIX_TOOLCHAIN` | *(set by setup)* | Path to cross-compilation toolchain |
+| `NANVIX_DOCKER_IMAGE` | *(set by setup)* | Docker image (set by `setup --with-docker`) |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |

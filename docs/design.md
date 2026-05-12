@@ -23,10 +23,10 @@ __main__.py            ← nanvix-zutil CLI entry point
   │     ├── buildroot.py     ← Buildroot + Dependency (build-time deps)
   │     ├── sysroot.py       ← Sysroot download/extraction/verification
   │     ├── github.py        ← GitHub release API with retry + GH_TOKEN
-  │     │     └── utils.py         ← Shared utilities (semver regex)
   │     ├── lockfile.py      ← Lockfile dataclasses, TOML read/write
   │     ├── resolver.py      ← BFS dependency resolution, cycle detection
   │     ├── manifest.py      ← nanvix.toml parser (metadata + dependencies)
+  │     ├── utils.py         ← Shared utilities (semver regex; used by github.py, manifest.py, info.py)
   │     ├── docker.py        ← Docker integration (per-command wrapping, mounts)
   │     ├── log.py           ← Colored terminal output, --json mode, fatal()
   │     └── exitcodes.py     ← Deterministic exit code constants (0–7)
@@ -41,7 +41,8 @@ __main__.py            ← nanvix-zutil CLI entry point
 __init__.py            ← public library API (re-exports all public symbols)
   ├── script.py        ← ZScript base class (subtree as above)
   ├── release.py       ← Release artifact packaging (.tar.gz, .zip, etc.)
-  └── info.py          ← NanvixInfo, get_nanvix_info (Nanvix release metadata)
+  ├── info.py          ← NanvixInfo, get_nanvix_info (Nanvix release metadata)
+  └── configs/         ← Bundled canonical tool configs (pyrightconfig.json, .yamllint.yml, black.toml)
 ```
 
 ## Module Descriptions
@@ -55,7 +56,8 @@ consumer build scripts subclass. It provides:
   `benchmark`, `release`, `clean`, `lock`, `lint`, `format`.
   Auto-implemented hooks (`setup`, `distclean`, `lock`, `lint`, `format`,
   `help`) are always available; consumer hooks only appear in the CLI
-  when the subclass overrides them.
+  when the subclass overrides them. `lock --check` verifies the lockfile
+  is up to date without re-resolving.
 - **CLI dispatch**: `main()` parses arguments via `cli.py`, resolves
   Docker configuration, and routes to the appropriate hook.
 - **Subprocess execution**: `run()` transparently wraps commands in
@@ -167,7 +169,8 @@ static libraries required by consumers. Key types:
 - **`Ref` / `RefKind`**: Typed version reference (version, tag,
   commitish, or release ID).
 - **Version helpers**: `suffix_dep()`, `extract_nanvix_version()`,
-  `parse_semver_tuple()` for nanvix-specific version manipulation.
+  `extract_nanvix_version_base()`, `parse_semver_tuple()` for
+  nanvix-specific version manipulation.
 
 ### `sysroot.py` — Runtime Sysroot
 
@@ -175,7 +178,7 @@ Downloads and verifies the Nanvix runtime sysroot from GitHub releases.
 The sysroot contains the kernel, POSIX library, linker script, and
 system binaries needed to run Nanvix applications. On Windows,
 additionally downloads host-native binaries (`nanvixd.exe`,
-`mkramfs.exe`). Supports overlaying local build artifacts via
+`mkramfs.exe`, `kernel.elf`). Supports overlaying local build artifacts via
 `--with-nanvix PATH`.
 
 ### `github.py` — GitHub API Client
@@ -195,14 +198,15 @@ Produces release archives from a source directory:
 
 - Supports `.tar.gz`, `.tar.bz2`, and `.zip` formats.
 - Consumer repos call `package()` from their `release()` hook.
-- Archives are deterministic (sorted entries, fixed metadata).
+- Default formats are `.tar.gz` and `.zip`; `.tar.bz2` is available but must be opted into explicitly.
 
 ### `log.py` — Structured Logging
 
 All output goes through this module. Two modes:
 
 - **Plain text**: Colored ANSI output (`info:`, `success:`, `warning:`,
-  `error:`, `note:`, `hint:`). Enables Windows ANSI support
+  `error:`, `note:`). `error()` and `fatal()` accept an optional `hint=`
+  argument that appends a hint line to their output. Enables Windows ANSI support
   automatically.
 - **JSON mode** (`--json`): Each message is a single-line JSON object
   with `level`, `message`, optional `code` and `hint` fields.

@@ -68,15 +68,17 @@ zutils/
 ├── templates/                 # Bootstrap wrapper templates (z, z.sh, z.ps1)
 ├── examples/                  # Example consumer repos
 ├── docs/                      # Additional reference docs
-├── doc/                       # Developer documentation
+├── docs/                      # Developer documentation
 ├── tasks.py                   # Dev task runner
 ├── pyproject.toml             # Project metadata + dependencies
-└── .githooks/                 # Git hooks (commit-msg, pre-push)
+└── .githooks/                 # Git hooks (commit-msg, pre-commit, pre-push)
 ```
 
 ## IDE Configuration
 
-The project uses `pyright` in strict mode. Configuration is in `pyproject.toml`:
+The project uses `pyright` in strict mode. Configuration lives in both
+`pyrightconfig.json` (root, takes precedence) and `[tool.pyright]` in
+`pyproject.toml` — the two are kept in sync:
 
 ```toml
 [tool.pyright]
