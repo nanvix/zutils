@@ -83,6 +83,10 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
 
     Returns:
         *dest* after the tarball has been written.
+
+    Note:
+        Symlinks are excluded from the archive. Symlinked directories are not
+        traversed.
     """
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
     source_resolved = source.resolve()
@@ -134,6 +138,10 @@ def _build_zip(source: Path, dest: Path) -> Path:
 
     Returns:
         *dest* after the ZIP has been written.
+
+    Note:
+        Symlinks are excluded from the archive. Symlinked directories are not
+        traversed.
     """
     source_resolved = source.resolve()
 
@@ -182,7 +190,9 @@ def package(
         sources: Items to archive.  Each entry may be a file or a directory.
             Directory contents are merged flat into the staging root;
             individual files are placed at the staging root by their basename.
-            Duplicate staging paths across entries are rejected.
+            Duplicate items are clobbered.
+            Symlinks in *sources* and symlinks encountered inside source
+            directories are silently skipped.
         dest: Output directory for archives.  Created if it does not exist.
         name: Base name for the archives (without extension). Must be a plain
             filename without path separators or parent directory traversal.
@@ -207,8 +217,6 @@ def package(
             directory traversal, if two sources map to the same staging path,
             or if an unknown format is encountered.
     """
-    if not sources:
-        log.warning("package() called with no source items; archives will be empty.")
     for item in sources:
         if not item.exists():
             log.fatal(
@@ -270,16 +278,32 @@ def package(
             hint="Check parent directory permissions and available disk space.",
         )
 
-    created: list[Path] = []
     _cleanup_staging = staging is None
+    if staging is not None:
+        if not staging.exists():
+            log.fatal(
+                f"Staging directory '{staging}' does not exist.",
+                code=EXIT_INVALID_ARGS,
+                hint="Create the directory before passing it as 'staging', or omit the argument to use a temporary directory.",
+            )
+        if not staging.is_dir():
+            log.fatal(
+                f"Staging path '{staging}' exists but is not a directory.",
+                code=EXIT_INVALID_ARGS,
+                hint="Pass a directory path for 'staging', or omit the argument to use a temporary directory.",
+            )
     staging = staging if staging else Path(mkdtemp())
 
     def package_sources() -> list[Path]:
+        created: list[Path] = []
         try:
             for item in sources:
                 if item.is_dir():
                     shutil.copytree(item, staging, dirs_exist_ok=True, symlinks=True)
                 else:
+                    if item.is_symlink():
+                        log.warning(f"Skipping symlink source '{item}'.")
+                        continue
                     shutil.copy2(item, staging / item.name)
         except (OSError, shutil.Error) as e:
             log.fatal(

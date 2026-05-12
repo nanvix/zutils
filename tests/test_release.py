@@ -425,6 +425,32 @@ class TestPackage(unittest.TestCase):
                 self.assertNotIn("evil_link/", zip_names)
                 self.assertNotIn("evil_link", zip_names)
 
+    def test_multi_source_directories_merged(self) -> None:
+        """package() merges multiple source directories into a single archive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src_a = Path(tmp) / "a"
+            src_a.mkdir()
+            (src_a / "from_a.txt").write_bytes(b"alpha")
+
+            src_b = Path(tmp) / "b"
+            src_b.mkdir()
+            (src_b / "from_b.txt").write_bytes(b"beta")
+
+            dest = Path(tmp) / "dist"
+            result = package([src_a, src_b], dest, "merged")
+
+            tar_path = next(p for p in result if p.name.endswith(".tar.gz"))
+            zip_path = next(p for p in result if p.name.endswith(".zip"))
+
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tar_files = {n for n in tf.getnames() if not tf.getmember(n).isdir()}
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zip_files = set(zf.namelist())
+
+            for names in (tar_files, zip_files):
+                self.assertIn("from_a.txt", names)
+                self.assertIn("from_b.txt", names)
+
     def test_formats_none_exits(self) -> None:
         """package() with None formats parameter exits with error."""
         with tempfile.TemporaryDirectory() as tmp:
