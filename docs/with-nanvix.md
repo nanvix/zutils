@@ -55,8 +55,8 @@ WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil build
 
 ## Using the Shell Wrapper
 
-Once the consumer's `z.sh` includes `--with-nanvix` support (from the
-updated template), you can pass the flag directly:
+The `z.sh` and `z.ps1` wrappers support `--with-nanvix` natively. Pass
+the flag directly:
 
 ```bash
 ./z setup --with-nanvix ~/src/nanvix/nanvix

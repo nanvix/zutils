@@ -26,7 +26,7 @@ The default branch is **`dev`** — all feature work targets `dev`.
 | `uv run tasks.py test`     | Run test suite (pytest)              |
 | `uv run tasks.py ci`       | Run CI locally via `gh act`          |
 | `uv run tasks.py clean`    | Remove caches and build artifacts    |
-| `uv run tasks.py release`  | Build wheel + sdist locally          |
+| `uv run tasks.py release`  | Bump, validate, commit, tag, and push a release |
 
 ### Code Quality Requirements
 
@@ -99,13 +99,14 @@ Instead of pushing a branch, you can trigger the release from the GitHub UI:
 
 ### Building Locally (Dry Run)
 
-To build artifacts without publishing:
+To preview what version would be cut without modifying the repo:
 
 ```bash
-uv run tasks.py release
+uv run tasks.py release --dry-run
 ```
 
-This produces the wheel and sdist in `dist/` for inspection.
+This runs precondition checks and prints what would happen, then resets
+the version bump without committing.
 
 ### Post-Release
 

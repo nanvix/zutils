@@ -56,7 +56,6 @@ development of `nanvix-zutil` itself:
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
 | `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
 | `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
-| `NANVIX_BUILDROOT` | *(set by setup)* | Path to build-time root |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |
 
 ## Project Layout

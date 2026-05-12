@@ -42,9 +42,10 @@ The public-facing orchestrator. `ZScript` is the base class that all
 consumer build scripts subclass. It provides:
 
 - **Lifecycle hooks**: `setup`, `distclean`, `build`, `test`,
-  `benchmark`, `release`, `clean`, `lock`. Auto-implemented hooks
-  (`setup`, `distclean`, `lock`, `help`) are always available; consumer
-  hooks only appear in the CLI when the subclass overrides them.
+  `benchmark`, `release`, `clean`, `lock`, `lint`, `format`.
+  Auto-implemented hooks (`setup`, `distclean`, `lock`, `lint`, `format`,
+  `help`) are always available; consumer hooks only appear in the CLI
+  when the subclass overrides them.
 - **CLI dispatch**: `main()` parses arguments via `cli.py`, resolves
   Docker configuration, and routes to the appropriate hook.
 - **Subprocess execution**: `run()` transparently wraps commands in
@@ -52,7 +53,7 @@ consumer build scripts subclass. It provides:
 - **Path translation**: `translate_path()` maps host paths to container
   paths when running inside Docker.
 - **Config sync**: Copies canonical tool configs (pyrightconfig.json,
-  .yamllint.yml) into `.nanvix/` during setup.
+  .yamllint.yml, black.toml) into `.nanvix/` during setup.
 
 Consumers interact almost exclusively with `ZScript` and the types it
 exposes.
@@ -61,8 +62,8 @@ exposes.
 
 Internal module that builds the `argparse` parser for `ZScript.main()`.
 Registers subcommands dynamically based on which hooks the consumer
-overrides. Handles `--json`, `--version`, `--mode`, and
-the per-subcommand `--with-docker` flag.
+overrides. Handles `--json`, `--version`, and the per-subcommand
+`--with-docker` flag.
 
 ### `config.py` — Configuration
 
@@ -282,14 +283,16 @@ setup
   └── Sync canonical tool configs
 ```
 
-### Build/Test Phase
+### Build/Release Phase
 
 ```
-build / test / release / clean
+setup / build / release / clean   (Docker auto-enabled)
   ├── Load persisted Docker image from config
   ├── Configure DockerConfig with mounts
   └── Dispatch to consumer hook
         └── self.run("make", ...) → transparently wrapped in docker run
+
+test / benchmark                  (always run on host)
 ```
 
 ## Data Flow
