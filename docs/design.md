@@ -11,7 +11,9 @@ management, Docker-based cross-compilation, lockfile resolution,
 and structured logging — so consumers only implement
 the lifecycle hooks they need.
 
-## Module Dependency Graph
+## Module Dependency Graphs
+
+### CLI Entry Point
 
 ```
 __main__.py            ← nanvix-zutil CLI entry point
@@ -21,17 +23,25 @@ __main__.py            ← nanvix-zutil CLI entry point
   │     ├── buildroot.py     ← Buildroot + Dependency (build-time deps)
   │     ├── sysroot.py       ← Sysroot download/extraction/verification
   │     ├── github.py        ← GitHub release API with retry + GH_TOKEN
+  │     │     └── utils.py         ← Shared utilities (semver regex)
   │     ├── lockfile.py      ← Lockfile dataclasses, TOML read/write
   │     ├── resolver.py      ← BFS dependency resolution, cycle detection
   │     ├── manifest.py      ← nanvix.toml parser (metadata + dependencies)
   │     ├── docker.py        ← Docker integration (per-command wrapping, mounts)
-  │     ├── release.py       ← Release artifact packaging (.tar.gz, .zip, etc.)
   │     ├── log.py           ← Colored terminal output, --json mode, fatal()
   │     └── exitcodes.py     ← Deterministic exit code constants (0–7)
   │
   ├── info.py          ← nanvix-info CLI (query Nanvix release metadata)
-  ├── resolve_cmd.py   ← nanvix-zutil resolve CLI (emit resolved metadata)
-  └── utils.py         ← Shared utilities (semver regex)
+  └── resolve_cmd.py   ← nanvix-zutil resolve CLI (emit resolved metadata)
+```
+
+### Library API
+
+```
+__init__.py            ← public library API (re-exports all public symbols)
+  ├── script.py        ← ZScript base class (subtree as above)
+  ├── release.py       ← Release artifact packaging (.tar.gz, .zip, etc.)
+  └── info.py          ← NanvixInfo, get_nanvix_info (Nanvix release metadata)
 ```
 
 ## Module Descriptions
@@ -292,7 +302,7 @@ setup / build / release / clean   (Docker auto-enabled)
   └── Dispatch to consumer hook
         └── self.run("make", ...) → transparently wrapped in docker run
 
-test / benchmark                  (always run on host)
+test / benchmark                  (always run natively on host)
 ```
 
 ## Data Flow

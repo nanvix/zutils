@@ -12,16 +12,19 @@ After making code changes, always validate by invoking the `/validate` skill. Th
 
 ## Architecture
 
-### Module Dependency Graph
+### Module Dependency Graphs
+
+#### CLI Entry Point
 
 ```
 __main__.py    ←  nanvix-zutil CLI entry point
   ├── script.py      ←  ZScript base class, CLI dispatch, lifecycle orchestration
-  │     ├── cli.py         ←  argparse subcommand dispatch, --json, --help, --version
+  │     ├── cli.py         ←  argparse subcommand dispatch, --json, --version
   │     ├── config.py      ←  .nanvix/env.json persistence, env var overrides
   │     ├── buildroot.py   ←  Buildroot + Dependency (build-time deps: headers, static libs)
   │     ├── sysroot.py     ←  Sysroot download/extraction/verification (run-time artifacts)
   │     ├── github.py      ←  GitHub release download with retry + GH_TOKEN
+  │     │     └── utils.py       ←  shared utilities (semver regex)
   │     ├── lockfile.py    ←  Lockfile dataclasses, TOML read/write, release asset download
   │     ├── resolver.py    ←  BFS dependency resolution, cycle detection, staleness check
   │     ├── manifest.py    ←  nanvix.toml parser (package metadata + dependencies)
@@ -29,8 +32,16 @@ __main__.py    ←  nanvix-zutil CLI entry point
   │     ├── docker.py      ←  Docker integration (per-command wrapping, mounts, image mgmt)
   │     └── exitcodes.py   ←  deterministic exit code constants (0–7)
   ├── info.py        ←  nanvix-info CLI (query Nanvix release metadata)
-  ├── resolve_cmd.py ←  nanvix-zutil resolve CLI (emit resolved metadata)
-  └── utils.py       ←  shared utilities (semver regex)
+  └── resolve_cmd.py ←  nanvix-zutil resolve CLI (emit resolved metadata)
+```
+
+#### Library API
+
+```
+__init__.py    ←  public library API (re-exports all public symbols)
+  ├── script.py      ←  ZScript base class (subtree as above)
+  ├── release.py     ←  release artifact packaging (.tar.gz, .tar.bz2, .zip)
+  └── info.py        ←  NanvixInfo, get_nanvix_info (Nanvix release metadata)
 ```
 
 `script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
