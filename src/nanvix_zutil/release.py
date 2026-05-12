@@ -214,9 +214,15 @@ def package(
             fails, or if archive creation fails.  With
             :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
             empty, whitespace-only, or contains path separators or parent
-            directory traversal, if two sources map to the same staging path,
-            or if an unknown format is encountered.
+            directory traversal, or if an unknown format is encountered,
+            or if *sources* is empty.
     """
+    if not sources:
+        log.fatal(
+            "package() requires at least one source item.",
+            code=EXIT_INVALID_ARGS,
+            hint="Pass one or more file or directory paths in the 'sources' list.",
+        )
     for item in sources:
         if not item.exists():
             log.fatal(

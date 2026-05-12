@@ -210,6 +210,14 @@ class TestPackage(unittest.TestCase):
             for p in result:
                 self.assertTrue(p.is_absolute(), f"expected absolute: {p}")
 
+    def test_empty_sources_exits(self) -> None:
+        """package() with an empty sources list exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([], dest, "empty")
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
+
     def test_missing_source_exits(self) -> None:
         """package() calls log.fatal when source doesn't exist."""
         with tempfile.TemporaryDirectory() as tmp:
