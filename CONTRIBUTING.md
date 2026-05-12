@@ -105,7 +105,8 @@ To preview what version would be cut without modifying the repo:
 uv run tasks.py release --dry-run
 ```
 
-This runs precondition checks and prints what would happen, then resets
+This runs precondition checks, bumps the version, runs full validation
+(lint, typecheck, tests), and prints what would be released — then resets
 the version bump without committing.
 
 ### Post-Release
