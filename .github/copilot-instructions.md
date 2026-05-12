@@ -2,7 +2,7 @@
 
 ## What This Is
 
-`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `distclean`, `build`, `test`, `benchmark`, `release`, `clean`, `lock`), structured logging, config persistence, GitHub release artifact downloading, lockfile-based dependency resolution with transitive discovery, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.sh` / `z.ps1` bootstrap wrappers at the repo root.
+`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `distclean`, `build`, `test`, `benchmark`, `release`, `clean`, `lock`, `lint`, `format`), structured logging, config persistence, GitHub release artifact downloading, lockfile-based dependency resolution with transitive discovery, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.sh` / `z.ps1` bootstrap wrappers at the repo root.
 
 The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils/issues/1).
 
@@ -12,28 +12,50 @@ After making code changes, always validate by invoking the `/validate` skill. Th
 
 ## Architecture
 
-### Module Dependency Graph
+### Module Dependency Graphs
+
+#### CLI Entry Point
 
 ```
-script.py  ←  CLI entry point (ZScript.main)
-  ├── cli.py         ←  argparse subcommand dispatch, --json, --help, --version
-  ├── config.py      ←  .nanvix/env.json persistence, env var overrides
-  ├── buildroot.py   ←  Buildroot + Dependency (build-time deps: headers, static libs)
-  ├── sysroot.py     ←  Sysroot download/extraction/verification (run-time artifacts)
-  ├── github.py      ←  GitHub release download with retry + GH_TOKEN
-  ├── lockfile.py    ←  Lockfile dataclasses, TOML read/write, release asset download
-  ├── resolver.py    ←  BFS dependency resolution, cycle detection, staleness check
-  ├── manifest.py    ←  nanvix.toml parser (package metadata + dependencies)
-  ├── log.py         ←  colored terminal output, --json mode, fatal() with hints
-  ├── docker.py      ←  Docker integration (per-command wrapping, mounts, image mgmt)
-  ├── exitcodes.py   ←  deterministic exit code constants (0–7)
+__main__.py    ←  nanvix-zutil CLI entry point
+  ├── script.py      ←  ZScript base class, CLI dispatch, lifecycle orchestration
+  │     ├── cli.py         ←  argparse subcommand dispatch, --json, --version
+  │     ├── config.py      ←  .nanvix/env.json persistence, env var overrides
+  │     ├── buildroot.py   ←  Buildroot + Dependency (build-time deps: headers, static libs)
+  │     ├── sysroot.py     ←  Sysroot download/extraction/verification (run-time artifacts)
+  │     ├── github.py      ←  GitHub release download with retry + GH_TOKEN
+  │     │     └── utils.py       ←  shared utilities (semver regex)
+  │     ├── lockfile.py    ←  Lockfile dataclasses, TOML read/write, release asset download
+  │     ├── resolver.py    ←  BFS dependency resolution, cycle detection, staleness check
+  │     ├── manifest.py    ←  nanvix.toml parser (package metadata + dependencies)
+  │     ├── log.py         ←  colored terminal output, --json mode, fatal() with hints
+  │     ├── docker.py      ←  Docker integration (per-command wrapping, mounts, image mgmt)
+  │     └── exitcodes.py   ←  deterministic exit code constants (0–7)
   ├── info.py        ←  nanvix-info CLI (query Nanvix release metadata)
-  ├── release.py     ←  release artifact packaging (.tar.gz, .tar.bz2, .zip)
-  ├── resolve_cmd.py ←  nanvix-zutil resolve CLI (emit resolved metadata)
-  └── utils.py       ←  shared utilities (semver regex)
+  └── resolve_cmd.py ←  nanvix-zutil resolve CLI (emit resolved metadata)
+```
+
+#### Library API
+
+```
+__init__.py    ←  public library API (re-exports all public symbols)
+  ├── script.py      ←  ZScript base class (subtree as above)
+  ├── buildroot.py   ←  Buildroot, Dependency, suffix_dep, version helpers
+  ├── config.py      ←  Config
+  ├── docker.py      ←  DockerConfig, Mount
+  ├── exitcodes.py   ←  EXIT_* constants
+  ├── github.py      ←  resolve_release, resolve_release_with_fallback
+  ├── lockfile.py    ←  Lockfile, ResolvedPackage, read_lockfile, write_lockfile
+  ├── manifest.py    ←  Manifest, load_manifest
+  ├── release.py     ←  package, ArchiveFormat, DEFAULT_FORMATS (.tar.gz, .zip)
+  ├── resolver.py    ←  resolve, is_stale
+  ├── sysroot.py     ←  Sysroot
+  └── info.py        ←  NanvixInfo, get_nanvix_info
 ```
 
 `script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
+
+Hooks `setup`, `distclean`, `lock`, `lint`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them.
 
 ### Bootstrap Chain
 
@@ -80,5 +102,6 @@ nanvix/<project>/
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
 | `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
 | `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
-| `NANVIX_BUILDROOT` | *(set by setup)* | Path to build-time root |
+| `NANVIX_TOOLCHAIN` | *(set by setup)* | Path to cross-compilation toolchain |
+| `NANVIX_DOCKER_IMAGE` | *(set by setup)* | Docker image (set by `setup --with-docker`) |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |

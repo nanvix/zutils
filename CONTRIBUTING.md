@@ -20,13 +20,13 @@ The default branch is **`dev`** — all feature work targets `dev`.
 
 | Command                      | Description                          |
 |------------------------------|--------------------------------------|
-| `uv run tasks.py lint`      | Check formatting (black)             |
+| `uv run tasks.py lint`      | Lint (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint) |
 | `uv run tasks.py format`   | Fix formatting (black)               |
 | `uv run tasks.py typecheck` | Strict type checking (pyright)      |
 | `uv run tasks.py test`     | Run test suite (pytest)              |
 | `uv run tasks.py ci`       | Run CI locally via `gh act`          |
 | `uv run tasks.py clean`    | Remove caches and build artifacts    |
-| `uv run tasks.py release`  | Build wheel + sdist locally          |
+| `uv run tasks.py release`  | Bump, validate, commit, tag, and push a release |
 
 ### Code Quality Requirements
 
@@ -52,60 +52,51 @@ locally, plus the `gh act` extension (`gh extension install nektos/gh-act`).
 
 ## Cutting a Release
 
+Releases are triggered manually via
+[workflow dispatch](/.github/workflows/release.yml). There is no
+branch-push automation.
+
 ### Prerequisites
 
-- All changes for the release are merged to `dev`.
-- `pyproject.toml` has the **exact version** you intend to release (e.g.
-  `version = "0.3.0"`).
-- The tag `v<version>` does **not** already exist on `origin`.
-- CI passes on `dev`.
+- All changes for the release are merged to `dev` and CI passes.
+- The working tree on `dev` is clean.
+- The tag `v<next-version>` does **not** already exist on `origin`.
 
 ### Steps
 
-1. **Bump the version** in `pyproject.toml` on `dev` (if not already done).
-
-2. **Create the release branch** from `dev`:
+1. **Dispatch the Release workflow** from the CLI or GitHub UI:
 
    ```bash
-   git checkout dev
-   git pull origin dev
-   git checkout -b release/v0.3.0   # must be release/vX.Y.Z
-   git push origin release/v0.3.0
+   # bump type: patch (default), minor, or major
+   gh workflow run release.yml -f bump=patch
    ```
 
-   > The release workflow triggers on `push` to branches matching
-   > `release/v*`.
+   Or via the GitHub UI: **Actions → Release → Run workflow**, then choose
+   `patch`, `minor`, or `major`.
 
-3. **Wait for the workflow.** Pushing the branch automatically triggers the
-   [Release workflow](/.github/workflows/release.yml), which:
+2. **The workflow** automatically:
 
+   - Validates `dev` is clean and computes the next version.
+   - Validates the tag does not already exist on `origin`.
    - Runs lint, type checking, and tests.
-   - Validates the version in `pyproject.toml` matches the branch name.
-   - Validates the tag does not already exist.
    - Builds the wheel (`.whl`) and source distribution (`.tar.gz`).
-   - Creates and pushes the git tag `v<version>`.
+   - Commits the version bump, creates and pushes the git tag `v<version>`.
    - Creates a GitHub release with the artifacts and auto-generated release notes.
 
-4. **Verify the release** on the
+3. **Verify the release** on the
    [GitHub releases page](https://github.com/nanvix/zutils/releases).
-
-### Alternative: Manual Workflow Dispatch
-
-Instead of pushing a branch, you can trigger the release from the GitHub UI:
-
-1. Go to **Actions → Release → Run workflow**.
-2. Enter the version (must match `pyproject.toml`).
-3. The workflow runs the same pipeline as above.
 
 ### Building Locally (Dry Run)
 
-To build artifacts without publishing:
+To preview what version would be cut without modifying the repo:
 
 ```bash
-uv run tasks.py release
+uv run tasks.py release --dry-run
 ```
 
-This produces the wheel and sdist in `dist/` for inspection.
+This runs precondition checks, bumps the version, runs full validation
+(lint, typecheck, tests), and prints what would be released — then resets
+the version bump without committing.
 
 ### Post-Release
 
@@ -114,17 +105,14 @@ After the release is published:
 - The git tag `v<version>` is pushed automatically by the workflow.
 - Consumer repos can pin the new version in their bootstrap wrappers.
 
-> **Note:** PyPI publishing is not yet active — the publish step is present in
-> the workflow but commented out.
-
 ## Commit Message Format
 
 ```
 [scope] T: Short title
 ```
 
-- **Scope:** `zutils`, `tests`, `examples`, `ci`, etc.
-- **Type:** `F` (feature), `B` (bugfix), `E` (enhancement).
+- **Scope:** `zutils`, `ci`, `doc`, `git`, `tests`, `build`, `examples`.
+- **Type:** `F` (feature), `B` (bugfix), `E` (enhancement), `W` (work in progress).
 - **Title:** ≤ 50 characters.
 
 Examples:

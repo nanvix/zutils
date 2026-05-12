@@ -71,11 +71,11 @@ version into `.nanvix/venv/`.
 
 | Document | Description |
 | ---------- | ------------- |
-| [Design Overview](doc/design.md) | Architecture, module graph, data flow |
-| [Setup](doc/setup.md) | Developer environment setup |
-| [Build](doc/build.md) | How to build the project |
-| [Test](doc/test.md) | How to run tests |
-| [Troubleshooting](doc/troubleshooting.md) | Solutions to common problems |
+| [Design Overview](docs/design.md) | Architecture, module graph, data flow |
+| [Setup](docs/setup.md) | Developer environment setup |
+| [Build](docs/build.md) | How to build the project |
+| [Test](docs/test.md) | How to run tests |
+| [Troubleshooting](docs/troubleshooting.md) | Solutions to common problems |
 
 Additional references:
 

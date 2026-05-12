@@ -64,25 +64,14 @@ filesystem, Docker). These run quickly without network access or Docker.
 
 ### Integration Tests
 
-`test_examples.py` and `test_integration.py` exercise the full lifecycle
-with real example projects. These may require:
+`test_examples.py` exercises the full lifecycle with real example
+projects. It may require:
 
 - Network access (for GitHub API calls)
 - Docker with the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image
 
-### Running CI Locally
-
-To run the full CI pipeline locally (requires Docker + `gh act`):
-
-```bash
-uv run tasks.py ci            # run all CI jobs
-uv run tasks.py ci lint       # lint & typecheck only
-uv run tasks.py ci test       # tests only
-```
-
-This requires:
-- Docker with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image available locally
-- The `gh` CLI with the `act` extension (`gh extension install nektos/gh-act`)
+`test_integration.py` is mock-based and runs without Docker or network
+access.
 
 ## Code Coverage
 

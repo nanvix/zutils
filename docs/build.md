@@ -70,8 +70,12 @@ uv run tasks.py release --dry-run    # preview without committing
 
 This checks preconditions (dev branch, clean tree), bumps the version in
 `pyproject.toml`, runs validation (lint, typecheck, tests), ensures the
-tag is available, then commits and pushes. CI then builds artifacts,
-creates the GitHub Release, and updates downstream consumers.
+tag is available, then commits and pushes. To publish, manually dispatch
+the Release workflow:
+
+```bash
+gh workflow run release.yml -f bump=patch
+```
 
 In CI mode (`--ci`), the command additionally builds wheel/sdist, patches
 and packages templates, creates the GitHub Release, and triggers consumer

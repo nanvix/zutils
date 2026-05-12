@@ -133,9 +133,10 @@ git add .nanvix/nanvix.lock
 git commit -m "[zutils] E: Update lockfile"
 ```
 
-### Bootstrap wrapper can't find Python 3.12+
+### Bootstrap wrapper can't find Python
 
-**Symptom:** `./z` or `./z.sh` fails with "Python 3.12+ required".
+**Symptom:** `./z` or `./z.sh` fails with "Error: python3 not found.
+Install Python 3 and ensure python3 is on PATH."
 
 **Solutions:**
 
@@ -144,9 +145,9 @@ git commit -m "[zutils] E: Update lockfile"
    # Ubuntu/Debian
    sudo apt-get install python3.12
    ```
-2. Ensure `python3` resolves to 3.12+ on your PATH:
+2. Ensure `python3` is on your PATH:
    ```bash
-   sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+   which python3   # should resolve
    ```
 
 ### Windows: paths not translating correctly

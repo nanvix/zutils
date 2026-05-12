@@ -11,24 +11,31 @@ etc.) without publishing a release.
 2. Files from `PATH/bin/` and `PATH/lib/` are copied on top of the
    downloaded sysroot, replacing matching artifacts.
 3. Sysroot verification runs against the overlaid result.
-4. If `PATH/deps/<name>/` directories exist for any declared dependency,
-   those are installed from local files instead of downloading from GitHub.
+4. If `PATH/deps/<name>/` directories exist for any ported dependency
+   (repos under the `nanvix/` organisation, such as `nanvix/zlib` or
+   `nanvix/cpython`), those are installed from local files instead of
+   downloading from GitHub.
 
 ## Prerequisites
 
-- A local Nanvix build with `bin/` and `lib/` output directories:
+- A local Nanvix build with `bin/` and `lib/` output directories.
+  Required files depend on `NANVIX_DEPLOYMENT_MODE`:
 
   ```text
   ~/src/nanvix/nanvix/
   ├── bin/
-  │   ├── nanvixd.elf
-  │   ├── mkramfs.elf
-  │   ├── kernel.elf
-  │   ├── uservm.elf
-  │   └── linuxd.elf
+  │   ├── nanvixd.elf          # all modes
+  │   ├── kernel.elf           # all modes
+  │   ├── mkramfs.elf          # all modes
+  │   ├── linuxd.elf           # multi-process only
+  │   └── uservm.elf           # multi-process only
   └── lib/
-      └── libposix.a
+      ├── libposix.a           # all modes
+      └── user.ld              # all modes
   ```
+
+  `standalone` (default) and `single-process` require the same set.
+  `multi-process` additionally requires `linuxd.elf` and `uservm.elf`.
 
 - The feature-branch version of `nanvix-zutil` installed in the consumer's
   venv.
@@ -39,28 +46,30 @@ etc.) without publishing a release.
 cd /path/to/consumer   # e.g. usr/lib/zlib
 
 # Bootstrap venv and install feature-branch zutils
-./z setup
+./z setup --with-docker nanvix/toolchain:latest-minimal
 .nanvix/venv/bin/pip install -e /path/to/zutils
 
 # Clean sysroot and re-run with local override
 rm -rf .nanvix/sysroot .nanvix/env.json
-WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil setup
+WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil setup \
+    --with-docker nanvix/toolchain:latest-minimal
 
 # Verify
 cmp .nanvix/sysroot/bin/nanvixd.elf ~/src/nanvix/nanvix/bin/nanvixd.elf
 
 # Build using the overlaid sysroot
-WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil build
+.nanvix/venv/bin/nanvix-zutil build
 ```
 
 ## Using the Shell Wrapper
 
-Once the consumer's `z.sh` includes `--with-nanvix` support (from the
-updated template), you can pass the flag directly:
+The `z.sh` and `z.ps1` wrappers support `--with-nanvix` natively. Pass
+the flag directly:
 
 ```bash
-./z setup --with-nanvix ~/src/nanvix/nanvix
-./z build --with-nanvix ~/src/nanvix/nanvix
+./z setup --with-docker nanvix/toolchain:latest-minimal \
+    --with-nanvix ~/src/nanvix/nanvix
+./z build
 ```
 
 The wrapper resolves the path to an absolute directory and exports it as
