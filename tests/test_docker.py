@@ -136,7 +136,7 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
 
     def _make_config(self) -> DockerConfig:
         return DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=self._workspace,
@@ -161,7 +161,7 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
     def test_contains_image(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("make", "all")
-        self.assertIn("nanvix/toolchain:latest-minimal", cmd)
+        self.assertIn("ghcr.io/nanvix/toolchain-gcc:sha-34a3641", cmd)
 
     def test_contains_user(self, _mock: object) -> None:
         cfg = self._make_config()
@@ -246,7 +246,7 @@ class TestImageExists(unittest.TestCase):
             patch("nanvix_zutil.docker.docker_available", return_value=True),
             patch("nanvix_zutil.docker.subprocess.run", return_value=fake_result),
         ):
-            self.assertTrue(image_exists("nanvix/toolchain:latest-minimal"))
+            self.assertTrue(image_exists("ghcr.io/nanvix/toolchain-gcc:sha-34a3641"))
 
 
 class TestWellKnownPaths(unittest.TestCase):
@@ -383,7 +383,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         output_files: list[str] | None = None,
     ) -> DockerConfig:
         return DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=self._workspace,

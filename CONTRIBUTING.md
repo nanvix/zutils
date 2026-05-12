@@ -35,7 +35,7 @@ All code must pass before merging:
 - **Formatting** — `black` with no configuration overrides.
 - **Type checking** — `pyright` in strict mode. Every public function
   needs a complete type signature.
-- **Tests** — `pytest`. Functional tests require the `nanvix/toolchain`
+- **Tests** — `pytest`. Functional tests require the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641`
   Docker image.
 - **Docstrings** — all public functions must have docstrings.
 
@@ -47,7 +47,7 @@ uv run tasks.py ci lint       # lint & type check only
 uv run tasks.py ci test       # tests only
 ```
 
-Requires Docker with the `nanvix/toolchain:latest-minimal` image available
+Requires Docker with the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image available
 locally, plus the `gh act` extension (`gh extension install nektos/gh-act`).
 
 ## Cutting a Release

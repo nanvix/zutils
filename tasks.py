@@ -106,8 +106,11 @@ def ci() -> int:
     """Run CI locally using gh act (requires Docker + nanvix toolchain image).
 
     Runs the specified CI job (or all jobs) locally using nektos/act via the
-    gh CLI extension. The nanvix/toolchain:latest-minimal Docker image must
-    be available locally.
+    gh CLI extension. The ghcr.io/nanvix/toolchain-gcc:sha-34a3641
+    Docker image must be available locally.
+
+    Example:
+        docker pull ghcr.io/nanvix/toolchain-gcc:sha-34a3641
 
     Usage:
         uv run tasks.py ci            # run all CI jobs

@@ -581,7 +581,7 @@ class TestZScriptRun(unittest.TestCase):
         """run() delegates to build_windows_run_cmd on Windows."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=script.repo_root,
@@ -613,7 +613,7 @@ class TestZScriptRun(unittest.TestCase):
         these fields to be populated."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=script.repo_root,
@@ -646,7 +646,7 @@ class TestZScriptRun(unittest.TestCase):
         """run() uses build_run_cmd on Linux (not the Windows tar-copy path)."""
         script = ZScript(Path(self._tmpdir.name))
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=script.repo_root,
@@ -836,7 +836,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         """When Docker is active, run() prepends docker run to the command."""
         script = self._make_script()
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
                     host_path=script.repo_root,
@@ -866,7 +866,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         """env vars passed to run() are forwarded as -e flags in Docker mode."""
         script = self._make_script()
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[],
             uid=1000,
             gid=1000,
@@ -890,7 +890,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         """env vars appear as -e KEY=VAL in the docker run command."""
         script = self._make_script()
         script.docker = DockerConfig(
-            image="nanvix/toolchain:latest-minimal",
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[],
             uid=1000,
             gid=1000,
@@ -939,7 +939,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         # Pre-persist Docker image so build can find it.
         nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
         (nanvix_dir / "env.json").write_text(
-            '{"NANVIX_DOCKER_IMAGE": "nanvix/toolchain:latest-minimal"}'
+            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
         )
 
         with (
@@ -970,7 +970,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         # Pre-persist Docker image so build can find it.
         nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
         (nanvix_dir / "env.json").write_text(
-            '{"NANVIX_DOCKER_IMAGE": "nanvix/toolchain:latest-minimal"}'
+            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
         )
 
         with (

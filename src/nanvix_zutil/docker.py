@@ -11,7 +11,7 @@ fails immediately.  ``test`` and ``benchmark`` run natively on the host.
 
 Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 
-    ./z setup --with-docker nanvix/toolchain:v1.2.3
+    ./z setup --with-docker ghcr.io/nanvix/toolchain-gcc:sha-34a3641
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ class DockerConfig:
     ``docker run`` invocation.
 
     Attributes:
-        image: Docker image name (e.g. ``"nanvix/toolchain:latest-minimal"``).
+        image: Docker image name (e.g. ``"ghcr.io/nanvix/toolchain-gcc:sha-34a3641"``).
         mounts: Ordered list of volume mounts.
         uid: User ID passed to ``--user``.  Defaults to the current process UID,
             or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
@@ -388,7 +388,7 @@ def image_exists(image: str) -> bool:
 
     Args:
         image: Docker image reference (e.g.
-            ``"nanvix/toolchain:latest-minimal"``).
+            ``"ghcr.io/nanvix/toolchain-gcc:sha-34a3641"``).
 
     Returns:
         ``True`` when the image is present locally, ``False`` otherwise or

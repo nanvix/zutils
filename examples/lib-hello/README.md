@@ -23,7 +23,7 @@ lib-hello/
 
 One of:
 - **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
-- **Docker** with `nanvix/toolchain:latest-minimal` image (auto-detected fallback)
+- **Docker** with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image (pass via `./z setup --with-docker IMAGE`)
 
 If you built the Nanvix toolchain locally (e.g. from `nanvix/nanvix`), point
 `NANVIX_TOOLCHAIN` at it:
@@ -32,7 +32,7 @@ If you built the Nanvix toolchain locally (e.g. from `nanvix/nanvix`), point
 export NANVIX_TOOLCHAIN=~/repos/nanvix/nanvix/toolchain
 ```
 
-In CI, the workflow runs inside the `nanvix/toolchain:latest-minimal` Docker
+In CI, the workflow runs inside the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` Docker
 container where the toolchain is pre-installed at `/opt/nanvix`.
 
 ## Running
