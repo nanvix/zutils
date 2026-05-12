@@ -90,7 +90,6 @@ updates directly.
 | `uv run tasks.py format` | Fix Python formatting (black) |
 | `uv run tasks.py typecheck` | Strict type checking (pyright) |
 | `uv run tasks.py test` | Run test suite (pytest) |
-| `uv run tasks.py ci` | Run CI locally via `gh act` |
 | `uv run tasks.py clean` | Remove caches and build artifacts |
 | `uv run tasks.py release` | Cut a new release (bump, validate, tag, push) |
 | `uv run tasks.py shell-lint` | Lint shell scripts |
