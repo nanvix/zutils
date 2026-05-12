@@ -231,6 +231,19 @@ class TestPackage(unittest.TestCase):
             self.assertIn("file-pkg.tar.gz", names)
             self.assertIn("file-pkg.zip", names)
 
+            tar_path = next(p for p in result if p.name.endswith(".tar.gz"))
+            zip_path = next(p for p in result if p.name.endswith(".zip"))
+
+            with tarfile.open(tar_path, "r:gz") as tf:
+                self.assertIn("afile.txt", tf.getnames())
+                member = tf.extractfile("afile.txt")
+                assert member is not None
+                self.assertEqual(member.read().decode(), "not a directory")
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                self.assertIn("afile.txt", zf.namelist())
+                self.assertEqual(zf.read("afile.txt").decode(), "not a directory")
+
     def test_zip_and_tarball_have_same_file_set(self) -> None:
         """Both archive types should contain the same set of files."""
         with tempfile.TemporaryDirectory() as tmp:

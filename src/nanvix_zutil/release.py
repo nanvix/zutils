@@ -11,7 +11,7 @@ generate distribution archives::
     from nanvix_zutil.release import ArchiveFormat, package
 
     archives = package(
-        source=Path("build/output"),
+        sources=[Path("build/output")],
         dest=Path("dist"),
         name="mylib-microvm-standalone-256mb",
     )
@@ -166,27 +166,33 @@ def _build_zip(source: Path, dest: Path) -> Path:
 
 
 def package(
-    source: list[Path],
+    sources: list[Path],
     dest: Path,
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
     staging: Path | None = None,
 ) -> list[Path]:
-    """Package *source* directory into release archives.
+    """Package one or more sources into release archives.
 
     Creates one archive per requested format.  The output file names are
-    formed as ``<name>-<extension>`` (e.g. ``mylib-v1.0.tar.gz``,
+    formed as ``<name><extension>`` (e.g. ``mylib-v1.0.tar.gz``,
     ``mylib-v1.0.zip``).
 
     Args:
-        source: List of items to archive. May be a directory or file.
+        sources: Items to archive.  Each entry may be a file or a directory.
+            Directory contents are merged flat into the staging root;
+            individual files are placed at the staging root by their basename.
+            Duplicate staging paths across entries are rejected.
         dest: Output directory for archives.  Created if it does not exist.
         name: Base name for the archives (without extension). Must be a plain
             filename without path separators or parent directory traversal.
         formats: Archive formats to produce.  Defaults to
             :data:`DEFAULT_FORMATS` (tar.gz + zip).
-        staging: Temporary staging directory for archiving.  Defaults to a
-            fresh system-generated temporary directory per call.
+        staging: Directory to use as the staging area.  When supplied, sources
+            are copied directly into this directory (which must already exist)
+            and the caller is responsible for its lifetime.  When omitted, a
+            fresh temporary directory is created and removed automatically on
+            return.
 
     Returns:
         List of absolute paths to created archives, one per format, in
@@ -194,12 +200,16 @@ def package(
 
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
-            if *source* does not exist or is not a directory, or if archive
-            creation fails. With :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS`
-            if *name* is empty, whitespace-only, or contains path separators
-            or parent directory traversal, or if an unknown format is encountered.
+            if any entry in *sources* does not exist, if staging or copying
+            fails, or if archive creation fails.  With
+            :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
+            empty, whitespace-only, or contains path separators or parent
+            directory traversal, if two sources map to the same staging path,
+            or if an unknown format is encountered.
     """
-    for item in source:
+    if not sources:
+        log.warning("package() called with no source items; archives will be empty.")
+    for item in sources:
         if not item.exists():
             log.fatal(
                 f"Release source '{item}' does not exist.",
@@ -259,57 +269,73 @@ def package(
             code=EXIT_GENERAL_ERROR,
             hint="Check parent directory permissions and available disk space.",
         )
+
     created: list[Path] = []
-    call_staging = Path(mkdtemp(dir=staging)) if staging else Path(mkdtemp())
+    _cleanup_staging = staging is None
+    staging = staging if staging else Path(mkdtemp())
 
-    for item in source:
-        if item.is_dir():
-            shutil.copytree(item, call_staging, dirs_exist_ok=True, symlinks=True)
-        else:
-            shutil.copy2(item, call_staging / item.name)
-
-    for fmt in formats:
-        # Runtime validation: users could pass invalid types despite type hints
-        if not isinstance(fmt, ArchiveFormat):  # type: ignore[redundant-expr]
-            log.fatal(
-                f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
-                code=EXIT_INVALID_ARGS,
-                hint="Use one of the supported ArchiveFormat enum values (TAR_GZ, TAR_BZ2, ZIP).",
-            )
-
-        out = dest / f"{name}{fmt.extension}"
-
+    def package_sources() -> list[Path]:
         try:
-            if fmt is ArchiveFormat.TAR_GZ:
-                _build_tarball(call_staging, out, "gz")
-            elif fmt is ArchiveFormat.TAR_BZ2:
-                _build_tarball(call_staging, out, "bz2")
-            elif fmt is ArchiveFormat.ZIP:
-                _build_zip(call_staging, out)
-            else:
-                # This should never happen with a proper ArchiveFormat enum value
+            for item in sources:
+                if item.is_dir():
+                    shutil.copytree(item, staging, dirs_exist_ok=True, symlinks=True)
+                else:
+                    shutil.copy2(item, staging / item.name)
+        except (OSError, shutil.Error) as e:
+            log.fatal(
+                f"Failed to stage sources into '{staging}': {e}",
+                code=EXIT_GENERAL_ERROR,
+                hint="Check source file permissions and available disk space.",
+            )
+
+        for fmt in formats:
+            # Runtime validation: users could pass invalid types despite type hints
+            if not isinstance(fmt, ArchiveFormat):  # type: ignore[redundant-expr]
                 log.fatal(
-                    f"Unknown archive format: {fmt}",
+                    f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
                     code=EXIT_INVALID_ARGS,
-                    hint="Use one of the supported ArchiveFormat enum values.",
+                    hint="Use one of the supported ArchiveFormat enum values (TAR_GZ, TAR_BZ2, ZIP).",
                 )
-        except Exception as e:
-            log.fatal(
-                f"Failed to create {fmt.name} archive: {e}",
-                code=EXIT_GENERAL_ERROR,
-                hint="Check source directory access, disk space, and file permissions.",
-            )
 
-        # Verify the archive was actually created before logging success
-        if not out.exists():
-            log.fatal(
-                f"Failed to create archive: {out}",
-                code=EXIT_GENERAL_ERROR,
-                hint="Check disk space and permissions.",
-            )
+            out = dest / f"{name}{fmt.extension}"
 
-        log.info(f"Created {out}")
-        created.append(out.resolve())
+            try:
+                if fmt is ArchiveFormat.TAR_GZ:
+                    _build_tarball(staging, out, "gz")
+                elif fmt is ArchiveFormat.TAR_BZ2:
+                    _build_tarball(staging, out, "bz2")
+                elif fmt is ArchiveFormat.ZIP:
+                    _build_zip(staging, out)
+                else:
+                    # This should never happen with a proper ArchiveFormat enum value
+                    log.fatal(
+                        f"Unknown archive format: {fmt}",
+                        code=EXIT_INVALID_ARGS,
+                        hint="Use one of the supported ArchiveFormat enum values.",
+                    )
+            except Exception as e:
+                log.fatal(
+                    f"Failed to create {fmt.name} archive: {e}",
+                    code=EXIT_GENERAL_ERROR,
+                    hint="Check source directory access, disk space, and file permissions.",
+                )
 
-    log.success(f"Packaged {len(created)} archive(s) for '{name}' into {dest}")
-    return created
+            # Verify the archive was actually created before logging success
+            if not out.exists():
+                log.fatal(
+                    f"Failed to create archive: {out}",
+                    code=EXIT_GENERAL_ERROR,
+                    hint="Check disk space and permissions.",
+                )
+
+            log.info(f"Created {out}")
+            created.append(out.resolve())
+
+        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {dest}")
+        return created
+
+    try:
+        return package_sources()
+    finally:
+        if _cleanup_staging:
+            shutil.rmtree(staging, ignore_errors=True)
