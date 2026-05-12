@@ -68,7 +68,7 @@ filesystem, Docker). These run quickly without network access or Docker.
 with real example projects. These may require:
 
 - Network access (for GitHub API calls)
-- Docker with the `nanvix/toolchain:latest-minimal` image
+- Docker with the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image
 
 ### Running CI Locally
 
@@ -81,7 +81,7 @@ uv run tasks.py ci test       # tests only
 ```
 
 This requires:
-- Docker with `nanvix/toolchain:latest-minimal` image available locally
+- Docker with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image available locally
 - The `gh` CLI with the `act` extension (`gh extension install nektos/gh-act`)
 
 ## Code Coverage

@@ -23,7 +23,7 @@ bin-hello/
 
 One of:
 - **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
-- **Docker** with `nanvix/toolchain:latest-minimal` image (auto-detected fallback)
+- **Docker** with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image (pass via `./z setup --with-docker IMAGE`)
 
 ## Running
 

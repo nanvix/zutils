@@ -80,9 +80,9 @@ Standard keys: `NANVIX_TARGET`, `NANVIX_MACHINE`,
 ### `docker.py` — Docker Integration
 
 Per-command Docker wrapping for cross-compilation. Docker mode is always
-enabled for `setup`, `build`, `release`, and `clean`. The
-`--with-docker IMAGE` flag on `setup` allows consumers to override the
-default image (`nanvix/toolchain:latest-minimal`). Key types:
+enabled for `setup`, `build`, `release`, and `clean`. On `setup`, the
+`--with-docker IMAGE` flag requires consumers to provide the Docker
+image explicitly (e.g. `ghcr.io/nanvix/toolchain-gcc:sha-34a3641`). Key types:
 
 - **`DockerConfig`**: Image name, mounts, UID/GID, workdir, extra env
   vars. Builds `docker run` command lines.

@@ -45,7 +45,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     container:
-      image: nanvix/toolchain:latest-minimal
+      image: ghcr.io/nanvix/toolchain-gcc@sha256:ea33e4cae4041dcf55f0ec49f58de90ae1b5e9fb7c3c507971b40975b14aecd3
     env:
       NANVIX_TOOLCHAIN: /opt/nanvix
       USER: runner
