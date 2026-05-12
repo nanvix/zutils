@@ -20,11 +20,13 @@ generate distribution archives::
 from __future__ import annotations
 
 import os
+import shutil
 import tarfile
 import zipfile
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
+from tempfile import mkdtemp
 from typing import Literal, Sequence
 
 from nanvix_zutil import log
@@ -164,24 +166,27 @@ def _build_zip(source: Path, dest: Path) -> Path:
 
 
 def package(
-    source: Path,
+    source: list[Path],
     dest: Path,
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
+    staging: Path | None = None,
 ) -> list[Path]:
     """Package *source* directory into release archives.
 
     Creates one archive per requested format.  The output file names are
-    formed as ``<name><extension>`` (e.g. ``mylib-v1.0.tar.gz``,
+    formed as ``<name>-<extension>`` (e.g. ``mylib-v1.0.tar.gz``,
     ``mylib-v1.0.zip``).
 
     Args:
-        source: Directory to archive.  Must exist and be a directory.
+        source: List of items to archive. May be a directory or file.
         dest: Output directory for archives.  Created if it does not exist.
         name: Base name for the archives (without extension). Must be a plain
             filename without path separators or parent directory traversal.
         formats: Archive formats to produce.  Defaults to
             :data:`DEFAULT_FORMATS` (tar.gz + zip).
+        staging: Temporary staging directory for archiving.  Defaults to a
+            fresh system-generated temporary directory per call.
 
     Returns:
         List of absolute paths to created archives, one per format, in
@@ -194,13 +199,14 @@ def package(
             if *name* is empty, whitespace-only, or contains path separators
             or parent directory traversal, or if an unknown format is encountered.
     """
-    if not source.is_dir():
-        log.fatal(
-            f"Release source '{source}' does not exist or is not a directory.",
-            code=EXIT_GENERAL_ERROR,
-            hint="Ensure the build step has run and produced output in the"
-            " expected directory before calling 'release'.",
-        )
+    for item in source:
+        if not item.exists():
+            log.fatal(
+                f"Release source '{item}' does not exist.",
+                code=EXIT_GENERAL_ERROR,
+                hint="Ensure the build step has run and produced output in the"
+                " expected directory before calling 'release'.",
+            )
 
     # Validate name is a safe, non-empty filename
     if not name or not name.strip():
@@ -218,7 +224,6 @@ def package(
             hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
         )
 
-    # Validate formats is a proper iterable (not None, str, or bytes)
     if formats is None:  # type: ignore[redundant-expr]
         log.fatal(
             "Invalid formats parameter: cannot be None",
@@ -255,6 +260,13 @@ def package(
             hint="Check parent directory permissions and available disk space.",
         )
     created: list[Path] = []
+    call_staging = Path(mkdtemp(dir=staging)) if staging else Path(mkdtemp())
+
+    for item in source:
+        if item.is_dir():
+            shutil.copytree(item, call_staging, dirs_exist_ok=True, symlinks=True)
+        else:
+            shutil.copy2(item, call_staging / item.name)
 
     for fmt in formats:
         # Runtime validation: users could pass invalid types despite type hints
@@ -269,11 +281,11 @@ def package(
 
         try:
             if fmt is ArchiveFormat.TAR_GZ:
-                _build_tarball(source, out, "gz")
+                _build_tarball(call_staging, out, "gz")
             elif fmt is ArchiveFormat.TAR_BZ2:
-                _build_tarball(source, out, "bz2")
+                _build_tarball(call_staging, out, "bz2")
             elif fmt is ArchiveFormat.ZIP:
-                _build_zip(source, out)
+                _build_zip(call_staging, out)
             else:
                 # This should never happen with a proper ArchiveFormat enum value
                 log.fatal(
