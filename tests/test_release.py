@@ -165,7 +165,7 @@ class TestPackage(unittest.TestCase):
             src = Path(tmp) / "src"
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "mylib-v1.0")
+            result = package([src], dest, "mylib-v1.0")
             self.assertEqual(len(result), 2)
             names = [p.name for p in result]
             self.assertIn("mylib-v1.0.tar.gz", names)
@@ -176,7 +176,7 @@ class TestPackage(unittest.TestCase):
             src = Path(tmp) / "src"
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "pkg", formats=(ArchiveFormat.TAR_BZ2,))
+            result = package([src], dest, "pkg", formats=(ArchiveFormat.TAR_BZ2,))
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0].name, "pkg.tar.bz2")
 
@@ -186,7 +186,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             all_fmts = (ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.ZIP)
-            result = package(src, dest, "all", formats=all_fmts)
+            result = package([src], dest, "all", formats=all_fmts)
             self.assertEqual(len(result), 3)
             names = {p.name for p in result}
             self.assertEqual(names, {"all.tar.gz", "all.tar.bz2", "all.zip"})
@@ -198,7 +198,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "nested" / "output" / "dist"
             self.assertFalse(dest.exists())
-            package(src, dest, "test")
+            package([src], dest, "test")
             self.assertTrue(dest.exists())
 
     def test_returns_absolute_paths(self) -> None:
@@ -206,9 +206,17 @@ class TestPackage(unittest.TestCase):
             src = Path(tmp) / "src"
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "abs")
+            result = package([src], dest, "abs")
             for p in result:
                 self.assertTrue(p.is_absolute(), f"expected absolute: {p}")
+
+    def test_empty_sources_exits(self) -> None:
+        """package() with an empty sources list exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([], dest, "empty")
+            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_missing_source_exits(self) -> None:
         """package() calls log.fatal when source doesn't exist."""
@@ -216,18 +224,33 @@ class TestPackage(unittest.TestCase):
             src = Path(tmp) / "nonexistent"
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "fail")
+                package([src], dest, "fail")
             self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
 
-    def test_source_is_file_exits(self) -> None:
-        """package() calls log.fatal when source is a file, not a directory."""
+    def test_source_is_file_packaged(self) -> None:
+        """package() accepts individual files (not just directories)."""
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "afile.txt"
             src.write_text("not a directory")
             dest = Path(tmp) / "dist"
-            with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "fail")
-            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+            result = package([src], dest, "file-pkg")
+            self.assertEqual(len(result), 2)
+            names = [p.name for p in result]
+            self.assertIn("file-pkg.tar.gz", names)
+            self.assertIn("file-pkg.zip", names)
+
+            tar_path = next(p for p in result if p.name.endswith(".tar.gz"))
+            zip_path = next(p for p in result if p.name.endswith(".zip"))
+
+            with tarfile.open(tar_path, "r:gz") as tf:
+                self.assertIn("afile.txt", tf.getnames())
+                member = tf.extractfile("afile.txt")
+                assert member is not None
+                self.assertEqual(member.read().decode(), "not a directory")
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                self.assertIn("afile.txt", zf.namelist())
+                self.assertEqual(zf.read("afile.txt").decode(), "not a directory")
 
     def test_zip_and_tarball_have_same_file_set(self) -> None:
         """Both archive types should contain the same set of files."""
@@ -235,7 +258,7 @@ class TestPackage(unittest.TestCase):
             src = Path(tmp) / "src"
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "match")
+            result = package([src], dest, "match")
 
             tar_path = [p for p in result if p.name.endswith(".tar.gz")][0]
             zip_path = [p for p in result if p.name.endswith(".zip")][0]
@@ -254,7 +277,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             fmts = (ArchiveFormat.ZIP, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_GZ)
-            result = package(src, dest, "order", formats=fmts)
+            result = package([src], dest, "order", formats=fmts)
             self.assertEqual(result[0].name, "order.zip")
             self.assertEqual(result[1].name, "order.tar.bz2")
             self.assertEqual(result[2].name, "order.tar.gz")
@@ -266,7 +289,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "bad/name")
+                package([src], dest, "bad/name")
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_name_with_backslash_exits(self) -> None:
@@ -276,7 +299,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "bad\\name")
+                package([src], dest, "bad\\name")
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_name_with_parent_traversal_exits(self) -> None:
@@ -286,7 +309,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "../evil")
+                package([src], dest, "../evil")
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_empty_name_exits(self) -> None:
@@ -296,7 +319,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "")
+                package([src], dest, "")
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_whitespace_only_name_exits(self) -> None:
@@ -306,7 +329,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "   ")
+                package([src], dest, "   ")
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_symlinks_excluded_from_archives(self) -> None:
@@ -326,7 +349,7 @@ class TestPackage(unittest.TestCase):
                 self.skipTest("Symlinks not supported on this platform")
 
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "test")
+            result = package([src], dest, "test")
 
             # Check that symlinks are not included in either archive
             tar_path = [p for p in result if p.name.endswith(".tar.gz")][0]
@@ -347,7 +370,7 @@ class TestPackage(unittest.TestCase):
             dest = Path(tmp) / "dist"
             # Use a string instead of ArchiveFormat enum
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "test", formats=("invalid_format",))  # type: ignore
+                package([src], dest, "test", formats=("invalid_format",))  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_invalid_format_mixed_tuple_exits(self) -> None:
@@ -358,7 +381,7 @@ class TestPackage(unittest.TestCase):
             dest = Path(tmp) / "dist"
             # Mix valid ArchiveFormat with invalid type
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "test", formats=(ArchiveFormat.ZIP, "bad_format"))  # type: ignore
+                package([src], dest, "test", formats=(ArchiveFormat.ZIP, "bad_format"))  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_symlinked_directory_not_traversed(self) -> None:
@@ -388,7 +411,7 @@ class TestPackage(unittest.TestCase):
                 self.skipTest("Symlinks not supported on this platform")
 
             dest = Path(tmp) / "dist"
-            result = package(src, dest, "test")
+            result = package([src], dest, "test")
 
             # Verify external files are NOT included in either archive format
             tar_path = [p for p in result if p.name.endswith(".tar.gz")][0]
@@ -410,6 +433,32 @@ class TestPackage(unittest.TestCase):
                 self.assertNotIn("evil_link/", zip_names)
                 self.assertNotIn("evil_link", zip_names)
 
+    def test_multi_source_directories_merged(self) -> None:
+        """package() merges multiple source directories into a single archive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src_a = Path(tmp) / "a"
+            src_a.mkdir()
+            (src_a / "from_a.txt").write_bytes(b"alpha")
+
+            src_b = Path(tmp) / "b"
+            src_b.mkdir()
+            (src_b / "from_b.txt").write_bytes(b"beta")
+
+            dest = Path(tmp) / "dist"
+            result = package([src_a, src_b], dest, "merged")
+
+            tar_path = next(p for p in result if p.name.endswith(".tar.gz"))
+            zip_path = next(p for p in result if p.name.endswith(".zip"))
+
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tar_files = {n for n in tf.getnames() if not tf.getmember(n).isdir()}
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zip_files = set(zf.namelist())
+
+            for names in (tar_files, zip_files):
+                self.assertIn("from_a.txt", names)
+                self.assertIn("from_b.txt", names)
+
     def test_formats_none_exits(self) -> None:
         """package() with None formats parameter exits with error."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -417,7 +466,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "test", formats=None)  # type: ignore
+                package([src], dest, "test", formats=None)  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_formats_string_exits(self) -> None:
@@ -427,7 +476,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "test", formats="invalid")  # type: ignore
+                package([src], dest, "test", formats="invalid")  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
     def test_formats_non_iterable_exits(self) -> None:
@@ -437,7 +486,7 @@ class TestPackage(unittest.TestCase):
             _make_source_tree(src)
             dest = Path(tmp) / "dist"
             with self.assertRaises(SystemExit) as ctx:
-                package(src, dest, "test", formats=42)  # type: ignore
+                package([src], dest, "test", formats=42)  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
 
