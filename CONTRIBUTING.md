@@ -24,7 +24,6 @@ The default branch is **`dev`** — all feature work targets `dev`.
 | `uv run tasks.py format`   | Fix formatting (black)               |
 | `uv run tasks.py typecheck` | Strict type checking (pyright)      |
 | `uv run tasks.py test`     | Run test suite (pytest)              |
-| `uv run tasks.py ci`       | Run CI locally via `gh act`          |
 | `uv run tasks.py clean`    | Remove caches and build artifacts    |
 | `uv run tasks.py release`  | Bump, validate, commit, tag, and push a release |
 
@@ -38,17 +37,6 @@ All code must pass before merging:
 - **Tests** — `pytest`. Functional tests require the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641`
   Docker image.
 - **Docstrings** — all public functions must have docstrings.
-
-### Running CI Locally
-
-```bash
-uv run tasks.py ci            # run all CI jobs (lint + test)
-uv run tasks.py ci lint       # lint & type check only
-uv run tasks.py ci test       # tests only
-```
-
-Requires Docker with the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image available
-locally, plus the `gh act` extension (`gh extension install nektos/gh-act`).
 
 ## Cutting a Release
 
