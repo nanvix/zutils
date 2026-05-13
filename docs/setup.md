@@ -76,9 +76,7 @@ zutils/
 
 ## IDE Configuration
 
-The project uses `pyright` in strict mode. Configuration lives in both
-`pyrightconfig.json` (root, takes precedence) and `[tool.pyright]` in
-`pyproject.toml` — the two are kept in sync:
+The project uses `pyright` in strict mode. Configuration lives in `pyrightconfig.json` 
 
 ```toml
 [tool.pyright]
