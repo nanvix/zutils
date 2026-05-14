@@ -53,9 +53,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
 
       - name: Install project and dev dependencies
         run: uv sync --python 3.12
