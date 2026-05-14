@@ -12,7 +12,7 @@ The entrypoint for the zutils build system. Contains the following key files:
 
 | File        | Staged? | Generated? | What it does                                                                                                       |
 | ----------- | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| nanivx.toml | ✅      | ❌         | Hosts the dependencies and valid toolchains for this build. The manifest, similar to Cargo.toml or pyproject.toml. |
+| nanvix.toml | ✅      | ❌         | Hosts the dependencies and valid toolchains for this build. The manifest, similar to Cargo.toml or pyproject.toml. |
 | z.py        | ✅      | ❌         | Entrypoint for the zutils library. Hosts an implementation of the `ZScript` class in Python.                       |
 | nanvix.lock | ❌      | ✅         | Locks dependency versions. Generated at CI time.                                                                   |
 | env.json    | ❌      | ✅         | Local build settings Generated during setup.                                                                       |
@@ -31,10 +31,10 @@ The buildroot contains everything that is needed to build the dependency. It sho
 
 ### .nanvix/sysroot/
 
-The sysroot contains everything that nanvix needs to run. It should _not_ include build dependencies. Currently this is extracted directly from github releases, or copied over from a local directory using the `--with-nanvix` flag at setup time.
+The sysroot contains everything that nanvix needs to run. It should _not_ include build dependencies. Currently this is extracted directly from GitHub releases, or copied over from a local directory using the `--with-nanvix` flag at setup time.
 
 ```
-.nanivx/sysroot/
+.nanvix/sysroot/
 |-- bin/
 |---- nanvixd.elf/exe              # nanvix runtime. Runs on host.
 |---- kernel.elf                   # nanvix microkernel. Runs in nanvix.
@@ -54,13 +54,13 @@ The sysroot contains everything that nanvix needs to run. It should _not_ includ
 
 Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle stages call out to the zutils library, with bootstrapping being the only exception. Additionally, many lifecycle stages can be overridden. Some are _required_ overrides 🟡, while some are _optional_ overrides 🟢. Those which are marked as optional overrides have default functionality. Typically this is called in addition to the extra functionality which the project may need. Those marked as required overrides have _no_ default behavior and must be overridden to do anything at all.
 
-| Stage     | Example call                                       | Override? | What it does                                                                                                                                                                   |
-| --------- | -------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Bootstrap | `./z`                                              | 🔴        | Bootstraps the nanvix*zutil virtual environment. Does \_not* depend on `ZScript`.                                                                                              |
-| Setup     | `./z setup --with-docker nanvix/toolchain:minimal` | 🟢        | Sets up the build environment. By default, this will download the correct nanvix toolchain and build dependencies to `sysroot` and `buildroot`.                                |
-| Build     | `./z build`                                        | 🟡        | Builds the project. Should create ramfs images used for testing in addition to the final build artefacts. Build always happens in Docker, using the specified toolchain image. |
-| Test      | `./z test`                                         | 🟡        | Runs project-specific test suites. Should _not_ create build artefacts.                                                                                                        |
-| Release   | `./z release`                                      | 🟡        | Packages build artefacts into tarballs and zip files for distribution.                                                                                                         |
+| Stage     | Example call                                       | Override? | What it does                                                                                                                                                                                           |
+| --------- | -------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bootstrap | `./z`                                              | 🔴        | Bootstraps the nanvix*zutil virtual environment. Does \_not* depend on `ZScript`.                                                                                                                      |
+| Setup     | `./z setup --with-docker nanvix/toolchain:minimal` | 🟢        | Sets up the build environment. By default, this downloads the runtime sysroot to `sysroot` and build-time dependencies to `buildroot`; `--with-docker` persists the Docker image for later commands. |
+| Build     | `./z build`                                        | 🟡        | Builds the project. Should create ramfs images used for testing in addition to the final build artefacts. Build always happens in Docker, using the specified toolchain image.                         |
+| Test      | `./z test`                                         | 🟡        | Runs project-specific test suites. Should _not_ create build artefacts.                                                                                                                                |
+| Release   | `./z release`                                      | 🟡        | Packages build artefacts into tarballs and zip files for distribution.                                                                                                                                 |
 | Benchmark | `./z benchmark`                                    | 🟡        | Runs benchmarks.                                                                                                                                                               |
 | Clean     | `./z clean`                                        | 🟡        | Cleans up build files.                                                                                                                                                         |
 | Distclean | `./z distclean`                                    | 🟢        | Removes all transient nanvix artefacts. Does _not_ run clean.                                                                                                                  |
@@ -78,7 +78,7 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 
 ## Environment variables
 
-In addition to flags, which modify behaviors, certain operational values can be overriden at runtime.
+In addition to flags, which modify behaviors, certain operational values can be overridden at runtime.
 
 | Variable                 | Default                    | What it does                                                                       |
 | ------------------------ | -------------------------- | ---------------------------------------------------------------------------------- |
@@ -86,10 +86,10 @@ In addition to flags, which modify behaviors, certain operational values can be 
 | `NANVIX_MACHINE`         | `microvm`                  | Sets the target virtual machine.                                                   |
 | `NANVIX_DEPLOYMENT_MODE` | `standalone`               | Sets the deployment mode. Can be one of standalone, single-process, multi-process. |
 | `NANVIX_MEMORY_SIZE`     | `256mb`                    | Sets nanvix's allocated memory. Can be one of 128mb, 256mb.                        |
-| ~~NANVIX_SYSROOT~~       | ~~.nanvix/sysroot~~        | ~~Sets the sysroot path.~~                                                         |
-| `NANVIX_TOOLCHAIN`       | `/opt/toolchain`           | Path to the cross-compilation toolchain.                                           |
-| `NANVIX_DOCKER_IMAGE`    | (reads from `config.json`) | Overrides the docker image used for builds.                                        |
-| `GH_TOKEN`               | (none)                     | Used to mitigate API usage limits.                                                 |
+| ~~NANVIX_SYSROOT~~       | ~~.nanvix/sysroot~~             | ~~Sets the sysroot path.~~                                                         |
+| `NANVIX_TOOLCHAIN`       | `/opt/toolchain`                | Path to the cross-compilation toolchain.                                           |
+| `NANVIX_DOCKER_IMAGE`    | (reads from `.nanvix/env.json`) | Overrides the docker image used for builds.                                        |
+| `GH_TOKEN`               | (none)                          | Used to mitigate API usage limits.                                                 |
 
 (Note: `NANVIX_SYSROOT` currently being removed.)
 (Note: `NANVIX_TOOLCHAIN` in practice is never overwhelmed. Candidate for removal.)
@@ -97,9 +97,9 @@ In addition to flags, which modify behaviors, certain operational values can be 
 
 ## CI and Distribution
 
-Nanvix artefacts, meaning the OS itself alongside all ported libraries and binaries, are hosted on GitHub. Docker containers may be created for toolchains as well, hosted on ghcr.io. Example toolchains are `nanvix/toolchain:latest-minimal`, `nanvix/toolchain-gcc`, `nanvix/toolchain-python`.
+Nanvix artefacts, meaning the OS itself alongside all ported libraries and binaries, are hosted on GitHub. Docker containers may be created for toolchains as well, hosted on ghcr.io. Example toolchains are `ghcr.io/nanvix/toolchain:latest-minimal`, `ghcr.io/nanvix/toolchain-gcc:latest`, `ghcr.io/nanvix/toolchain-python:latest`.
 
-The primary CI mechanism is stored at `.github/workflows/nanvix-ci.yml`. This is a thin wrapper around the real workflow, which are sourced from the [nanivx/workflows](https://github.com/nanvix/workflows) repository. This way the full workflow action can be shared between callers with minimal boilerplate. The workflow formats, lints, builds, tests, and may trigger a release if needed. This is a typical CI workflow, just shared across repositories.
+The primary CI mechanism is stored at `.github/workflows/nanvix-ci.yml`. This is a thin wrapper around the real workflow, which are sourced from the [nanvix/workflows](https://github.com/nanvix/workflows) repository. This way the full workflow action can be shared between callers with minimal boilerplate. The workflow formats, lints, builds, tests, and may trigger a release if needed. This is a typical CI workflow, just shared across repositories.
 
 (Note: Currently the input duplicates fields from `nanvix.toml`. We should rely on the `nanvix.toml` as the single source of truth if possible.)
 
