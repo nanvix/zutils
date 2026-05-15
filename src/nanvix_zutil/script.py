@@ -807,9 +807,9 @@ class ZScript:
         # ------------------------------------------------------------------
         # Resolve Docker image from CLI flags or persisted config.
         #
-        # setup requires --with-docker IMAGE explicitly.  build, release,
-        # and clean load the persisted image from .nanvix/env.json (set
-        # during setup).  If no persisted image exists the command fails.
+        # setup requires --with-docker IMAGE explicitly.  build and release
+        # load the persisted image from .nanvix/env.json (set during setup).
+        # If no persisted image exists the command fails.
         # test and benchmark run natively on the host.
         # ------------------------------------------------------------------
         docker_image: str | None = None
@@ -817,7 +817,7 @@ class ZScript:
 
         #: Subcommands that always run inside Docker.
         _DOCKER_COMMANDS: frozenset[str | None] = frozenset(
-            {"setup", "build", "release", "clean"}
+            {"setup", "build", "release"}
         )
 
         # Subcommand-level flag (only present for setup — now required).
@@ -825,7 +825,7 @@ class ZScript:
         if isinstance(with_docker_val, str):
             docker_image = with_docker_val
 
-        # For build/release/clean, load persisted image.
+        # For build/release, load persisted image.
         #
         # Exception: on Windows, setup downloads host-native binaries
         # via the GitHub API and does not invoke Docker.  Skip Docker

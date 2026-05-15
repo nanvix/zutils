@@ -912,7 +912,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
 
 
 class TestZScriptAutoDocker(unittest.TestCase):
-    """Docker is always enabled for setup/build/release/clean (hard fail)."""
+    """Docker is always enabled for setup/build/release (hard fail)."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -984,6 +984,29 @@ class TestZScriptAutoDocker(unittest.TestCase):
             BuildScript.main(repo_root=Path(self._tmpdir.name))
 
         self.assertTrue(docker_configured)
+
+    def test_clean_does_not_require_docker_image(self) -> None:
+        """clean runs without Docker image configuration."""
+
+        class CleanScript(ZScript):
+            def clean(self) -> None:
+                pass
+
+        cleaned = False
+
+        def _fake_clean(self_inner: ZScript) -> None:
+            nonlocal cleaned
+            cleaned = True
+            self.assertIsNone(self_inner.docker)
+
+        with (
+            patch("sys.argv", ["z.py", "clean"]),
+            patch.object(CleanScript, "clean", _fake_clean),
+            patch("nanvix_zutil.script.log"),
+        ):
+            CleanScript.main(repo_root=Path(self._tmpdir.name))
+
+        self.assertTrue(cleaned)
 
 
 class TestZScriptCleanWindows(unittest.TestCase):
