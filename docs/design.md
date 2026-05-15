@@ -1,10 +1,12 @@
-# nanvix_zutil Design Contract
+# nanvix_zutil Design Specification
 
 ## Overview
 
-Zutils is the primary build tool for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem. This file represents a finalized design. The facts may not align with this document, but this document should be considered the end-goal. 
+Zutils is the primary build tool for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem. This file represents a finalized design. The facts may not align with this document, but this document should be considered the end-goal.
 
-Zutils is conceptually split between two items: A python library which downstreams must implement, and a shared CLI surface. We'll discuss them both in detail below.
+Zutils is conceptually split between two items: A python 3.12+ library which downstreams must implement, and a shared CLI surface.
+
+Key features of the nanvix_zutil library include Docker-based cross compilation, dependency resolution, and CLI generation.
 
 ## Consumers: Key files and directories
 
@@ -95,19 +97,19 @@ Host-level binaries, such as `nanvixd`, `mkramfs`, and `mkimage` are _not_ inclu
 
 Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle stages call out to the zutils library, with those marked 'standalone' being executable without a `z.py` file present. Many lifecycle stages must be manually implemented to do anything at all.
 
-| Stage     | Example call                                       | Standalone? | Overridable? | What it does                                                                     |
-| --------- | -------------------------------------------------- | ----------- | ------------ | -------------------------------------------------------------------------------- |
-| Bootstrap | `./z`                                              | ⭐          | ❌           | Bootstraps the nanvix_zutil virtual environment. Does _not_ depend on `ZScript`. |
-| Setup     | `./z setup --with-docker nanvix/toolchain:latest-minimal` | ❌          | ❌           | See below.                                                                       |
-| Build     | `./z build`                                        | ❌          | ✅           | See below.                                                                       |
-| Test      | `./z test`                                         | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts.          |
-| Release   | `./z release`                                      | ❌          | ❌           | Packages build artefacts into tarballs and zip files for distribution.           |
-| Benchmark | `./z benchmark`                                    | ❌          | ✅           | Runs benchmarks.                                                                 |
-| Clean     | `./z clean`                                        | ❌          | ✅           | Cleans up build files.                                                           |
-| Distclean | `./z distclean`                                    | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.            |
-| Format    | `./z format`                                       | ✅          | ❌           | Formats python files in `.nanvix` with black.                                    |
-| Lint      | `./z lint`                                         | ✅          | ❌           | Lints python files in `.nanvix` with pyright.                                    |
-| Info      | `./z info`                                         | ✅          | ❌           | Standalone command that queries GitHub for the relevant release files.           |
+| Stage     | Example call                                              | Standalone? | Overridable? | What it does                                                            |
+| --------- | --------------------------------------------------------- | ----------- | ------------ | ----------------------------------------------------------------------- |
+| Bootstrap | `./z`                                                     | ⭐          | ❌           | Bootstraps the nanvix_zutil virtual environment.                        |
+| Setup     | `./z setup --with-docker nanvix/toolchain:latest-minimal` | ❌          | ❌           | See below.                                                              |
+| Build     | `./z build`                                               | ❌          | ✅           | See below.                                                              |
+| Test      | `./z test`                                                | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts. |
+| Release   | `./z release`                                             | ❌          | ❌           | Packages build artefacts into tarballs and zip files for distribution.  |
+| Benchmark | `./z benchmark`                                           | ❌          | ✅           | Runs benchmarks.                                                        |
+| Clean     | `./z clean`                                               | ❌          | ✅           | Cleans up build files.                                                  |
+| Distclean | `./z distclean`                                           | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.   |
+| Format    | `./z format`                                              | ✅          | ❌           | Formats python files in `.nanvix` with black.                           |
+| Lint      | `./z lint`                                                | ✅          | ❌           | Lints python files in `.nanvix` with pyright.                           |
+| Info      | `./z info`                                                | ✅          | ❌           | Standalone command that queries GitHub for the relevant release files.  |
 
 #### Bootstrap
 
@@ -134,6 +136,25 @@ Sets up the build environment. By default, this will download the correct nanvix
 
 Builds the project. Should create ramfs images used for testing in addition to the final build artefacts. Build always happens in Docker, using the toolchain image specified at setup time.
 
+### CLI Verb Generation
+
+Certain lifecycle stages will only be available if the implementor class overrides them.
+
+| Verb      | Requires override |
+| --------- | ----------------- |
+| setup     | ❌                |
+| distclean | ❌                |
+| lint      | ❌                |
+| format    | ❌                |
+| build     | ✅                |
+| test      | ✅                |
+| benchmark | ✅                |
+| release   | ✅                |
+| clean     | ✅                |
+
+Automatically available verbs are listed in the `AUTO_HOOKS` list, while opt-in
+verbs are listed in the `CONSUMER_HOOKS` array.
+
 ### Environment variables
 
 In addition to flags, which modify behaviors, certain operational values can be overridden at runtime. Environment variables take precedence over `.nanvix/env.json`. If values are missing from that file, they are filled from hardcoded defaults.
@@ -145,6 +166,30 @@ In addition to flags, which modify behaviors, certain operational values can be 
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Sets the deployment mode. Can be one of standalone, single-process, multi-process. |
 | `NANVIX_MEMORY_SIZE`     | `256mb`      | Sets nanvix's allocated memory. Can be one of 128mb, 256mb.                        |
 | `GH_TOKEN`               | (none)       | Used to mitigate API usage limits.                                                 |
+
+### Exit Codes
+
+| Code | Constant              | Meaning                            |
+| ---- | --------------------- | ---------------------------------- |
+| 0    | `EXIT_SUCCESS`        | Operation completed successfully   |
+| 1    | `EXIT_GENERAL_ERROR`  | Unspecified error                  |
+| 2    | `EXIT_INVALID_ARGS`   | Invalid command-line arguments     |
+| 3    | `EXIT_MISSING_DEP`    | Required dependency missing        |
+| 4    | `EXIT_NETWORK_ERROR`  | Network operation failed           |
+| 5    | `EXIT_BUILD_FAILURE`  | Build step failed                  |
+| 6    | `EXIT_TEST_FAILURE`   | Tests failed                       |
+| 7    | `EXIT_DEGRADED_SETUP` | Setup completed with fallback deps |
+
+### Container Paths
+
+The Docker build implementation expects certain paths. They are mounted as specifed below.
+
+| Constant                   | Path             |
+| -------------------------- | ---------------- |
+| `WORKSPACE_CONTAINER_PATH` | `/mnt/workspace` |
+| `SYSROOT_CONTAINER_PATH`   | `/mnt/sysroot`   |
+| `BUILDROOT_CONTAINER_PATH` | `/mnt/buildroot` |
+| `TOOLCHAIN_CONTAINER_PATH` | `/opt/nanvix`    |
 
 ## CI and Distribution
 
