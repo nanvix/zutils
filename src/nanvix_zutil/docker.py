@@ -19,8 +19,6 @@ from __future__ import annotations
 import dataclasses
 import os
 import shlex
-import shutil
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -366,38 +364,3 @@ class DockerConfig:
         docker_cmd.append(self.image)
         docker_cmd += ["sh", "-c", shell_script]
         return docker_cmd
-
-
-# ---------------------------------------------------------------------------
-# Availability helpers
-# ---------------------------------------------------------------------------
-
-
-def docker_available() -> bool:
-    """Return ``True`` if the Docker CLI is present on ``PATH``.
-
-    Returns:
-        ``True`` when the ``docker`` executable can be found, ``False``
-        otherwise.
-    """
-    return shutil.which("docker") is not None
-
-
-def image_exists(image: str) -> bool:
-    """Return ``True`` if *image* is available in the local Docker image cache.
-
-    Args:
-        image: Docker image reference (e.g.
-            ``"ghcr.io/nanvix/toolchain-gcc:sha-34a3641"``).
-
-    Returns:
-        ``True`` when the image is present locally, ``False`` otherwise or
-        when Docker is unavailable.
-    """
-    if not docker_available():
-        return False
-    result = subprocess.run(
-        ["docker", "image", "inspect", image],
-        capture_output=True,
-    )
-    return result.returncode == 0

@@ -71,6 +71,9 @@ class TestIntegrationLifecycle(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
+        p = patch.object(ZScript, "_check_docker", return_value=None)
+        p.start()
+        self.addCleanup(p.stop)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
@@ -110,8 +113,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
             patch("sys.argv", argv),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
         ):
             _MockConsumer.main()
 
@@ -157,11 +158,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
             '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
         )
 
-        with (
-            patch("sys.argv", [fake_script, "--json", "build"]),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
-        ):
+        with (patch("sys.argv", [fake_script, "--json", "build"]),):
             _MockConsumer.main()
 
         # After main(), log mode was set to True. Verify it produces JSON output.
@@ -233,8 +230,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
             patch("sys.argv", [fake_script, "build"]),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
         ):
             _MockConsumer.main()
 

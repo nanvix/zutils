@@ -22,8 +22,6 @@ Public re-exports:
 - :func:`~nanvix_zutil.resolver.is_stale` — check lockfile staleness
 - :class:`~nanvix_zutil.docker.DockerConfig` — Docker run configuration
 - :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
-- :func:`~nanvix_zutil.docker.docker_available` — check Docker CLI presence
-- :func:`~nanvix_zutil.docker.image_exists` — check local image availability
 - :class:`~nanvix_zutil.info.NanvixInfo` — resolved Nanvix release information
 - :func:`~nanvix_zutil.info.get_nanvix_info` — query Nanvix release info
 - :func:`~nanvix_zutil.github.resolve_release` — resolve a release by version specifier
@@ -68,8 +66,6 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
-    docker_available,
-    image_exists,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
@@ -136,11 +132,9 @@ __all__ = [
     "Sysroot",
     "ZScript",
     "is_windows",
-    "docker_available",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
     "get_nanvix_info",
-    "image_exists",
     "is_stale",
     "load_manifest",
     "package",
