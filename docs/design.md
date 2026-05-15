@@ -1,274 +1,117 @@
-# nanvix_zutil — Design & Architecture
+# nanvix_zutil Design Contract
 
 ## Overview
 
-`nanvix_zutil` is a Python 3.12+ library that provides unified build
-orchestration for the Nanvix ecosystem. Consumer repositories (e.g.
-`nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a
-`.nanvix/z.py` file and invoke it via bootstrap wrappers (`z`, `z.sh`,
-`z.ps1`) at the repo root. The library handles sysroot and dependency
-management, Docker-based cross-compilation, lockfile resolution,
-and structured logging — so consumers only implement
-the lifecycle hooks they need.
+Zutils is the primary build tool for the [Nanvix](https://github.com/nanvix/nanvix) ecosystem. This file represents a finalized design. The facts may not align with this document, but this document should be considered the end-goal. 
 
-## Module Dependency Graphs
+Zutils is conceptually split between two items: A python library which downstreams must implement, and a shared CLI surface. We'll discuss them both in detail below.
 
-### CLI Entry Point
+## Consumers: Key files and directories
+
+Zutils expects a certain file layout in order to work. The layout is fairly minimal, and many of the files are automatically generated.
+
+Consumers follow this template.
 
 ```
-__main__.py            ← nanvix-zutil CLI entry point
-  ├── script.py        ← ZScript base class, CLI dispatch, lifecycle orchestration
-  │     ├── cli.py           ← argparse parser factory, subcommand registration
-  │     ├── config.py        ← .nanvix/env.json persistence, env var overrides
-  │     ├── buildroot.py     ← Buildroot + Dependency (build-time deps)
-  │     ├── sysroot.py       ← Sysroot download/extraction/verification
-  │     ├── github.py        ← GitHub release API with retry + GH_TOKEN
-  │     ├── lockfile.py      ← Lockfile dataclasses, TOML read/write
-  │     ├── resolver.py      ← BFS dependency resolution, cycle detection
-  │     ├── manifest.py      ← nanvix.toml parser (metadata + dependencies)
-  │     ├── utils.py         ← Shared utilities (semver regex; used by github.py, manifest.py, info.py)
-  │     ├── docker.py        ← Docker integration (per-command wrapping, mounts)
-  │     ├── log.py           ← Colored terminal output, --json mode, fatal()
-  │     └── exitcodes.py     ← Deterministic exit code constants (0–7)
-  │
-  ├── info.py          ← nanvix-info CLI (query Nanvix release metadata)
-  └── resolve_cmd.py   ← nanvix-zutil resolve CLI (emit resolved metadata)
+nanvix/<project>/
+├── z              # Bash bootstrap
+├── z.sh           # Bash bootstrap (alternative)
+├── z.ps1          # PowerShell bootstrap
+└── .nanvix/
+    ├── z.py       # ZScript subclass implementing hooks
+    ├── nanvix.toml # Declarative dependencies
+    ├── env.json   # Persistent config (generated)
+    ├── venv/      # Auto-created virtualenv
+    ├── dist/      # Bundled release artifacts
+    ├── sysroot/   # Downloaded runtime artifacts
+    └── buildroot/ # Downloaded build-time deps
 ```
 
-### Library API
+`nanvix_zutil` creates no files outside `.nanvix/` in consumer repos.
+All artifacts live under `.nanvix/`.
+
+### bootstrappers
+
+At the root level are three scripts. They are designed to bootstrap the zutils system. They set up the python environment for local development by installing a virtual environment at `.nanvix/venv`.
+
+| Script  | Purpose                                                                                           |
+| ------- | ------------------------------------------------------------------------------------------------- |
+| `z`     | Plain shell script, invoked directly on any system. Routes to the correct system-specific script. |
+| `z.sh`  | Bash script. Bootstraps zutils on Linux.                                                          |
+| `z.ps1` | Pwsh script. Bootstraps zutils on Windows.                                                        |
+
+`z.sh` and `z.ps1` are designed to be functionally equivalent, essentially translations of the setup script to different shells. Each script is implemented as a jinja/handlebars-style template in the zutils repo. When an implementor begins porting a downstream, there's currently no way for that to be filled in with the correct nanvix-zutils version, so they have to fill that in themselves.
+
+### .nanvix
+
+The entrypoint for the zutils build system. Contains the following key files:
+
+| File         | Staged? | What it does                                                                                                       |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| nanvix.toml  | ✅      | Hosts the dependencies and valid toolchains for this build. The manifest, similar to Cargo.toml or pyproject.toml. |
+| z.py         | ✅      | Entrypoint for the zutils library. Hosts an implementation of the `ZScript` class in Python.                       |
+| NANVIX.md    | ✅      | (Optional) Information about the port.                                                                             |
+| .gitignore   | ✅      | Ignores transient items - all items listed as "not staged."                                                        |
+| env.json     | ❌      | Local build settings. Generated during setup.                                                                      |
+| (lint files) | ❌      | Generated by setup. Used during development.                                                                       |
+| dist/        | ❌      | Holds release artefacts.                                                                                           |
+| sysroot/     | ❌      | See below.                                                                                                         |
+| buildroot/   | ❌      | See below.                                                                                                         |
+
+If the file is not staged, then it a transient, generated file.
+
+#### Version bumps
+
+Nanvix-zutils' release cycle automatically bumps downstream dependencies to the latest versions. The touched files are as follows:
+
+| Files                                            | Modification                               |
+| ------------------------------------------------ | ------------------------------------------ |
+| `.github/workflows/*.yml`, `.nanvix/nanvix.toml` | Bumps zutils version number.               |
+| `z`, `z.sh`, `z.ps1`, `.nanvix/.gitignore`       | Replaced wholesale with the new templates. |
+
+### Project-specific helpers
+
+Zutils can call out to any build system, such as make, Cargo, or a hatchling. In the end, zutils is just a python script which we use to extend the existing build system to support nanvix. These are typically staged, though the project may choose to generate scripts at build time if desired.
+
+### .nanvix/buildroot/
+
+The buildroot contains everything that is needed to build the dependency. It should _not_ include the nanvix runtime. Examples of what goes in this directory are files ending in .h, .a, .py. The exact contents of this directory are up to the implementor - whatever is needed to build the project.
+
+### .nanvix/sysroot/
+
+The sysroot contains everything that nanvix needs to run. It should _not_ include build dependencies. Currently this is extracted directly from github releases, or copied over from a local directory using the `--with-nanvix` flag at setup time.
 
 ```
-__init__.py            ← public library API (re-exports all public symbols)
-  ├── script.py        ← ZScript base class (subtree as above)
-  ├── release.py       ← Release artifact packaging (.tar.gz, .zip, etc.)
-  ├── info.py          ← NanvixInfo, get_nanvix_info (Nanvix release metadata)
-  └── configs/         ← Bundled canonical tool configs (pyrightconfig.json, .yamllint.yml, black.toml)
+.nanvix/sysroot/
+|-- bin/
+|---- kernel.elf                   # nanvix microkernel. Runs in nanvix.
 ```
 
-## Module Descriptions
+Host-level binaries, such as `nanvixd`, `mkramfs`, and `mkimage` are _not_ included in the sysroot.
 
-### `script.py` — ZScript
+## CLI
 
-The public-facing orchestrator. `ZScript` is the base class that all
-consumer build scripts subclass. It provides:
+### Lifecycle
 
-- **Lifecycle hooks**: `setup`, `distclean`, `build`, `test`,
-  `benchmark`, `release`, `clean`, `lock`, `lint`, `format`.
-  Auto-implemented hooks (`setup`, `distclean`, `lock`, `lint`, `format`,
-  `help`) are always available; consumer hooks only appear in the CLI
-  when the subclass overrides them. `lock --check` verifies the lockfile
-  is up to date without re-resolving.
-- **CLI dispatch**: `main()` parses arguments via `cli.py`, resolves
-  Docker configuration, and routes to the appropriate hook.
-- **Subprocess execution**: `run()` transparently wraps commands in
-  `docker run` when Docker mode is active.
-- **Path translation**: `translate_path()` maps host paths to container
-  paths when running inside Docker.
-- **Config sync**: Copies canonical tool configs (pyrightconfig.json,
-  .yamllint.yml, black.toml) into `.nanvix/` during setup.
+Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle stages call out to the zutils library, with those marked 'standalone' being executable without a `z.py` file present. Many lifecycle stages must be manually implemented to do anything at all.
 
-Consumers interact almost exclusively with `ZScript` and the types it
-exposes.
+| Stage     | Example call                                       | Standalone? | Overridable? | What it does                                                                     |
+| --------- | -------------------------------------------------- | ----------- | ------------ | -------------------------------------------------------------------------------- |
+| Bootstrap | `./z`                                              | ⭐          | ❌           | Bootstraps the nanvix_zutil virtual environment. Does _not_ depend on `ZScript`. |
+| Setup     | `./z setup --with-docker nanvix/toolchain:latest-minimal` | ❌          | ❌           | See below.                                                                       |
+| Build     | `./z build`                                        | ❌          | ✅           | See below.                                                                       |
+| Test      | `./z test`                                         | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts.          |
+| Release   | `./z release`                                      | ❌          | ❌           | Packages build artefacts into tarballs and zip files for distribution.           |
+| Benchmark | `./z benchmark`                                    | ❌          | ✅           | Runs benchmarks.                                                                 |
+| Clean     | `./z clean`                                        | ❌          | ✅           | Cleans up build files.                                                           |
+| Distclean | `./z distclean`                                    | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.            |
+| Format    | `./z format`                                       | ✅          | ❌           | Formats python files in `.nanvix` with black.                                    |
+| Lint      | `./z lint`                                         | ✅          | ❌           | Lints python files in `.nanvix` with pyright.                                    |
+| Info      | `./z info`                                         | ✅          | ❌           | Standalone command that queries GitHub for the relevant release files.           |
 
-### `cli.py` — Argument Parsing
+#### Bootstrap
 
-Internal module that builds the `argparse` parser for `ZScript.main()`.
-Registers subcommands dynamically based on which hooks the consumer
-overrides. Handles `--json`, `--version`, and the per-subcommand
-`--with-docker` flag.
-
-### `config.py` — Configuration
-
-Persistent key-value store backed by `.nanvix/env.json`. Three-tier
-precedence:
-
-1. **Environment variables** (highest)
-2. **Persisted `.nanvix/env.json`**
-3. **Built-in defaults** (lowest)
-
-Standard keys: `NANVIX_TARGET`, `NANVIX_MACHINE`,
-`NANVIX_DEPLOYMENT_MODE`, `NANVIX_MEMORY_SIZE`, `NANVIX_SYSROOT`,
-`NANVIX_TOOLCHAIN`, `NANVIX_DOCKER_IMAGE`, `GH_TOKEN`.
-
-### `docker.py` — Docker Integration
-
-Per-command Docker wrapping for cross-compilation. Docker mode is always
-enabled for `setup`, `build`, `release`, and `clean`. On `setup`, the
-`--with-docker IMAGE` flag requires consumers to provide the Docker
-image explicitly (e.g. `ghcr.io/nanvix/toolchain-gcc:sha-34a3641`). Key types:
-
-- **`DockerConfig`**: Image name, mounts, UID/GID, workdir, extra env
-  vars. Builds `docker run` command lines.
-- **`Mount`**: Host-to-container volume mount (path + readonly flag).
-- **Path translation**: Maps host paths to container paths via mount
-  table lookups.
-- **Windows support**: Translates Windows paths to Docker-compatible
-  MSYS-style paths (`C:\foo` → `/c/foo`). On Windows, a tar-copy
-  strategy is used instead of bind mounts for file I/O reliability.
-
-Container path constants:
-
-| Constant | Path |
-|---|---|
-| `WORKSPACE_CONTAINER_PATH` | `/mnt/workspace` |
-| `SYSROOT_CONTAINER_PATH` | `/mnt/sysroot` |
-| `BUILDROOT_CONTAINER_PATH` | `/mnt/buildroot` |
-| `TOOLCHAIN_CONTAINER_PATH` | `/opt/nanvix` |
-
-### `manifest.py` — Manifest Parser
-
-Parses `nanvix.toml`, the declarative manifest that declares package
-metadata and dependencies. Supports:
-
-- **Sysroot version**: semver string or `"latest"`.
-- **Dependency specifiers**: `version`, `tag`, `commitish`, or `id`.
-  Version refs are auto-suffixed with `-nanvix-{sysroot_version}`
-  unless the sysroot is `"latest"` (deferred to resolver).
-- **Environment overrides**: `NANVIX_VERSION` and
-  `NANVIX_VERSION_<NAME>` override manifest-declared versions.
-
-### `lockfile.py` — Lockfile
-
-Defines the `Lockfile` dataclass — a fully resolved dependency graph
-with pinned asset URLs. Provides TOML serialization (`write_lockfile`)
-and deserialization (`read_lockfile`). Also handles downloading shallow
-`nanvix.lock` from GitHub releases for transitive dependency discovery.
-
-Key types:
-
-- **`Lockfile`**: Metadata + list of `ResolvedPackage`.
-- **`ResolvedPackage`**: Package name, repo, ref, and list of
-  `ResolvedAsset`.
-- **`ResolvedAsset`**: File name + download URL.
-- **`LockfileMetadata`**: Generator version, manifest hash.
-
-### `resolver.py` — Dependency Resolver
-
-BFS-based dependency resolver that walks the dependency graph starting
-from the manifest's direct dependencies. Discovers transitive
-dependencies by downloading each dependency's `nanvix.lock` release
-asset. Features:
-
-- **Cycle detection**: Tracks visited packages to prevent infinite loops.
-- **Staleness check**: `is_stale()` compares the lockfile's manifest
-  hash against the current `nanvix.toml`.
-- **Version fallback**: For nanvix-suffixed deps, tries the exact
-  version first, then falls back to the best available release.
-- **Shallow mode**: `--shallow` resolves only direct dependencies.
-
-### `buildroot.py` — Build-Time Dependencies
-
-Manages the `.nanvix/buildroot` directory that collects headers and
-static libraries required by consumers. Key types:
-
-- **`Buildroot`**: Creates and populates the buildroot directory.
-  Downloads and extracts release archives, installs headers into
-  `include/` and libraries into `lib/`.
-- **`Dependency`**: Describes a single library — name, GitHub repo, ref
-  (version/tag/commitish/id), and optional scope.
-- **`Ref` / `RefKind`**: Typed version reference (version, tag,
-  commitish, or release ID).
-- **Version helpers**: `suffix_dep()`, `extract_nanvix_version()`,
-  `extract_nanvix_version_base()`, `parse_semver_tuple()` for
-  nanvix-specific version manipulation.
-
-### `sysroot.py` — Runtime Sysroot
-
-Downloads and verifies the Nanvix runtime sysroot from GitHub releases.
-The sysroot contains the kernel, POSIX library, linker script, and
-system binaries needed to run Nanvix applications. On Windows,
-additionally downloads host-native binaries (`nanvixd.exe`,
-`mkramfs.exe`, `kernel.elf`). Supports overlaying local build artifacts via
-`--with-nanvix PATH`.
-
-### `github.py` — GitHub API Client
-
-Downloads release assets from the GitHub API with:
-
-- **Automatic retry** with exponential back-off (up to 5 retries).
-- **`GH_TOKEN` authentication** to avoid rate limits.
-- **Version resolution**: `resolve_release()` finds a release by
-  semver, tag, commitish, or `"latest"`.
-- **Fallback resolution**: `resolve_release_with_fallback()` tries the
-  exact version, then falls back to the best available matching release.
-
-### `release.py` — Release Packaging
-
-Produces release archives from a source directory:
-
-- Supports `.tar.gz`, `.tar.bz2`, and `.zip` formats.
-- Consumer repos call `package()` from their `release()` hook.
-- Default formats are `.tar.gz` and `.zip`; `.tar.bz2` is available but must be opted into explicitly.
-
-### `log.py` — Structured Logging
-
-All output goes through this module. Two modes:
-
-- **Plain text**: Colored ANSI output (`info:`, `success:`, `warning:`,
-  `error:`, `note:`). `error()` and `fatal()` accept an optional `hint=`
-  argument that appends a hint line to their output. Enables Windows ANSI support
-  automatically.
-- **JSON mode** (`--json`): Each message is a single-line JSON object
-  with `level`, `message`, optional `code` and `hint` fields.
-
-`fatal()` logs an error and calls `sys.exit()` with the given exit code.
-
-### `exitcodes.py` — Exit Codes
-
-Deterministic exit codes shared across the ecosystem:
-
-| Code | Constant | Meaning |
-|---|---|---|
-| 0 | `EXIT_SUCCESS` | Operation completed successfully |
-| 1 | `EXIT_GENERAL_ERROR` | Unspecified error |
-| 2 | `EXIT_INVALID_ARGS` | Invalid command-line arguments |
-| 3 | `EXIT_MISSING_DEP` | Required dependency missing |
-| 4 | `EXIT_NETWORK_ERROR` | Network operation failed |
-| 5 | `EXIT_BUILD_FAILURE` | Build step failed |
-| 6 | `EXIT_TEST_FAILURE` | Tests failed |
-| 7 | `EXIT_DEGRADED_SETUP` | Setup completed with fallback deps |
-
-### `info.py` — nanvix-info CLI
-
-Standalone command that queries the GitHub Releases API for a Nanvix
-release and emits metadata (version, commit SHA, asset URLs) as
-`key=value` lines or JSON. Used in CI pipelines to resolve release
-information.
-
-### `resolve_cmd.py` — nanvix-zutil resolve CLI
-
-Resolves the `nanvix.toml` manifest and emits release metadata as
-`key=value` lines (for `$GITHUB_OUTPUT`) or JSON. Used in CI to
-determine release tags and versions.
-
-### `utils.py` — Shared Utilities
-
-Contains the compiled `SEMVER_RE` regex for strict semver matching
-(`MAJOR.MINOR.PATCH`), shared across `github.py`, `manifest.py`, and
-other modules.
-
-### `__main__.py` — CLI Entry Point
-
-The `nanvix-zutil` command entry point. Routes to three categories:
-
-1. **Consumer commands** (`setup`, `build`, `test`, etc.): Discovers
-   the consumer's `.nanvix/z.py`, imports its `ZScript` subclass, and
-   delegates to `ZScript.main()`.
-2. **Standalone commands** (`info`, `resolve`): Handled
-   directly without requiring a consumer script.
-3. **Help/version**: Prints usage information.
-
-### `__init__.py` — Public API
-
-Re-exports all public types and functions so consumers can write:
-
-```python
-from nanvix_zutil import ZScript, Config, Buildroot, log
-```
-
-## Lifecycle Flow
-
-### Bootstrap Chain
+Bootstraps the nanvix_zutil environment by installing a python venv.
 
 1. User runs `./z <command>` at a consumer repo root.
 2. The bootstrap wrapper (`z`/`z.sh`/`z.ps1`) finds Python >= 3.12,
@@ -279,86 +122,34 @@ from nanvix_zutil import ZScript, Config, Buildroot, log
 4. `main()` parses CLI args, configures Docker, and dispatches to the
    appropriate lifecycle hook.
 
-### Setup Phase
+#### Setup
 
-```
-setup
-  ├── Download sysroot from GitHub releases
-  ├── Download Windows host binaries (if on Windows)
-  ├── Overlay local nanvix artifacts (if --with-nanvix)
-  ├── Verify sysroot required files
-  ├── Auto-suffix VERSION deps with nanvix version
-  ├── For each dependency:
-  │     ├── Try local artifacts (if --with-nanvix)
-  │     ├── Resolve release (with version fallback)
-  │     └── Install into .nanvix/buildroot
-  ├── Persist config to .nanvix/env.json
-  ├── Persist Docker image to config
-  └── Sync canonical tool configs
-```
+Sets up the build environment. By default, this will download the correct nanvix distribution (sourced from `nanvix.toml`) and build dependencies to `sysroot` and `buildroot`. The particular nanvix distribution parameters (target, machine, deployment mode, and memory size) can be overridden by supplying environment variables (listed below). The settings created here are stored at `.nanvix/env.json`.
 
-### Build/Release Phase
+1. Download and verify nanvix artefacts (or source locally if `--with-nanvix`)
+2. Resolve and download dependencies against latest release matching the nanvix version.
+3. Persist configuration for `.nanvix/env.json`.
 
-```
-setup / build / release / clean   (Docker auto-enabled)
-  ├── Load persisted Docker image from config
-  ├── Configure DockerConfig with mounts
-  └── Dispatch to consumer hook
-        └── self.run("make", ...) → transparently wrapped in docker run
+#### Build
 
-test / benchmark                  (always run natively on host)
-```
+Builds the project. Should create ramfs images used for testing in addition to the final build artefacts. Build always happens in Docker, using the toolchain image specified at setup time.
 
-## Data Flow
+### Environment variables
 
-```
-nanvix.toml ──→ Manifest ──→ Resolver ──→ Lockfile ──→ nanvix.lock
-                   │                         │
-                   ▼                         ▼
-               Dependency ──→ GitHub API ──→ Buildroot
-                                             (headers + libs)
+In addition to flags, which modify behaviors, certain operational values can be overridden at runtime. Environment variables take precedence over `.nanvix/env.json`. If values are missing from that file, they are filled from hardcoded defaults.
 
-nanvix/nanvix releases ──→ Sysroot
-                           (kernel + binaries + libposix)
-```
+| Variable                 | Default      | What it does                                                                       |
+| ------------------------ | ------------ | ---------------------------------------------------------------------------------- |
+| `NANVIX_TARGET`          | `x86`        | Sets the target architecture.                                                      |
+| `NANVIX_MACHINE`         | `microvm`    | Sets the target virtual machine.                                                   |
+| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Sets the deployment mode. Can be one of standalone, single-process, multi-process. |
+| `NANVIX_MEMORY_SIZE`     | `256mb`      | Sets nanvix's allocated memory. Can be one of 128mb, 256mb.                        |
+| `GH_TOKEN`               | (none)       | Used to mitigate API usage limits.                                                 |
 
-## Confinement
+## CI and Distribution
 
-`nanvix_zutil` creates no files outside `.nanvix/` in consumer repos.
-All artifacts — sysroot, buildroot, venv, config, cache, and lockfile
-— live under `.nanvix/`.
+Nanvix artefacts, meaning the OS itself alongside all ported libraries and binaries, are hosted on GitHub. Docker containers may be created for toolchains as well, hosted on ghcr.io. Example toolchains are `nanvix/toolchain:latest-minimal`, `nanvix/toolchain-gcc`, `nanvix/toolchain-python`.
 
-## Consumer Pattern
+In addition, zutils releases trigger automated downstream pull requests to fully replace the bootstrap scripts. This usually just bumps the zutils version. The workflow for this is `nanvix-update-zutils.yml`.
 
-Every consumer repo follows this structure:
-
-```
-nanvix/<project>/
-├── z              # Bash bootstrap
-├── z.sh           # Bash bootstrap (alternative)
-├── z.ps1          # PowerShell bootstrap
-└── .nanvix/
-    ├── z.py       # ZScript subclass implementing hooks
-    ├── nanvix.toml # Declarative dependencies
-    ├── nanvix.lock # Pinned dependency graph (committed)
-    ├── env.json   # Persistent config (generated)
-    ├── venv/      # Auto-created virtualenv
-    ├── sysroot/   # Downloaded runtime artifacts
-    └── buildroot/ # Downloaded build-time deps
-```
-
-Minimal consumer script:
-
-```python
-from nanvix_zutil import ZScript
-
-class MyBuild(ZScript):
-    def build(self) -> None:
-        self.run("make", "-f", "Makefile.nanvix", "all")
-
-    def test(self) -> None:
-        self.run("make", "-f", "Makefile.nanvix", "test")
-
-if __name__ == "__main__":
-    MyBuild.main()
-```
+Downstream consumers of zutils are enumerated at [workflows/consumer-repos.json](https://github.com/nanvix/workflows/blob/main/consumer-repos.json).
