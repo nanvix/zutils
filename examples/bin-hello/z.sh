@@ -69,6 +69,9 @@ else
     BIN="nanvix-zutil"
     if [ "$ZUTIL_GLOBAL_VERSION" != "nanvix-zutil ${ZUTIL_VERSION}" ]; then
         echo "Warning: nanvix-zutil global install does not match expected version. Expected ${ZUTIL_VERSION}, found ${ZUTIL_GLOBAL_VERSION}." >&2
+        echo "Installing ${ZUTIL_VERSION} to venv and using that instead." >&2
+        bootstrap
+        BIN="$VENV_BIN"
     fi
 fi
 

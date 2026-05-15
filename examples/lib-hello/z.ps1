@@ -115,6 +115,12 @@ else {
     $bin = "nanvix-zutil"
     if ($zutilGlobalVersion -ne "nanvix-zutil ${zutilVersion}") {
         Write-Warning "nanvix-zutil global install does not match expected version. Expected ${zutilVersion}, found ${zutilGlobalVersion}."
+        Write-Warning "Installing ${zutilVersion} to venv and using that instead."
+        Bootstrap
+        if (-not (Test-Path $venvZutil)) {
+            throw "Bootstrap completed but $venvZutil not found."
+        }
+        $bin = $venvZutil
     }
 }
 
