@@ -346,21 +346,29 @@ class TestBinHelloTestOnly(unittest.TestCase):
 # ===================================================================
 
 
-@unittest.skipUnless(
-    (_LIB_HELLO / ".nanvix" / "env.json").exists()
-    and (_BIN_HELLO / ".nanvix" / "env.json").exists(),
-    "nothing to clean — setup did not run",
-)
 class TestExamplesCleanup(unittest.TestCase):
     """Clean both examples after lifecycle tests.
 
     Runs only when both examples have a ``.nanvix/env.json`` written by
-    a prior ``setup`` invocation.  This decouples the two pytest
-    invocations used in CI (``-k "not Cleanup"`` then ``-k Cleanup``):
-    if the first invocation skipped the lifecycle tests for any reason,
-    cleanup is skipped as well instead of failing with "no Docker image
-    configured".
+    a prior ``setup`` invocation and the current environment can still
+    execute the lifecycle. This decouples the two pytest invocations
+    used in CI (``-k "not Cleanup"`` then ``-k Cleanup``): if the first
+    invocation skipped the lifecycle tests for any reason, or Docker is
+    unavailable in the current run, cleanup is skipped as well instead
+    of failing with "no Docker image configured".
     """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not _CAN_LIFECYCLE:
+            raise unittest.SkipTest(
+                "nothing to clean — lifecycle is unavailable in this environment"
+            )
+        if not (
+            (_LIB_HELLO / ".nanvix" / "env.json").exists()
+            and (_BIN_HELLO / ".nanvix" / "env.json").exists()
+        ):
+            raise unittest.SkipTest("nothing to clean — setup did not run")
 
     def test_clean_lib_hello(self) -> None:
         r = _run_z(_LIB_HELLO, "clean")
