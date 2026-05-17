@@ -123,6 +123,20 @@ class ZScript:
         "bin/uservm.elf",
     )
 
+    SYSROOT_STANDALONE_FILES: tuple[str, ...] = (
+        "bin/mkimage.elf",
+        "bin/procd.elf",
+        "bin/memd.elf",
+        "bin/vfsd.elf",
+    )
+
+    SYSROOT_STANDALONE_FILES_WINDOWS: tuple[str, ...] = (
+        "bin/mkimage.exe",
+        "bin/procd.elf",
+        "bin/memd.elf",
+        "bin/vfsd.elf",
+    )
+
     #: Hooks that are auto-implemented in the base class and always
     #: available in the CLI, regardless of subclass overrides.
     AUTO_HOOKS: tuple[str, ...] = (
@@ -150,6 +164,8 @@ class ZScript:
         Uses Windows binary names (``nanvixd.exe``, ``mkramfs.exe``) on
         Windows; Linux names on other platforms.  Multi-process mode
         additionally requires ``linuxd.elf`` and ``uservm.elf``.
+        Standalone mode additionally requires ``mkimage``, ``procd.elf``,
+        ``memd.elf``, and ``vfsd.elf``.
         Subclasses can extend by overriding the class attributes or
         this method.
         """
@@ -159,6 +175,11 @@ class ZScript:
             files = list(self.SYSROOT_REQUIRED_FILES)
         if self.config.deployment_mode == "multi-process":
             files.extend(self.SYSROOT_MULTI_PROCESS_FILES)
+        if self.config.deployment_mode == "standalone":
+            if is_windows():
+                files.extend(self.SYSROOT_STANDALONE_FILES_WINDOWS)
+            else:
+                files.extend(self.SYSROOT_STANDALONE_FILES)
         return files
 
     def __init__(self, repo_root: Path) -> None:
@@ -641,6 +662,117 @@ class ZScript:
                 if p.is_file():
                     p.unlink()
                     log.info(f"Removed {name}")
+
+    # ------------------------------------------------------------------
+    # Image helpers
+    # ------------------------------------------------------------------
+
+    def make_initrd(
+        self,
+        app: str,
+        *,
+        app_args: list[str] | None = None,
+        procd_args: list[str] | None = None,
+        memd_args: list[str] | None = None,
+        vfsd_args: list[str] | None = None,
+        kernel_args: list[str] | None = None,
+        bin_dir: Path | None = None,
+    ) -> Path:
+        """Build a standalone initrd image for *app*.
+
+        Invokes ``mkimage`` from the sysroot ``bin/`` directory to produce
+        an image containing the system daemons (``procd``, ``memd``,
+        ``vfsd``) and the application binary.
+
+        Each program entry in the image has the format
+        ``<path>;<argv0> [arg1 arg2 ...]``.
+
+        Args:
+            app: A bare application binary filename (e.g. ``"my-app.elf"``).
+                Must include the extension and must not contain path
+                separators (``/`` or ``\\``).
+            app_args: Optional CLI arguments appended to the app's argv.
+            procd_args: Optional CLI arguments appended to ``procd``'s argv.
+            memd_args: Optional CLI arguments appended to ``memd``'s argv.
+            vfsd_args: Optional CLI arguments appended to ``vfsd``'s argv.
+            kernel_args: Optional arguments passed to the kernel via
+                ``-kernel-args``.
+            bin_dir: Directory containing the ELF binaries and
+                ``mkimage``.  Defaults to the sysroot ``bin/`` directory.
+
+        Returns:
+            Path to the generated ``.img`` file.
+
+        Raises:
+            SystemExit: If *app* contains path separators, the sysroot
+                is unavailable, or ``mkimage`` is missing.
+        """
+        # Validate that app is a bare filename — no directory components.
+        if "/" in app or "\\" in app:
+            log.fatal(
+                f"app must be a bare filename without path separators, got: {app!r}",
+                code=EXIT_MISSING_DEP,
+            )
+
+        if bin_dir is None:
+            if self.sysroot is not None:
+                bin_dir = self.sysroot.path / "bin"
+            else:
+                sysroot_str = self.config.get(CFG_SYSROOT)
+                if sysroot_str:
+                    bin_dir = Path(sysroot_str) / "bin"
+                else:
+                    log.fatal(
+                        "Sysroot not available; run setup first.",
+                        code=EXIT_MISSING_DEP,
+                    )
+
+        if is_windows():
+            mkimage = bin_dir / "mkimage.exe"
+        else:
+            mkimage = bin_dir / "mkimage.elf"
+
+        # Verify mkimage exists before attempting to run it.
+        if not mkimage.exists():
+            log.fatal(
+                f"mkimage not found at {mkimage}; run setup first.",
+                code=EXIT_MISSING_DEP,
+                hint="Ensure the sysroot contains mkimage by running ./z setup.",
+            )
+
+        app_stem = Path(app).stem
+        output = self.repo_root / f"{app_stem}.img"
+
+        def _escape(arg: str) -> str:
+            return arg.replace(";", "\\;")
+
+        def _entry(elf: str | Path, argv0: str, extra: list[str] | None) -> str:
+            parts = [_escape(argv0)] + [_escape(a) for a in (extra or [])]
+            argv = " ".join(parts)
+            return f"{_escape(str(elf))};{argv}"
+
+        cmd: list[str] = [
+            str(mkimage),
+            "-o",
+            str(output),
+        ]
+
+        if kernel_args:
+            escaped = [_escape(a) for a in kernel_args]
+            cmd.extend(["-kernel-args", " ".join(escaped)])
+
+        cmd.extend(
+            [
+                _entry(bin_dir / "procd.elf", "procd", procd_args),
+                _entry(bin_dir / "memd.elf", "memd", memd_args),
+                _entry(bin_dir / "vfsd.elf", "vfsd", vfsd_args),
+                _entry(self.repo_root / app, app_stem, app_args),
+            ]
+        )
+
+        self.run(*cmd, docker=False)
+
+        return output
 
     # ------------------------------------------------------------------
     # Subprocess helper

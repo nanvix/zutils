@@ -31,7 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB_HELLO = _REPO_ROOT / "examples" / "lib-hello"
 _BIN_HELLO = _REPO_ROOT / "examples" / "bin-hello"
 _DOCKER_IMAGE = "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"
-_NANVIX_VERSION = "0.12.410"
+_NANVIX_VERSION = "0.13.19"
 _TIMEOUT = 300
 
 

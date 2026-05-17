@@ -1,4 +1,4 @@
 [package]
 name = "lib-hello"
 version = "0.1.0"
-nanvix-version = "0.12.410"
+nanvix-version = "0.13.19"

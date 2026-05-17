@@ -6,7 +6,7 @@ dependencies.
 
 ## Structure
 
-```
+```text
 bin-hello/
 ├── z                # Bash bootstrap wrapper
 ├── z.ps1            # PowerShell bootstrap wrapper
@@ -22,6 +22,7 @@ bin-hello/
 ## Prerequisites
 
 One of:
+
 - **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
 - **Docker** with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image (pass via `./z setup --with-docker IMAGE`)
 
@@ -34,9 +35,16 @@ One of:
 ./z clean    # remove build artifacts
 ```
 
+For standalone deployment mode (produces an initrd image with system daemons):
+
+```bash
+NANVIX_DEPLOYMENT_MODE=standalone ./z setup
+NANVIX_DEPLOYMENT_MODE=standalone ./z build   # also produces hello.img
+```
+
 ## Dependency Chain
 
-```
+```text
 bin-hello
   └── lib-hello (libhello.a + hello.h)
 ```

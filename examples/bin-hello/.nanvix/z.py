@@ -110,6 +110,11 @@ class BinHello(ZScript):
             f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
         )
 
+        # For standalone deployment mode, produce an initrd image
+        # containing the system daemons and the application binary.
+        if self.config.deployment_mode == "standalone":
+            self.make_initrd("hello.elf")
+
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
 
@@ -202,7 +207,7 @@ class BinHello(ZScript):
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        for name in ("main.o", "hello.elf"):
+        for name in ("main.o", "hello.elf", "hello.img"):
             artifact = self.repo_root / name
             if artifact.exists():
                 artifact.unlink()
