@@ -1679,5 +1679,242 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
 
 
+class TestMakeInitrd(unittest.TestCase):
+    """ZScript.make_initrd() builds the correct mkimage command."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        # Set up a fake sysroot with a bin/ directory and mkimage stub.
+        sysroot_bin = repo_root / ".nanvix" / "sysroot" / "bin"
+        sysroot_bin.mkdir(parents=True, exist_ok=True)
+        (sysroot_bin / "mkimage.elf").touch()
+        (sysroot_bin / "mkimage.exe").touch()
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = repo_root / ".nanvix" / "sysroot"
+        script.sysroot = fake_sysroot
+        return script
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_basic_invocation_linux(self, _mock: object) -> None:
+        """Produces the expected command on Linux."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            result = script.make_initrd("my-app.elf")
+
+        self.assertEqual(result, script.repo_root / "my-app.img")
+        cmd = captured[0]
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(cmd[0], str(bin_dir / "mkimage.elf"))
+        self.assertEqual(cmd[1], "-o")
+        self.assertEqual(cmd[2], str(script.repo_root / "my-app.img"))
+        self.assertEqual(cmd[3], f"{bin_dir / 'procd.elf'};procd")
+        self.assertEqual(cmd[4], f"{bin_dir / 'memd.elf'};memd")
+        self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
+        self.assertEqual(cmd[6], f"{script.repo_root / 'my-app.elf'};my-app")
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_basic_invocation_windows(self, _mock: object) -> None:
+        """Uses mkimage.exe on Windows."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf")
+
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_app_args(self, _mock: object) -> None:
+        """App arguments are appended to the app entry."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", app_args=["--verbose", "--port=8080"])
+
+        app_entry = captured[0][6]
+        self.assertEqual(
+            app_entry, f"{script.repo_root / 'my-app.elf'};my-app --verbose --port=8080"
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_daemon_args(self, _mock: object) -> None:
+        """Daemon arguments are appended to respective entries."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd(
+                "my-app.elf",
+                procd_args=["--debug"],
+                memd_args=["--heap=64m"],
+                vfsd_args=["--cache=off"],
+            )
+
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd --debug")
+        self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd --heap=64m")
+        self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd --cache=off")
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_kernel_args(self, _mock: object) -> None:
+        """Kernel arguments are passed via --kernel-args."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", kernel_args=["console=ttyS0", "debug"])
+
+        cmd = captured[0]
+        # -kernel-args should appear after -o <output>
+        ka_idx = cmd.index("-kernel-args")
+        self.assertEqual(cmd[ka_idx + 1], "console=ttyS0 debug")
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_semicolons_escaped_in_args(self, _mock: object) -> None:
+        """Semicolons in arguments are escaped as \\;."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", app_args=["--sep=;"])
+
+        app_entry = captured[0][6]
+        self.assertEqual(
+            app_entry, f"{script.repo_root / 'my-app.elf'};my-app --sep=\\;"
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_semicolons_escaped_in_kernel_args(self, _mock: object) -> None:
+        """Semicolons in kernel arguments are escaped."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", kernel_args=["a;b"])
+
+        cmd = captured[0]
+        ka_idx = cmd.index("-kernel-args")
+        self.assertEqual(cmd[ka_idx + 1], "a\\;b")
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_custom_bin_dir(self, _mock: object) -> None:
+        """A custom bin_dir is used instead of the sysroot."""
+        script = self._make_script()
+        custom_bin = Path(self._tmpdir.name) / "custom" / "bin"
+        custom_bin.mkdir(parents=True)
+        (custom_bin / "mkimage.elf").touch()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", bin_dir=custom_bin)
+
+        self.assertEqual(captured[0][0], str(custom_bin / "mkimage.elf"))
+        self.assertIn(str(custom_bin / "procd.elf"), captured[0][3])
+
+    def test_no_sysroot_exits(self) -> None:
+        """Exits with EXIT_MISSING_DEP when sysroot is None."""
+        script = ZScript(Path(self._tmpdir.name))
+        script.sysroot = None
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                script.make_initrd("my-app.elf")
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_app_stem_derived_from_filename(self, _mock: object) -> None:
+        """The output .img and argv0 use the stem of the app filename."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            result = script.make_initrd("hello-world.elf")
+
+        self.assertEqual(result, script.repo_root / "hello-world.img")
+        self.assertEqual(
+            captured[0][6], f"{script.repo_root / 'hello-world.elf'};hello-world"
+        )
+
+    def test_app_with_path_separator_exits(self) -> None:
+        """Exits with EXIT_MISSING_DEP when app contains path separators."""
+        script = self._make_script()
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                script.make_initrd("build/hello.elf")
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_mkimage_not_found_exits(self, _mock: object) -> None:
+        """Exits with EXIT_MISSING_DEP when mkimage binary is missing."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        # Sysroot bin dir exists but mkimage.elf does not.
+        sysroot_bin = repo_root / ".nanvix" / "sysroot" / "bin"
+        sysroot_bin.mkdir(parents=True, exist_ok=True)
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = repo_root / ".nanvix" / "sysroot"
+        script.sysroot = fake_sysroot
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                script.make_initrd("my-app.elf")
+            self.assertEqual(ctx.exception.code, 3)
+        finally:
+            log_mod.set_json_mode(False)
+
+
 if __name__ == "__main__":
     unittest.main()

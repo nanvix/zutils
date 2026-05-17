@@ -37,7 +37,7 @@ _WINDOWS_SYSROOT_ASSET_PREFIX = "nanvix-windows-{target}-{machine}-{mode}-releas
 
 # Host binaries needed from the Windows release to run VMs on Windows.
 # kernel.elf is a *guest* binary (i686) — nanvixd.exe loads it directly.
-WINDOWS_HOST_BINARIES = ("nanvixd.exe", "mkramfs.exe", "kernel.elf")
+WINDOWS_HOST_BINARIES = ("nanvixd.exe", "mkramfs.exe", "mkimage.exe", "kernel.elf")
 
 
 # ---------------------------------------------------------------------------
