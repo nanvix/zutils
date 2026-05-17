@@ -84,15 +84,26 @@ _SKIP_NO_DOCKER = "Docker lifecycle not available (no daemon or Windows host)"
 
 
 def _run_z(
-    cwd: Path, *args: str, timeout: int = _TIMEOUT
+    cwd: Path,
+    *args: str,
+    timeout: int = _TIMEOUT,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke ``nanvix-zutil`` in *cwd* and return the completed process."""
+    env = os.environ.copy()
+    # Ensure the source tree is importable regardless of subprocess cwd.
+    src_dir = str(_REPO_ROOT / "src")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing}" if existing else src_dir
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         [sys.executable, "-m", "nanvix_zutil", *args],
         cwd=str(cwd),
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
 
 
