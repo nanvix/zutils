@@ -196,6 +196,7 @@ class BinHello(ZScript):
             str(sysroot / "bin"),
             "--",
             str(binary),
+            timeout=60,
         )
         log.success("PASS: bin-hello functional tests")
 

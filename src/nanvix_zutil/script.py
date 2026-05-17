@@ -652,6 +652,7 @@ class ZScript:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         docker: bool = True,
+        timeout: int | None = None,
     ) -> "subprocess.CompletedProcess[str]":
         """Run a subprocess, logging the command before execution.
 
@@ -672,13 +673,16 @@ class ZScript:
             docker: When ``False``, always runs on the host even if Docker
                 mode is active.  Use this for commands that must run locally
                 (e.g. ``clean``).
+            timeout: Maximum seconds to wait for the process to finish.
+                ``None`` means wait indefinitely.  When the timeout expires
+                the process tree is killed and a fatal error is raised.
 
         Returns:
             The completed process result.
 
         Raises:
             SystemExit: With exit code ``5`` if the process exits with a
-                non-zero status.
+                non-zero status or the timeout expires.
         """
         if self.docker is not None and docker:
             cfg = self.docker
@@ -707,6 +711,12 @@ class ZScript:
                 env=subprocess_env,
                 text=True,
                 check=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            log.fatal(
+                f"Command timed out after {timeout}s: {' '.join(args)}",
+                code=EXIT_BUILD_FAILURE,
             )
         except subprocess.CalledProcessError as exc:
             log.fatal(
