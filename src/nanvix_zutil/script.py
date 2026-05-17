@@ -463,14 +463,23 @@ class ZScript:
         ".gitignore": ".gitignore",
     }
 
+    #: Mapping of config filename -> destination relative to repo root.
+    #: These configs are placed at the repo root for IDE integration.
+    _ROOT_CONFIG_FILES: dict[str, str] = {
+        "pyrightconfig.root.json": "pyrightconfig.json",
+    }
+
     def _sync_configs(self) -> None:
         """Sync canonical tool configuration files into ``.nanvix/``.
 
         Copies config files shipped inside ``nanvix_zutil.configs`` to the
         ``.nanvix/`` directory, ensuring all downstream repos use
         consistent linter/type-checker settings.  Files whose content
-        already matches are skipped.  Configs are confined to ``.nanvix/``
-        so consumer repo roots are never modified.
+        already matches are skipped.
+
+        Additionally, IDE-specific configs (e.g. ``pyrightconfig.json``)
+        are placed at the repo root so that editors like VS Code can
+        discover them without extra configuration.
         """
         configs = importlib.resources.files("nanvix_zutil.configs")
         for src_name, dst_rel in self._CONFIG_FILES.items():
@@ -481,6 +490,14 @@ class ZScript:
                 continue
             dst.write_bytes(content)
             log.note(f"Synced .nanvix/{dst_rel}")
+        for src_name, dst_rel in self._ROOT_CONFIG_FILES.items():
+            src = configs / src_name
+            dst = self.repo_root / dst_rel
+            content = src.read_bytes()
+            if dst.exists() and dst.read_bytes() == content:
+                continue
+            dst.write_bytes(content)
+            log.note(f"Synced {dst_rel}")
 
     def distclean(self) -> None:
         """Remove all transient ``.nanvix/`` artifacts.
