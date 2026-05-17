@@ -576,6 +576,18 @@ class TestZScriptRun(unittest.TestCase):
         finally:
             log_mod.set_json_mode(False)
 
+    def test_run_timeout_exits(self) -> None:
+        script = ZScript(Path(self._tmpdir.name))
+        log_mod.set_json_mode(True)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                script.run(
+                    sys.executable, "-c", "import time; time.sleep(10)", timeout=1
+                )
+            self.assertEqual(ctx.exception.code, 5)
+        finally:
+            log_mod.set_json_mode(False)
+
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
         """run() delegates to build_windows_run_cmd on Windows."""
