@@ -99,7 +99,7 @@ jobs:
             examples/lib-hello/.nanvix/sysroot/bin/
             examples/lib-hello/.nanvix/sysroot/lib/
           retention-days: 1
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Clean examples
         run: uv run pytest tests/test_examples.py -v -k "Cleanup"
