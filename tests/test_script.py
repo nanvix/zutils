@@ -1,6 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# pyright: reportPrivateUsage=false
 """Tests for nanvix_zutil.script (ZScript)."""
 
 import json
@@ -956,9 +957,6 @@ class TestZScriptAutoDocker(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "build"]),
-            patch("nanvix_zutil.script.is_windows", return_value=True),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
@@ -985,11 +983,14 @@ class TestZScriptAutoDocker(unittest.TestCase):
             '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
         )
 
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
         with (
             patch("sys.argv", ["z.py", "build"]),
             patch("nanvix_zutil.script.is_windows", return_value=False),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
+            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
@@ -1143,6 +1144,10 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
+        p = patch.object(ZScript, "_check_docker", return_value=None)
+        p.start()
+        self.addCleanup(p.stop)
+
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
 
@@ -1162,8 +1167,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", _setup_with_fallback),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1177,8 +1180,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=True),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -1190,8 +1191,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         """main() with setup subcommand completes normally when no fallback."""
         with (
             patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch("nanvix_zutil.script.docker_available", return_value=True),
-            patch("nanvix_zutil.script.image_exists", return_value=True),
             patch.object(ZScript, "setup", return_value=False),
             patch("nanvix_zutil.script.log") as mock_log,
         ):
@@ -1220,8 +1219,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
                     "sys.argv",
                     ["z.py", "--json", "setup", "--with-docker", "test/image:tag"],
                 ),
-                patch("nanvix_zutil.script.docker_available", return_value=True),
-                patch("nanvix_zutil.script.image_exists", return_value=True),
                 patch.object(ZScript, "setup", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):
@@ -2047,6 +2044,122 @@ class TestMakeInitrd(unittest.TestCase):
             captured[0][6],
             f"{script.repo_root / 'my-app.elf'};my-app --verbose;DEBUG=1",
         )
+
+
+class TestZScriptCheckDocker(unittest.TestCase):
+    """_check_docker() probes for the image and auto-pulls when missing."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _make_script(self) -> ZScript:
+        return ZScript(Path(self._tmpdir.name))
+
+    def test_missing_docker_binary_exits_fatal(self) -> None:
+        """No `docker` on PATH -> fatal EXIT_MISSING_DEP, no subprocess calls."""
+        from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+
+        script = self._make_script()
+        mock_run = MagicMock()
+        log_mod.set_json_mode(True)
+        try:
+            with (
+                patch("nanvix_zutil.script.shutil.which", return_value=None),
+                patch("nanvix_zutil.script.subprocess.run", mock_run),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                script._check_docker("test/image:tag")
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+        finally:
+            log_mod.set_json_mode(False)
+        mock_run.assert_not_called()
+        self.assertIsNone(script.docker)
+
+    def test_image_present_skips_pull(self) -> None:
+        """`docker image inspect` returns 0 -> no pull, no fatal."""
+        script = self._make_script()
+        image = "test/image:tag"
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            calls.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with (
+            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+        ):
+            script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0], ["docker", "image", "inspect", image])
+
+    def test_image_missing_pull_succeeds(self) -> None:
+        """`image inspect` fails, `docker pull` succeeds -> no fatal."""
+        script = self._make_script()
+        image = "test/image:tag"
+
+        calls: list[list[str]] = []
+        returncodes = iter([1, 0])  # inspect: miss, pull: ok
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            calls.append(cmd)
+            return sp.CompletedProcess(
+                args=cmd, returncode=next(returncodes), stdout="", stderr=""
+            )
+
+        with (
+            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+        ):
+            script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ["docker", "image", "inspect", image])
+        self.assertEqual(calls[1], ["docker", "pull", image])
+
+    def test_image_missing_pull_fails_exits_fatal(self) -> None:
+        """`image inspect` fails, `docker pull` fails -> fatal EXIT_MISSING_DEP."""
+        from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+
+        script = self._make_script()
+        image = "test/image:tag"
+
+        calls: list[list[str]] = []
+        returncodes = iter([1, 1])  # inspect: miss, pull: fail
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            calls.append(cmd)
+            return sp.CompletedProcess(
+                args=cmd, returncode=next(returncodes), stdout="", stderr=""
+            )
+
+        log_mod.set_json_mode(True)
+        try:
+            with (
+                patch(
+                    "nanvix_zutil.script.shutil.which",
+                    return_value="/usr/bin/docker",
+                ),
+                patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+        finally:
+            log_mod.set_json_mode(False)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ["docker", "image", "inspect", image])
+        self.assertEqual(calls[1], ["docker", "pull", image])
+        self.assertIsNone(script.docker)
 
 
 if __name__ == "__main__":

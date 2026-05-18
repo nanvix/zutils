@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path, PurePosixPath
@@ -20,8 +19,6 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
-    docker_available,
-    image_exists,
 )
 
 
@@ -203,50 +200,6 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
         cfg.extra_env["MY_VAR"] = "hello"
         cmd = cfg.build_run_cmd("echo")
         self.assertIn("MY_VAR=hello", cmd)
-
-
-class TestDockerAvailable(unittest.TestCase):
-    """Tests for docker_available()."""
-
-    def test_returns_bool(self) -> None:
-        result = docker_available()
-        self.assertIsInstance(result, bool)
-
-    def test_false_when_docker_not_on_path(self) -> None:
-        with patch("nanvix_zutil.docker.shutil.which", return_value=None):
-            self.assertFalse(docker_available())
-
-    def test_true_when_docker_on_path(self) -> None:
-        with patch("nanvix_zutil.docker.shutil.which", return_value="/usr/bin/docker"):
-            self.assertTrue(docker_available())
-
-
-class TestImageExists(unittest.TestCase):
-    """Tests for image_exists()."""
-
-    def test_false_when_docker_not_available(self) -> None:
-        with patch("nanvix_zutil.docker.docker_available", return_value=False):
-            self.assertFalse(image_exists("any-image"))
-
-    def test_false_when_inspect_fails(self) -> None:
-        fake_result: subprocess.CompletedProcess[bytes] = subprocess.CompletedProcess(
-            args=[], returncode=1
-        )
-        with (
-            patch("nanvix_zutil.docker.docker_available", return_value=True),
-            patch("nanvix_zutil.docker.subprocess.run", return_value=fake_result),
-        ):
-            self.assertFalse(image_exists("nonexistent-image"))
-
-    def test_true_when_inspect_succeeds(self) -> None:
-        fake_result: subprocess.CompletedProcess[bytes] = subprocess.CompletedProcess(
-            args=[], returncode=0
-        )
-        with (
-            patch("nanvix_zutil.docker.docker_available", return_value=True),
-            patch("nanvix_zutil.docker.subprocess.run", return_value=fake_result),
-        ):
-            self.assertTrue(image_exists("ghcr.io/nanvix/toolchain-gcc:sha-34a3641"))
 
 
 class TestWellKnownPaths(unittest.TestCase):
