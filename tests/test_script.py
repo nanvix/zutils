@@ -957,6 +957,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
 
         with (
             patch("sys.argv", ["z.py", "build"]),
+            patch("nanvix_zutil.script.is_windows", return_value=True),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
