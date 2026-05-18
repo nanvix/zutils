@@ -1915,6 +1915,139 @@ class TestMakeInitrd(unittest.TestCase):
         finally:
             log_mod.set_json_mode(False)
 
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_app_env(self, _mock: object) -> None:
+        """Environment variables are appended after a semicolon separator."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", app_env=["VAR1=foo", "VAR2=bar"])
+
+        app_entry = captured[0][6]
+        self.assertEqual(
+            app_entry,
+            f"{script.repo_root / 'my-app.elf'};my-app;VAR1=foo VAR2=bar",
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_app_args_and_env(self, _mock: object) -> None:
+        """Both app arguments and environment variables are emitted."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd(
+                "my-app.elf",
+                app_args=["--verbose"],
+                app_env=["DEBUG=1"],
+            )
+
+        app_entry = captured[0][6]
+        self.assertEqual(
+            app_entry,
+            f"{script.repo_root / 'my-app.elf'};my-app --verbose;DEBUG=1",
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_daemon_env(self, _mock: object) -> None:
+        """Daemon environment variables are appended to respective entries."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd(
+                "my-app.elf",
+                procd_env=["LOG=debug"],
+                memd_env=["HEAP=64m"],
+                vfsd_env=["CACHE=off"],
+            )
+
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
+        self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd;HEAP=64m")
+        self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd;CACHE=off")
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_env_semicolons_escaped(self, _mock: object) -> None:
+        """Semicolons in env values are escaped."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd("my-app.elf", app_env=["PATH=/a;/b"])
+
+        app_entry = captured[0][6]
+        self.assertEqual(
+            app_entry,
+            f"{script.repo_root / 'my-app.elf'};my-app;PATH=/a\\;/b",
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    def test_daemon_args_and_env(self, _mock: object) -> None:
+        """Daemon entries include both CLI arguments and environment variables."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd(
+                "my-app.elf",
+                procd_args=["--log-level", "trace"],
+                procd_env=["LOG=debug"],
+            )
+
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(
+            captured[0][3],
+            f"{bin_dir / 'procd.elf'};procd --log-level trace;LOG=debug",
+        )
+
+    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    def test_env_windows(self, _mock: object) -> None:
+        """Environment variables work correctly on Windows (mkimage.exe)."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
+            script.make_initrd(
+                "my-app.elf",
+                app_args=["--verbose"],
+                app_env=["DEBUG=1"],
+                procd_env=["LOG=debug"],
+            )
+
+        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
+        self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
+        self.assertEqual(
+            captured[0][6],
+            f"{script.repo_root / 'my-app.elf'};my-app --verbose;DEBUG=1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
