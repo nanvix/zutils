@@ -110,8 +110,14 @@ def _fetch_json(
                         hint="GitHub returned a malformed or non-JSON response.",
                     )
         except urllib.error.HTTPError as exc:
-            if allow_404 and exc.code == 404:
-                return None
+            if exc.code == 404:
+                if allow_404:
+                    return None
+                log.fatal(
+                    f"Resource not found for {context}: {exc}",
+                    code=EXIT_MISSING_DEP,
+                    hint="Check the repository and version specifier.",
+                )
             if attempt == _MAX_RETRIES:
                 log.fatal(
                     f"Failed to fetch {context}: {exc}",

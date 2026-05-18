@@ -668,6 +668,75 @@ class TestParseNextLink(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# _fetch_json
+# ---------------------------------------------------------------------------
+
+
+class TestFetchJson(unittest.TestCase):
+    """Tests for :func:`github._fetch_json` 404 handling."""
+
+    _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+
+    def setUp(self) -> None:
+        log_mod.set_json_mode(True)
+
+    def tearDown(self) -> None:
+        log_mod.set_json_mode(False)
+
+    def test_404_without_allow_404_exits_3(self) -> None:
+        """HTTP 404 (allow_404=False) exits with EXIT_MISSING_DEP (3)."""
+        url = "https://api.github.com/repos/nanvix/zlib/releases/tags/v0.0.0"
+
+        def side_effect(req: object, **kwargs: object) -> object:
+            assert isinstance(req, urllib.request.Request)
+            raise urllib.error.HTTPError(
+                req.full_url,
+                404,
+                "Not Found",
+                {},  # type: ignore[arg-type]
+                None,
+            )
+
+        with (
+            patch("urllib.request.urlopen", side_effect=side_effect),
+            patch("time.sleep") as mock_sleep,
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                github_mod._fetch_json(url, self._headers, "nanvix/zlib@v0.0.0")
+
+        self.assertEqual(ctx.exception.code, 3)
+        # 404 must short-circuit without exponential back-off.
+        mock_sleep.assert_not_called()
+
+    def test_404_with_allow_404_returns_none_without_backoff(self) -> None:
+        """HTTP 404 with allow_404=True returns None without sleeping."""
+        url = "https://api.github.com/repos/nanvix/zlib/releases/tags/v0.0.0"
+
+        def side_effect(req: object, **kwargs: object) -> object:
+            assert isinstance(req, urllib.request.Request)
+            raise urllib.error.HTTPError(
+                req.full_url,
+                404,
+                "Not Found",
+                {},  # type: ignore[arg-type]
+                None,
+            )
+
+        with (
+            patch("urllib.request.urlopen", side_effect=side_effect) as mock_urlopen,
+            patch("time.sleep") as mock_sleep,
+        ):
+            result = github_mod._fetch_json(
+                url, self._headers, "nanvix/zlib@v0.0.0", allow_404=True
+            )
+
+        self.assertIsNone(result)
+        mock_sleep.assert_not_called()
+        # No retries on 404.
+        self.assertEqual(mock_urlopen.call_count, 1)
+
+
+# ---------------------------------------------------------------------------
 # _list_releases (pagination)
 # ---------------------------------------------------------------------------
 
@@ -1032,7 +1101,10 @@ class TestResolveReleaseSemver(unittest.TestCase):
                 )
             return resp
 
-        with patch("urllib.request.urlopen", side_effect=side_effect):
+        with (
+            patch("urllib.request.urlopen", side_effect=side_effect),
+            patch("time.sleep") as mock_sleep,
+        ):
             result = github_mod._resolve_release(
                 "nanvix/nanvix", "1.2.3", self._headers, semver=True
             )
@@ -1040,6 +1112,8 @@ class TestResolveReleaseSemver(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["tag_name"], "1.2.3")
         self.assertEqual(call_count, 2)
+        # No exponential back-off on 404.
+        mock_sleep.assert_not_called()
 
     def test_semver_falls_back_to_name_search(self) -> None:
         """When both tags 404, searches release names."""
@@ -1064,13 +1138,18 @@ class TestResolveReleaseSemver(unittest.TestCase):
                 )
             return releases_resp
 
-        with patch("urllib.request.urlopen", side_effect=side_effect):
+        with (
+            patch("urllib.request.urlopen", side_effect=side_effect),
+            patch("time.sleep") as mock_sleep,
+        ):
             result = github_mod._resolve_release(
                 "nanvix/nanvix", "0.12.257", self._headers, semver=True
             )
 
         assert result is not None
         self.assertEqual(result["name"], "Nanvix 0.12.257")
+        # No exponential back-off on 404.
+        mock_sleep.assert_not_called()
 
     def test_semver_no_match_exits_3(self) -> None:
         """When no tag or name matches, exits with code 3."""
@@ -1091,13 +1170,18 @@ class TestResolveReleaseSemver(unittest.TestCase):
                 )
             return releases_resp
 
-        with patch("urllib.request.urlopen", side_effect=side_effect):
+        with (
+            patch("urllib.request.urlopen", side_effect=side_effect),
+            patch("time.sleep") as mock_sleep,
+        ):
             with self.assertRaises(SystemExit) as ctx:
                 github_mod._resolve_release(
                     "nanvix/nanvix", "9.9.9", self._headers, semver=True
                 )
 
         self.assertEqual(ctx.exception.code, 3)
+        # No exponential back-off on 404.
+        mock_sleep.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
