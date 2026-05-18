@@ -826,7 +826,7 @@ class ZScript:
                 _entry(bin_dir / "procd.elf", "procd", procd_args, procd_env),
                 _entry(bin_dir / "memd.elf", "memd", memd_args, memd_env),
                 _entry(bin_dir / "vfsd.elf", "vfsd", vfsd_args, vfsd_env),
-                _entry(self.repo_root / app, app_stem, app_args, app_env),
+                _entry(self.repo_root / app, app, app_args, app_env),
             ]
         )
 

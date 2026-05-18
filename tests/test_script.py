@@ -1721,7 +1721,7 @@ class TestMakeInitrd(unittest.TestCase):
         self.assertEqual(cmd[3], f"{bin_dir / 'procd.elf'};procd")
         self.assertEqual(cmd[4], f"{bin_dir / 'memd.elf'};memd")
         self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
-        self.assertEqual(cmd[6], f"{script.repo_root / 'my-app.elf'};my-app")
+        self.assertEqual(cmd[6], f"{script.repo_root / 'my-app.elf'};my-app.elf")
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_basic_invocation_windows(self, _mock: object) -> None:
@@ -1754,7 +1754,8 @@ class TestMakeInitrd(unittest.TestCase):
 
         app_entry = captured[0][6]
         self.assertEqual(
-            app_entry, f"{script.repo_root / 'my-app.elf'};my-app --verbose --port=8080"
+            app_entry,
+            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose --port=8080",
         )
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
@@ -1813,7 +1814,7 @@ class TestMakeInitrd(unittest.TestCase):
 
         app_entry = captured[0][6]
         self.assertEqual(
-            app_entry, f"{script.repo_root / 'my-app.elf'};my-app --sep=\\;"
+            app_entry, f"{script.repo_root / 'my-app.elf'};my-app.elf --sep=\\;"
         )
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
@@ -1866,7 +1867,7 @@ class TestMakeInitrd(unittest.TestCase):
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
     def test_app_stem_derived_from_filename(self, _mock: object) -> None:
-        """The output .img and argv0 use the stem of the app filename."""
+        """The output .img uses the stem; argv0 uses the full filename."""
         script = self._make_script()
         captured: list[list[str]] = []
 
@@ -1879,7 +1880,7 @@ class TestMakeInitrd(unittest.TestCase):
 
         self.assertEqual(result, script.repo_root / "hello-world.img")
         self.assertEqual(
-            captured[0][6], f"{script.repo_root / 'hello-world.elf'};hello-world"
+            captured[0][6], f"{script.repo_root / 'hello-world.elf'};hello-world.elf"
         )
 
     def test_app_with_path_separator_exits(self) -> None:
@@ -1928,7 +1929,7 @@ class TestMakeInitrd(unittest.TestCase):
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app;VAR1=foo VAR2=bar",
+            f"{script.repo_root / 'my-app.elf'};my-app.elf;VAR1=foo VAR2=bar",
         )
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
@@ -1951,7 +1952,7 @@ class TestMakeInitrd(unittest.TestCase):
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app --verbose;DEBUG=1",
+            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
@@ -1993,7 +1994,7 @@ class TestMakeInitrd(unittest.TestCase):
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app;PATH=/a\\;/b",
+            f"{script.repo_root / 'my-app.elf'};my-app.elf;PATH=/a\\;/b",
         )
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
@@ -2042,7 +2043,7 @@ class TestMakeInitrd(unittest.TestCase):
         self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
         self.assertEqual(
             captured[0][6],
-            f"{script.repo_root / 'my-app.elf'};my-app --verbose;DEBUG=1",
+            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
 
 
