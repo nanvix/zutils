@@ -672,9 +672,13 @@ class ZScript:
         app: str,
         *,
         app_args: list[str] | None = None,
+        app_env: list[str] | None = None,
         procd_args: list[str] | None = None,
+        procd_env: list[str] | None = None,
         memd_args: list[str] | None = None,
+        memd_env: list[str] | None = None,
         vfsd_args: list[str] | None = None,
+        vfsd_env: list[str] | None = None,
         kernel_args: list[str] | None = None,
         bin_dir: Path | None = None,
     ) -> Path:
@@ -685,16 +689,26 @@ class ZScript:
         ``vfsd``) and the application binary.
 
         Each program entry in the image has the format
-        ``<path>;<argv0> [arg1 arg2 ...]``.
+        ``<path>;<argv0> [arg1 arg2 ...][;KEY=VAL ...]``.  An unescaped
+        ``;`` separates CLI arguments from environment variables (see
+        ``run-linux.md`` for the full protocol).
 
         Args:
             app: A bare application binary filename (e.g. ``"my-app.elf"``).
                 Must include the extension and must not contain path
                 separators (``/`` or ``\\``).
             app_args: Optional CLI arguments appended to the app's argv.
+            app_env: Optional environment variables for the app as
+                ``KEY=VALUE`` strings.
             procd_args: Optional CLI arguments appended to ``procd``'s argv.
+            procd_env: Optional environment variables for ``procd`` as
+                ``KEY=VALUE`` strings.
             memd_args: Optional CLI arguments appended to ``memd``'s argv.
+            memd_env: Optional environment variables for ``memd`` as
+                ``KEY=VALUE`` strings.
             vfsd_args: Optional CLI arguments appended to ``vfsd``'s argv.
+            vfsd_env: Optional environment variables for ``vfsd`` as
+                ``KEY=VALUE`` strings.
             kernel_args: Optional arguments passed to the kernel via
                 ``-kernel-args``.
             bin_dir: Directory containing the ELF binaries and
@@ -746,9 +760,17 @@ class ZScript:
         def _escape(arg: str) -> str:
             return arg.replace(";", "\\;")
 
-        def _entry(elf: str | Path, argv0: str, extra: list[str] | None) -> str:
+        def _entry(
+            elf: str | Path,
+            argv0: str,
+            extra: list[str] | None,
+            env: list[str] | None = None,
+        ) -> str:
             parts = [_escape(argv0)] + [_escape(a) for a in (extra or [])]
             argv = " ".join(parts)
+            if env:
+                env_str = " ".join(_escape(e) for e in env)
+                return f"{_escape(str(elf))};{argv};{env_str}"
             return f"{_escape(str(elf))};{argv}"
 
         cmd: list[str] = [
@@ -763,10 +785,10 @@ class ZScript:
 
         cmd.extend(
             [
-                _entry(bin_dir / "procd.elf", "procd", procd_args),
-                _entry(bin_dir / "memd.elf", "memd", memd_args),
-                _entry(bin_dir / "vfsd.elf", "vfsd", vfsd_args),
-                _entry(self.repo_root / app, app_stem, app_args),
+                _entry(bin_dir / "procd.elf", "procd", procd_args, procd_env),
+                _entry(bin_dir / "memd.elf", "memd", memd_args, memd_env),
+                _entry(bin_dir / "vfsd.elf", "vfsd", vfsd_args, vfsd_env),
+                _entry(self.repo_root / app, app_stem, app_args, app_env),
             ]
         )
 
