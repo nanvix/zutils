@@ -5,7 +5,7 @@
 
 These tests exercise both examples end-to-end **through the bootstrap
 wrapper** (``z.sh`` / ``z.ps1``), the same way a real user would.  The
-wrapper is pointed at the in-tree source via ``WITH_ZUTIL=<repo root>``,
+wrapper is pointed at the in-tree source via ``--with-zutils <repo root>``,
 which performs an editable install into ``examples/<name>/.nanvix/venv/``
 and bypasses the pinned-wheel version check.  This means the bootstrap
 logic itself is covered by these tests, not just the underlying CLI.
@@ -97,24 +97,24 @@ def _run_z(
     """Invoke the bootstrap wrapper in *cwd* and return the completed process.
 
     Calls ``z.sh`` (Linux/macOS) or ``z.ps1`` via ``pwsh`` (Windows) with
-    ``WITH_ZUTIL`` set to the repo root, so the wrapper materialises an
-    editable install of ``nanvix-zutil`` into ``cwd/.nanvix/venv/`` and
+    ``--with-zutils <repo root>`` prepended, so the wrapper materialises
+    an editable install of ``nanvix-zutil`` into ``cwd/.nanvix/venv/`` and
     dispatches the subcommand through that venv.  The first call per
     example dir pays the editable-install cost (~5-30s); subsequent calls
     hit the recorded-path fast path.
     """
     env = os.environ.copy()
-    env["WITH_ZUTIL"] = str(_REPO_ROOT)
     # An outer venv must not bleed into the wrapper's `python -m venv`
     # invocation (`pip install -e` would otherwise target the outer venv
     # when the wrapper's resolved python happens to be `sys.executable`).
     env.pop("VIRTUAL_ENV", None)
     if extra_env:
         env.update(extra_env)
+    z_args = ("--with-zutils", str(_REPO_ROOT), *args)
     if sys.platform == "win32":
-        cmd = ["pwsh", "-NoProfile", "-File", str(cwd / "z.ps1"), *args]
+        cmd = ["pwsh", "-NoProfile", "-File", str(cwd / "z.ps1"), *z_args]
     else:
-        cmd = [str(cwd / "z.sh"), *args]
+        cmd = [str(cwd / "z.sh"), *z_args]
     return subprocess.run(
         cmd,
         cwd=str(cwd),

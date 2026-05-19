@@ -69,24 +69,24 @@ version into `.nanvix/venv/`.
 
 To iterate on `nanvix-zutil` itself against a downstream consumer, point the
 bootstrapper at a local source checkout (a directory containing
-`pyproject.toml`).  An editable install is materialised in `.nanvix/venv/`
-and the pinned-version check is bypassed:
+`pyproject.toml`) via the `--with-zutils` flag.  An editable install is
+materialised in `.nanvix/venv/` and the pinned-version check is bypassed:
 
 Linux/macOS:
 
 ```bash
-WITH_ZUTIL=~/src/zutils ./z.sh build
+./z.sh --with-zutils ~/src/zutils build
 ```
 
 Windows:
 
 ```powershell
-$env:WITH_ZUTIL = 'C:\src\zutils'; .\z.ps1 build
+.\z.ps1 --with-zutils C:\src\zutils build
 ```
 
 The override is re-applied when the recorded source path changes or when
 the venv is missing, so repeated invocations stay fast.  `./z distclean`
-removes the venv, so the override must be set again on the next bootstrap.
+removes the venv, so the flag must be passed again on the next bootstrap.
 
 ## Documentation
 

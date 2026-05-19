@@ -13,37 +13,6 @@ ZUTIL_VERSION="${RAW_ZUTIL_VERSION#v}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 VENV="$REPO_ROOT/.nanvix/venv"
 
-# Optional override: install nanvix-zutil from a local source tree (editable)
-# instead of fetching the pinned wheel from GitHub Releases.  Useful when
-# iterating on zutils itself against a downstream consumer repo.
-#
-#   WITH_ZUTIL=~/src/zutils ./z.sh build
-#
-# The path must point at a nanvix-zutil source checkout (a directory
-# containing pyproject.toml).  The venv version-match check is bypassed; the
-# editable install is rebuilt only when the recorded source path changes.
-WITH_ZUTIL="${WITH_ZUTIL:-}"
-if [ -n "$WITH_ZUTIL" ]; then
-    _zutil_raw="$WITH_ZUTIL"
-    if [ ! -e "$_zutil_raw" ]; then
-        echo "ERROR: WITH_ZUTIL path does not exist: ${_zutil_raw}" >&2
-        exit 1
-    fi
-    if [ ! -d "$_zutil_raw" ]; then
-        echo "ERROR: WITH_ZUTIL is not a directory: ${_zutil_raw}" >&2
-        exit 1
-    fi
-    if ! WITH_ZUTIL="$(cd -- "$_zutil_raw" 2>/dev/null && pwd -P)"; then
-        echo "ERROR: WITH_ZUTIL is not accessible (cd failed): ${_zutil_raw}" >&2
-        exit 1
-    fi
-    if [ ! -f "$WITH_ZUTIL/pyproject.toml" ]; then
-        echo "ERROR: WITH_ZUTIL is not a Python source tree (no pyproject.toml): ${WITH_ZUTIL}" >&2
-        exit 1
-    fi
-    unset _zutil_raw
-fi
-
 # Resolve venv layout (bin/ vs Scripts/) based on what exists on disk.
 # Can be called before venv creation to initialize default paths; call it
 # again after venv creation to pick up the actual layout.
@@ -59,9 +28,89 @@ function _resolve_venv_paths() {
 _resolve_venv_paths
 ZUTIL_GLOBAL_VERSION="$(nanvix-zutil --version 2>/dev/null || true)"
 
+# Extract --with-zutils PATH and --with-nanvix PATH before forwarding to
+# nanvix-zutil.  The nanvix-zutil CLI inspects positional args to find the
+# subcommand; either flag's PATH argument would be mistaken for a subcommand.
+#
+# --with-zutils PATH (optional): install nanvix-zutil from a local source
+# tree (editable) instead of fetching the pinned wheel from GitHub Releases.
+# Useful when iterating on zutils itself against a downstream consumer repo.
+#
+#   ./z.sh --with-zutils ~/src/zutils build
+#   ./z.sh --with-zutils=~/src/zutils build
+#
+# The path must point at a nanvix-zutil source checkout (a directory
+# containing pyproject.toml).  The venv version-match check is bypassed; the
+# editable install is rebuilt only when the recorded source path changes.
+#
+# --with-nanvix PATH is forwarded to z.py via the WITH_NANVIX env var.
+WITH_ZUTILS=""
+_resolve_zutils_path() {
+    local raw="$1"
+    if [ ! -e "$raw" ]; then
+        echo "ERROR: --with-zutils path does not exist: ${raw}" >&2
+        exit 1
+    fi
+    if [ ! -d "$raw" ]; then
+        echo "ERROR: --with-zutils is not a directory: ${raw}" >&2
+        exit 1
+    fi
+    if ! WITH_ZUTILS="$(cd -- "$raw" 2>/dev/null && pwd -P)"; then
+        echo "ERROR: --with-zutils is not accessible (cd failed): ${raw}" >&2
+        exit 1
+    fi
+    if [ ! -f "$WITH_ZUTILS/pyproject.toml" ]; then
+        echo "ERROR: --with-zutils is not a Python source tree (no pyproject.toml): ${WITH_ZUTILS}" >&2
+        exit 1
+    fi
+}
+
+_resolve_nanvix_path() {
+    local raw="$1"
+    if ! WITH_NANVIX="$(cd -- "$raw" 2>/dev/null && pwd -P)"; then
+        echo "ERROR: --with-nanvix path does not exist or is not a directory: $raw" >&2
+        exit 1
+    fi
+    export WITH_NANVIX
+}
+
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --with-zutils=*)
+            _resolve_zutils_path "${1#--with-zutils=}"
+            shift
+            ;;
+        --with-zutils)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --with-zutils requires a path argument" >&2
+                exit 1
+            fi
+            _resolve_zutils_path "$2"
+            shift 2
+            ;;
+        --with-nanvix=*)
+            _resolve_nanvix_path "${1#--with-nanvix=}"
+            shift
+            ;;
+        --with-nanvix)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --with-nanvix requires a path argument" >&2
+                exit 1
+            fi
+            _resolve_nanvix_path "$2"
+            shift 2
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
 function bootstrap_local() {
-    # Install nanvix-zutil from $WITH_ZUTIL as an editable install.
-    echo "nanvix-zutil -- installing editable from ${WITH_ZUTIL}..." >&2
+    # Install nanvix-zutil from $WITH_ZUTILS as an editable install.
+    echo "nanvix-zutil -- installing editable from ${WITH_ZUTILS}..." >&2
     if ! command -v python3 &>/dev/null; then
         echo "Error: python3 not found. Install Python 3 and ensure python3 is on PATH." >&2
         exit 1
@@ -72,8 +121,8 @@ function bootstrap_local() {
         python3 -m venv "$VENV"
     fi
     _resolve_venv_paths
-    "$VENV_PYTHON" -m pip install --quiet -e "${WITH_ZUTIL}[lint]"
-    printf '%s\n' "$WITH_ZUTIL" >"$VENV/.with-zutil"
+    "$VENV_PYTHON" -m pip install --quiet -e "${WITH_ZUTILS}[lint]"
+    printf '%s\n' "$WITH_ZUTILS" >"$VENV/.with-zutils"
 }
 
 function bootstrap() {
@@ -100,12 +149,12 @@ function bootstrap() {
 
 # Prefer the venv copy if it exists; otherwise use the global install.
 BIN=""
-if [ -n "$WITH_ZUTIL" ]; then
-    RECORDED_ZUTIL=""
-    if [ -f "$VENV/.with-zutil" ]; then
-        RECORDED_ZUTIL="$(cat "$VENV/.with-zutil")"
+if [ -n "$WITH_ZUTILS" ]; then
+    RECORDED_ZUTILS=""
+    if [ -f "$VENV/.with-zutils" ]; then
+        RECORDED_ZUTILS="$(cat "$VENV/.with-zutils")"
     fi
-    if [ ! -x "$VENV_BIN" ] || [ "$RECORDED_ZUTIL" != "$WITH_ZUTIL" ]; then
+    if [ ! -x "$VENV_BIN" ] || [ "$RECORDED_ZUTILS" != "$WITH_ZUTILS" ]; then
         bootstrap_local
     fi
     BIN="$VENV_BIN"
@@ -131,41 +180,6 @@ else
         BIN="$VENV_BIN"
     fi
 fi
-
-# Extract --with-nanvix PATH before forwarding to nanvix-zutil.
-# The nanvix-zutil CLI inspects positional args to find the subcommand;
-# --with-nanvix's PATH argument would be mistaken for a subcommand.
-# Pass the value via env var so z.py can pick it up.
-_resolve_nanvix_path() {
-    local raw="$1"
-    if ! WITH_NANVIX="$(cd -- "$raw" 2>/dev/null && pwd -P)"; then
-        echo "ERROR: --with-nanvix path does not exist or is not a directory: $raw" >&2
-        exit 1
-    fi
-    export WITH_NANVIX
-}
-
-ARGS=()
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --with-nanvix=*)
-            _resolve_nanvix_path "${1#--with-nanvix=}"
-            shift
-            ;;
-        --with-nanvix)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: --with-nanvix requires a path argument" >&2
-                exit 1
-            fi
-            _resolve_nanvix_path "$2"
-            shift 2
-            ;;
-        *)
-            ARGS+=("$1")
-            shift
-            ;;
-    esac
-done
 
 # On Windows (Git Bash / MSYS2) the venv's python.exe is locked while it runs,
 # so the Python distclean command cannot delete it.  Run without exec so the

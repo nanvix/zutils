@@ -19,32 +19,6 @@ else {
 }
 $zutilVersion = $zutilVersion -replace "^v", ""
 
-# Optional override: install nanvix-zutil from a local source tree (editable)
-# instead of fetching the pinned wheel from GitHub Releases.  Useful when
-# iterating on zutils itself against a downstream consumer repo.
-#
-#   $env:WITH_ZUTIL = "C:\src\zutils"; .\z.ps1 build
-#
-# The path must point at a nanvix-zutil source checkout (a directory
-# containing pyproject.toml).  The venv version-match check is bypassed; the
-# editable install is rebuilt only when the recorded source path changes.
-$withZutil = if ($env:WITH_ZUTIL) {
-    $resolved = Resolve-Path -LiteralPath $env:WITH_ZUTIL -ErrorAction SilentlyContinue
-    if (-not $resolved) {
-        throw "ERROR: WITH_ZUTIL path does not exist: $($env:WITH_ZUTIL)"
-    }
-    if (-not (Test-Path -LiteralPath $resolved.Path -PathType Container)) {
-        throw "ERROR: WITH_ZUTIL is not a directory: $($resolved.Path)"
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $resolved.Path 'pyproject.toml'))) {
-        throw "ERROR: WITH_ZUTIL is not a Python source tree (no pyproject.toml): $($resolved.Path)"
-    }
-    $resolved.Path
-}
-else {
-    $null
-}
-
 # z.ps1 lives at the repository root, so use its directory directly
 # instead of relying on git to discover the top-level checkout directory.
 $repoRoot = $PSScriptRoot
@@ -65,6 +39,73 @@ $zutilGlobalVersion = try {
 }
 catch {
     $null
+}
+
+# Extract --with-zutils PATH and --with-nanvix PATH before forwarding to
+# nanvix-zutil.
+#
+# --with-zutils PATH (optional): install nanvix-zutil from a local source
+# tree (editable) instead of fetching the pinned wheel from GitHub Releases.
+# Useful when iterating on zutils itself against a downstream consumer repo.
+#
+#   .\z.ps1 --with-zutils C:\src\zutils build
+#   .\z.ps1 --with-zutils=C:\src\zutils build
+#
+# The path must point at a nanvix-zutil source checkout (a directory
+# containing pyproject.toml).  The venv version-match check is bypassed; the
+# editable install is rebuilt only when the recorded source path changes.
+$withZutils = $null
+$filteredArgs = [System.Collections.Generic.List[string]]::new()
+$i = 0
+while ($i -lt $ZArgs.Count) {
+    if ($ZArgs[$i] -eq '--with-zutils') {
+        if ($i + 1 -ge $ZArgs.Count) {
+            throw "ERROR: --with-zutils requires a path argument"
+        }
+        $withZutils = $ZArgs[$i + 1]
+        $i += 2
+    }
+    elseif ($ZArgs[$i] -match '^--with-zutils=(.+)$') {
+        $withZutils = $Matches[1]
+        $i++
+    }
+    elseif ($ZArgs[$i] -eq '--with-nanvix') {
+        if ($i + 1 -ge $ZArgs.Count) {
+            throw "ERROR: --with-nanvix requires a path argument"
+        }
+        $item = Get-Item -LiteralPath $ZArgs[$i + 1] -ErrorAction Stop
+        if (-not $item.PSIsContainer) {
+            throw "ERROR: --with-nanvix path is not a directory: $($ZArgs[$i + 1])"
+        }
+        $env:WITH_NANVIX = $item.FullName
+        $i += 2
+    }
+    elseif ($ZArgs[$i] -match '^--with-nanvix=(.+)$') {
+        $item = Get-Item -LiteralPath $Matches[1] -ErrorAction Stop
+        if (-not $item.PSIsContainer) {
+            throw "ERROR: --with-nanvix path is not a directory: $($Matches[1])"
+        }
+        $env:WITH_NANVIX = $item.FullName
+        $i++
+    }
+    else {
+        $filteredArgs.Add($ZArgs[$i])
+        $i++
+    }
+}
+
+if ($withZutils) {
+    $resolved = Resolve-Path -LiteralPath $withZutils -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        throw "ERROR: --with-zutils path does not exist: $withZutils"
+    }
+    if (-not (Test-Path -LiteralPath $resolved.Path -PathType Container)) {
+        throw "ERROR: --with-zutils is not a directory: $($resolved.Path)"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $resolved.Path 'pyproject.toml'))) {
+        throw "ERROR: --with-zutils is not a Python source tree (no pyproject.toml): $($resolved.Path)"
+    }
+    $withZutils = $resolved.Path
 }
 
 function NewZutilVenv {
@@ -107,25 +148,25 @@ function Bootstrap {
 }
 
 function BootstrapLocal {
-    # Install nanvix-zutil from $withZutil as an editable install.
-    Write-Information "nanvix-zutil -- installing editable from ${withZutil}..." -InformationAction Continue
+    # Install nanvix-zutil from $withZutils as an editable install.
+    Write-Information "nanvix-zutil -- installing editable from ${withZutils}..." -InformationAction Continue
     NewZutilVenv
-    & $venvPython -m pip install --quiet -e "$($withZutil)[lint]"
+    & $venvPython -m pip install --quiet -e "$($withZutils)[lint]"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "pip install (editable) failed (exit code $LASTEXITCODE)"
     }
-    Set-Content -LiteralPath (Join-Path $venvDir '.with-zutil') -Value $withZutil -NoNewline
+    Set-Content -LiteralPath (Join-Path $venvDir '.with-zutils') -Value $withZutils -NoNewline
 }
 
 # Prefer the venv copy if it exists; otherwise use the global install.
 $bin = $null
-if ($withZutil) {
-    $zutilMarker = Join-Path $venvDir '.with-zutil'
-    $recordedZutil = if (Test-Path -LiteralPath $zutilMarker) {
-        (Get-Content -LiteralPath $zutilMarker -Raw).Trim()
+if ($withZutils) {
+    $zutilsMarker = Join-Path $venvDir '.with-zutils'
+    $recordedZutils = if (Test-Path -LiteralPath $zutilsMarker) {
+        (Get-Content -LiteralPath $zutilsMarker -Raw).Trim()
     }
     else { $null }
-    if ((-not (Test-Path $venvZutil)) -or ($recordedZutil -ne $withZutil)) {
+    if ((-not (Test-Path $venvZutil)) -or ($recordedZutils -ne $withZutils)) {
         BootstrapLocal
     }
     if (-not (Test-Path $venvZutil)) {
@@ -175,35 +216,6 @@ else {
             throw "Bootstrap completed but $venvZutil not found."
         }
         $bin = $venvZutil
-    }
-}
-
-# Extract --with-nanvix PATH before forwarding to nanvix-zutil.
-$filteredArgs = [System.Collections.Generic.List[string]]::new()
-$i = 0
-while ($i -lt $ZArgs.Count) {
-    if ($ZArgs[$i] -eq '--with-nanvix') {
-        if ($i + 1 -ge $ZArgs.Count) {
-            throw "ERROR: --with-nanvix requires a path argument"
-        }
-        $item = Get-Item -LiteralPath $ZArgs[$i + 1] -ErrorAction Stop
-        if (-not $item.PSIsContainer) {
-            throw "ERROR: --with-nanvix path is not a directory: $($ZArgs[$i + 1])"
-        }
-        $env:WITH_NANVIX = $item.FullName
-        $i += 2
-    }
-    elseif ($ZArgs[$i] -match '^--with-nanvix=(.+)$') {
-        $item = Get-Item -LiteralPath $Matches[1] -ErrorAction Stop
-        if (-not $item.PSIsContainer) {
-            throw "ERROR: --with-nanvix path is not a directory: $($Matches[1])"
-        }
-        $env:WITH_NANVIX = $item.FullName
-        $i++
-    }
-    else {
-        $filteredArgs.Add($ZArgs[$i])
-        $i++
     }
 }
 
