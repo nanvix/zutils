@@ -143,6 +143,7 @@ class ZScript:
         "lock",
         "lint",
         "format",
+        "install",
         "help",
     )
 
@@ -202,6 +203,9 @@ class ZScript:
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
         self._used_fallback: bool = False
+        self._offline: bool = False
+        self._with_nanvix_path: str | None = os.environ.get("WITH_NANVIX")
+        self._cli_sysroot_path: str | None = None
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -361,10 +365,34 @@ class ZScript:
         """
         self._used_fallback = False
 
-        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
+        # Resolve sysroot: --sysroot-path / NANVIX_VERSION (path) take precedence.
+        # NANVIX_VERSION is only treated as a path when it is absolute AND
+        # points to an existing directory — this avoids accidentally matching
+        # a version string like "3" against a relative directory.
+        _env_version = os.environ.get("NANVIX_VERSION")
+        sysroot_path = self._cli_sysroot_path or (
+            _env_version
+            if _env_version
+            and Path(_env_version).is_absolute()
+            and Path(_env_version).is_dir()
+            else None
+        )
+
+        if sysroot_path:
+            self.sysroot = Sysroot.from_local(
+                Path(sysroot_path),
+                config=self.config,
+            )
+        elif self.manifest.sysroot_ref.kind == RefKind.LOCAL:
             self.sysroot = Sysroot.from_local(
                 Path(str(self.manifest.sysroot_ref.value)),
                 config=self.config,
+            )
+        elif self._offline:
+            log.fatal(
+                "Offline mode requires a local sysroot."
+                " Set --sysroot-path or NANVIX_VERSION to a directory.",
+                code=EXIT_MISSING_DEP,
             )
         else:
             self.sysroot = Sysroot.download(
@@ -393,7 +421,15 @@ class ZScript:
         # When --with-nanvix PATH is passed, overlay local build artifacts
         # (nanvixd.elf, mkramfs.elf, uservm.elf, libposix.a, etc.) on top
         # of the downloaded sysroot before verification.
-        nanvix_local = os.environ.get("WITH_NANVIX")
+        # Re-read WITH_NANVIX here in case the env var was set after __init__
+        # (e.g., by a parent orchestrator between construction and setup()).
+        nanvix_local = self._with_nanvix_path or os.environ.get("WITH_NANVIX")
+        if self._offline and not nanvix_local:
+            log.fatal(
+                "Offline mode requires --with-nanvix or WITH_NANVIX to"
+                " provide local artifacts.",
+                code=EXIT_MISSING_DEP,
+            )
         if nanvix_local:
             self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
@@ -405,14 +441,18 @@ class ZScript:
         # passing them to install_dep().
         deps: list[Dependency] = list(self.manifest.dependencies)
         if self.manifest.sysroot_ref.value == "latest":
-            if not self.sysroot.tag:
+            if self.sysroot.tag:
+                resolved_version = self.sysroot.tag.removeprefix("v")
+                deps = [suffix_dep(d, resolved_version) for d in deps]
+            elif not self._offline:
                 log.fatal(
                     "Sysroot resolved to 'latest' but no tag is available"
                     " — delete .nanvix/sysroot and re-run 'nanvix-zutil setup'.",
                     code=EXIT_MISSING_DEP,
                 )
-            resolved_version = self.sysroot.tag.removeprefix("v")
-            deps = [suffix_dep(d, resolved_version) for d in deps]
+            # In offline mode with no tag, deps remain un-suffixed.
+            # This is acceptable because offline resolution uses local
+            # paths (deps/<name>/) which are version-agnostic.
 
         if deps:
             self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
@@ -430,13 +470,23 @@ class ZScript:
                         )
                     continue
 
-                # When --with-nanvix is active, try local artifacts first (only for nanvix-owned
-                # dependencies).
-                if (
-                    nanvix_local
-                    and dep.repo.startswith("nanvix/")
-                    and self.buildroot.install_local_nanvix(dep, Path(nanvix_local))
-                ):
+                # When --with-nanvix is active, try local artifacts first.
+                # In offline mode, try for ALL deps (not just nanvix-owned).
+                # In online mode, only try for nanvix-owned deps.
+                if nanvix_local:
+                    should_try_local = self._offline or dep.repo.startswith("nanvix/")
+                    if should_try_local and self.buildroot.install_local_nanvix(
+                        dep, Path(nanvix_local)
+                    ):
+                        continue
+
+                # In offline mode, warn if local artifacts were not found.
+                # nanvix_local is guaranteed set here (fatal above).
+                if self._offline:
+                    log.warning(
+                        f"Offline mode: no local artifacts found for '{dep.name}'."
+                        f" Expected at: {nanvix_local}/deps/{dep.name}/",
+                    )
                     continue
 
                 try:
@@ -553,6 +603,39 @@ class ZScript:
                 log.info(f"Removed {path}")
             except OSError as exc:
                 log.warning(f"Could not remove {path}: {exc}")
+
+    def install_artifacts(self, output: str) -> None:
+        """Export build artifacts to a target directory.
+
+        Copies the port's output ``.a`` libraries, headers, and binaries
+        into ``<output>/{lib,include,bin}/`` from ``.nanvix/output/``.
+
+        Note:
+            This intentionally writes outside ``.nanvix/`` — it is the
+            only subcommand that does so.
+
+        Args:
+            output: Absolute path to the target directory.
+        """
+        output_path = Path(output)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Source: .nanvix/output/{lib,include,bin}/
+        src_output = self.nanvix_dir / "output"
+
+        for subdir in ("lib", "include", "bin"):
+            src = src_output / subdir
+            if src.is_dir():
+                dst = output_path / subdir
+                dst.mkdir(parents=True, exist_ok=True)
+                for item in src.rglob("*"):
+                    if item.is_file():
+                        rel = item.relative_to(src)
+                        dst_file = dst / rel
+                        dst_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(item, dst_file)
+
+        log.info(f"Artifacts exported to {output_path}")
 
     def lock(self, *, shallow: bool = False) -> None:
         """Resolve the dependency graph and write ``nanvix.lock``.
@@ -1007,6 +1090,16 @@ class ZScript:
         args = parser.parse_args(framework_argv)
 
         # ------------------------------------------------------------------
+        # Handle --offline, --with-nanvix, --sysroot-path from CLI.
+        # ------------------------------------------------------------------
+        if getattr(args, "offline", False):
+            instance._offline = True
+        if getattr(args, "with_nanvix", None):
+            instance._with_nanvix_path = args.with_nanvix
+        if getattr(args, "sysroot_path", None):
+            instance._cli_sysroot_path = args.sysroot_path
+
+        # ------------------------------------------------------------------
         # Docker: resolve image from CLI or persisted config, then check availability.
         # ------------------------------------------------------------------
 
@@ -1066,6 +1159,12 @@ class ZScript:
         if subcommand == "format":
             instance.format(check=args.check)
             log.success("Format complete")
+            return
+
+        # Special handling for install subcommand (--output flag).
+        if subcommand == "install":
+            instance.install_artifacts(output=args.output)
+            log.success("Install complete")
             return
 
         dispatch: dict[str, object] = {

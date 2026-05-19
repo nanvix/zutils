@@ -16,6 +16,29 @@ etc.) without publishing a release.
    `nanvix/cpython`), those are installed from local files instead of
    downloading from GitHub.
 
+## Offline Mode
+
+The `--offline` flag skips the dependency resolver entirely and requires
+all artifacts to be available locally via `--with-nanvix`.  In offline mode:
+
+- `--with-nanvix` (or `WITH_NANVIX`) is **required** — a fatal error is
+  raised if neither is provided.
+- **All** dependencies (not just `nanvix/`-owned) are resolved from
+  `PATH/deps/<name>/`.
+- Missing individual dependencies produce a warning rather than a fatal
+  error, allowing the port's own build logic to handle fallbacks.
+- A local sysroot must be provided via `--sysroot-path` or by setting
+  `NANVIX_VERSION` to an absolute directory path.
+
+## Sysroot Path Override
+
+The `--sysroot-path PATH` flag (or setting `NANVIX_VERSION` to an absolute
+directory path) provides an explicit local sysroot directory, bypassing the
+GitHub download entirely.  This takes precedence over version-based resolution.
+`NANVIX_VERSION` is only interpreted as a path when it is absolute (starts
+with `/`) and points to an existing directory — otherwise it is treated as a
+version string.
+
 ## Prerequisites
 
 - A local Nanvix build with `bin/` and `lib/` output directories.
@@ -61,6 +84,29 @@ cmp .nanvix/sysroot/bin/nanvixd.elf ~/src/nanvix/nanvix/bin/nanvixd.elf
 .nanvix/venv/bin/nanvix-zutil build
 ```
 
+## Offline Quick Start
+
+When building ports in a dependency chain without network access:
+
+```bash
+cd /path/to/consumer
+
+# All deps pre-built, sysroot at build/sysroot/, deps at build/deps/
+NANVIX_VERSION=~/nanvix/build/sysroot \
+WITH_NANVIX=~/nanvix/build \
+PYTHONPATH=~/nanvix/usr/lib/zutils/src \
+  python3 -m nanvix_zutil setup \
+    --offline \
+    --with-docker ghcr.io/nanvix/toolchain-gcc:latest \
+    --with-nanvix ~/nanvix/build \
+    --sysroot-path ~/nanvix/build/sysroot
+
+# Then build
+WITH_NANVIX=~/nanvix/build \
+PYTHONPATH=~/nanvix/usr/lib/zutils/src \
+  python3 -m nanvix_zutil build
+```
+
 ## Using the Shell Wrapper
 
 The `z.sh` and `z.ps1` wrappers support `--with-nanvix` natively. Pass
@@ -101,3 +147,25 @@ is installed from the local directory and the GitHub download is skipped.
   subcommands — it only modifies behavior during `setup`.
 - To return to the normal (release-based) workflow, simply omit
   `--with-nanvix` and delete `.nanvix/sysroot` before re-running setup.
+- In offline mode, missing individual dependencies produce a warning (not
+  a fatal error), allowing port-specific build logic to handle them.
+  However, `--with-nanvix` itself is required — omitting it is fatal.
+
+## install Subcommand
+
+The `install --output PATH` subcommand exports a port's build
+artifacts (libraries, headers, binaries) to a target directory:
+
+```bash
+nanvix-zutil install --output /path/to/output
+```
+
+This creates `<output>/{lib,include,bin}/` subdirectories with the port's
+artifacts from `.nanvix/output/`.
+
+## Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `WITH_NANVIX` | Path to local build dir (same as `--with-nanvix`) |
+| `NANVIX_VERSION` | When set to a directory path, used as local sysroot |
