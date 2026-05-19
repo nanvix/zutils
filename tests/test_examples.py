@@ -139,7 +139,6 @@ def _write_env_json(nanvix_dir: Path, sysroot: Path) -> None:
         "NANVIX_DEPLOYMENT_MODE": "standalone",
         "NANVIX_MEMORY_SIZE": "256mb",
         "NANVIX_SYSROOT": str(sysroot),
-        "NANVIX_TOOLCHAIN": "/opt/nanvix",
         "NANVIX_DOCKER_IMAGE": _DOCKER_IMAGE,
     }
     nanvix_dir.mkdir(parents=True, exist_ok=True)

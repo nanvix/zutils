@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
     CFG_SYSROOT,
-    CFG_TOOLCHAIN,
+    TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
     ZScript,
     log,
@@ -42,11 +42,6 @@ class LibHello(ZScript):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _toolchain(self) -> PurePosixPath | Path:
-        """Return the toolchain root, translated for Docker if active."""
-        host = Path(self.config.get(CFG_TOOLCHAIN, "/opt/nanvix") or "/opt/nanvix")
-        return self.translate_path(host) if self.docker else host
-
     def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
         sysroot_str = self.config.get(CFG_SYSROOT, "")
@@ -64,7 +59,7 @@ class LibHello(ZScript):
 
     def build(self) -> None:
         """Cross-compile hello.c into libhello.a for Nanvix."""
-        tc = self._toolchain()
+        tc = TOOLCHAIN_CONTAINER_PATH
         cc = str(tc / "bin" / "i686-nanvix-gcc")
         ar = str(tc / "bin" / "i686-nanvix-ar")
         cflags = "-O2 -Wall -msse2 -mfpmath=sse"

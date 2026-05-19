@@ -1,6 +1,6 @@
 venv/
 cache/
-sysroot/
+sysroot
 buildroot/
 env.json
 nanvix.lock

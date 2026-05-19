@@ -51,12 +51,11 @@ from nanvix_zutil.config import (
     CFG_DOCKER_IMAGE,
     CFG_GH_TOKEN,
     CFG_SYSROOT,
-    CFG_TOOLCHAIN,
-    Config,
     DEFAULT_DEPLOYMENT_MODE,
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
     DEFAULT_TARGET,
+    Config,
 )
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -100,7 +99,6 @@ __all__ = [
     "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",
-    "CFG_TOOLCHAIN",
     "Config",
     "DEFAULT_DEPLOYMENT_MODE",
     "DEFAULT_FORMATS",
