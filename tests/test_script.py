@@ -22,6 +22,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
 )
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_LATEST_WITH_DEPS,
@@ -2162,6 +2163,239 @@ class TestZScriptCheckDocker(unittest.TestCase):
         self.assertEqual(calls[0], ["docker", "image", "inspect", image])
         self.assertEqual(calls[1], ["docker", "pull", image])
         self.assertIsNone(script.docker)
+
+
+class TestOfflineMode(unittest.TestCase):
+    """Tests for offline mode (--offline flag)."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+            "WITH_NANVIX",
+        ):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+        log_mod.set_json_mode(False)
+
+    def test_offline_default_false(self) -> None:
+        """Offline mode defaults to False."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        self.assertFalse(script._offline)
+
+    def test_with_nanvix_env_sets_path(self) -> None:
+        """WITH_NANVIX env sets _with_nanvix_path."""
+        repo_root = Path(self._tmpdir.name)
+        with patch.dict(os.environ, {"WITH_NANVIX": "/some/build"}):
+            script = ZScript(repo_root)
+        self.assertEqual(script._with_nanvix_path, "/some/build")
+
+    def test_cli_sysroot_path_initially_none(self) -> None:
+        """_cli_sysroot_path starts as None."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        self.assertIsNone(script._cli_sysroot_path)
+
+    def test_offline_with_sysroot_path_uses_from_local(self) -> None:
+        """In offline mode with --sysroot-path, Sysroot.from_local is used."""
+        repo_root = Path(self._tmpdir.name)
+        sysroot_dir = repo_root / "my-sysroot"
+        sysroot_dir.mkdir()
+
+        script = ZScript(repo_root)
+        script._offline = True
+        script._cli_sysroot_path = str(sysroot_dir)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = sysroot_dir
+        fake_sysroot.tag = ""
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download") as mock_download,
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=fake_sysroot,
+            ) as mock_from_local,
+            patch.dict(os.environ, {"WITH_NANVIX": str(repo_root)}),
+        ):
+            script.setup()
+            mock_download.assert_not_called()
+            mock_from_local.assert_called_once()
+
+    def test_offline_without_sysroot_exits(self) -> None:
+        """Offline mode without a local sysroot path exits fatally."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+        script._offline = True
+
+        log_mod.set_json_mode(True)
+        with self.assertRaises(SystemExit) as ctx:
+            script.setup()
+
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+
+    def test_offline_without_with_nanvix_exits(self) -> None:
+        """Offline mode with sysroot but no --with-nanvix exits fatally."""
+        repo_root = Path(self._tmpdir.name)
+        sysroot_dir = repo_root / "my-sysroot"
+        sysroot_dir.mkdir()
+
+        script = ZScript(repo_root)
+        script._offline = True
+        script._cli_sysroot_path = str(sysroot_dir)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = sysroot_dir
+        fake_sysroot.tag = ""
+
+        log_mod.set_json_mode(True)
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=fake_sysroot,
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            script.setup()
+
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+
+    def test_offline_missing_dep_warns_not_fatal(self) -> None:
+        """Offline mode warns (not fatal) when a dep has no local artifacts."""
+        repo_root = Path(self._tmpdir.name)
+        sysroot_dir = repo_root / "my-sysroot"
+        sysroot_dir.mkdir()
+        # Create WITH_NANVIX dir without deps
+        build_dir = repo_root / "build"
+        build_dir.mkdir()
+
+        with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
+            script = ZScript(repo_root)
+        script._offline = True
+        script._cli_sysroot_path = str(sysroot_dir)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = sysroot_dir
+        fake_sysroot.tag = ""
+
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=fake_sysroot,
+            ),
+            patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}),
+        ):
+            # Should NOT raise SystemExit — just warn
+            script.setup()
+
+    def test_offline_with_local_dep_installs(self) -> None:
+        """Offline mode installs dep from local path when artifacts exist."""
+        repo_root = Path(self._tmpdir.name)
+        sysroot_dir = repo_root / "my-sysroot"
+        sysroot_dir.mkdir()
+        build_dir = repo_root / "build"
+        (build_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
+        (build_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
+
+        with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
+            script = ZScript(repo_root)
+        script._offline = True
+        script._cli_sysroot_path = str(sysroot_dir)
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = sysroot_dir
+        fake_sysroot.tag = ""
+
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=fake_sysroot,
+            ),
+            patch("nanvix_zutil.script.resolve_release") as mock_resolve,
+            patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}),
+        ):
+            script.setup()
+
+        # GitHub resolve should NOT be called in offline mode
+        mock_resolve.assert_not_called()
+        # Dep should be installed in buildroot
+        self.assertIsNotNone(script.buildroot)
+        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        self.assertTrue(buildroot_lib.exists())
+
+
+class TestInstallArtifacts(unittest.TestCase):
+    """Tests for ZScript.install_artifacts()."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        write_manifest(Path(self._tmpdir.name))
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_exports_from_output_dir(self) -> None:
+        """install_artifacts copies from .nanvix/output/."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+
+        # Create .nanvix/output/{lib,include}/
+        output_src = script.nanvix_dir / "output"
+        (output_src / "lib").mkdir(parents=True)
+        (output_src / "lib" / "libfoo.a").write_bytes(b"lib")
+        (output_src / "include").mkdir(parents=True)
+        (output_src / "include" / "foo.h").write_text("#pragma once")
+
+        target = repo_root / "export"
+        script.install_artifacts(str(target))
+
+        self.assertTrue((target / "lib" / "libfoo.a").exists())
+        self.assertTrue((target / "include" / "foo.h").exists())
+
+    def test_exports_nested_includes(self) -> None:
+        """install_artifacts preserves nested include directory structure."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+
+        output_src = script.nanvix_dir / "output"
+        (output_src / "include" / "sub").mkdir(parents=True)
+        (output_src / "include" / "sub" / "bar.h").write_text("// bar")
+
+        target = repo_root / "export"
+        script.install_artifacts(str(target))
+
+        self.assertTrue((target / "include" / "sub" / "bar.h").exists())
+
+    def test_no_output_dir_produces_empty_export(self) -> None:
+        """install_artifacts with no .nanvix/output/ produces empty target."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+
+        target = repo_root / "export"
+        script.install_artifacts(str(target))
+
+        self.assertTrue(target.is_dir())
+        # No lib/ or include/ created when output/ doesn't exist
+        self.assertFalse((target / "lib").exists())
+        self.assertFalse((target / "include").exists())
+
+    def test_creates_output_directory(self) -> None:
+        """install_artifacts creates the target directory if missing."""
+        repo_root = Path(self._tmpdir.name)
+        script = ZScript(repo_root)
+
+        target = repo_root / "nonexistent" / "path"
+        script.install_artifacts(str(target))
+
+        self.assertTrue(target.is_dir())
 
 
 if __name__ == "__main__":

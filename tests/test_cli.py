@@ -33,6 +33,8 @@ class TestBuildParser(unittest.TestCase):
             argv = [cmd]
             if cmd == "setup":
                 argv += ["--with-docker", "test/image:tag"]
+            if cmd == "install":
+                argv += ["--output", "/tmp/out"]
             args = parser.parse_args(argv)
             self.assertEqual(args.subcommand, cmd)
 
@@ -76,6 +78,9 @@ class TestBuildParser(unittest.TestCase):
             # setup requires --with-docker IMAGE
             if cmd == "setup":
                 argv += ["--with-docker", "test/image:tag"]
+            # install requires --output PATH
+            if cmd == "install":
+                argv += ["--output", "/tmp/out"]
             args = parser.parse_args(argv)
             self.assertEqual(args.subcommand, cmd)
 
@@ -171,6 +176,99 @@ class TestLintFormatSubcommands(unittest.TestCase):
         parser = build_parser(available=("format", "help"))
         args = parser.parse_args(["format"])
         self.assertEqual(args.subcommand, "format")
+
+
+class TestOfflineFlag(unittest.TestCase):
+    """Tests for the --offline flag on the setup subcommand."""
+
+    def test_offline_flag_parsed(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["setup", "--with-docker", "img:t", "--offline"])
+        self.assertTrue(args.offline)
+
+    def test_offline_default_false(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["setup", "--with-docker", "img:t"])
+        self.assertFalse(args.offline)
+
+    def test_offline_rejected_on_build(self) -> None:
+        """--offline is only accepted on setup, not build."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["build", "--offline"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestWithNanvixFlag(unittest.TestCase):
+    """Tests for the --with-nanvix flag on the setup subcommand."""
+
+    def test_with_nanvix_parsed(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["setup", "--with-docker", "img:t", "--with-nanvix", "/some/path"]
+        )
+        self.assertEqual(args.with_nanvix, "/some/path")
+
+    def test_with_nanvix_default_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["setup", "--with-docker", "img:t"])
+        self.assertIsNone(args.with_nanvix)
+
+    def test_with_nanvix_rejected_on_build(self) -> None:
+        """--with-nanvix is only accepted on setup, not build."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["build", "--with-nanvix", "/p"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestSysrootPathFlag(unittest.TestCase):
+    """Tests for the --sysroot-path flag on the setup subcommand."""
+
+    def test_sysroot_path_parsed(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["setup", "--with-docker", "img:t", "--sysroot-path", "/my/sysroot"]
+        )
+        self.assertEqual(args.sysroot_path, "/my/sysroot")
+
+    def test_sysroot_path_default_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["setup", "--with-docker", "img:t"])
+        self.assertIsNone(args.sysroot_path)
+
+    def test_sysroot_path_rejected_on_test(self) -> None:
+        """--sysroot-path is only accepted on setup."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["test", "--sysroot-path", "/p"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestInstallArtifactsSubcommand(unittest.TestCase):
+    """Tests for the install subcommand."""
+
+    def test_install_artifacts_in_subcommands(self) -> None:
+        self.assertIn("install", SUBCOMMANDS)
+
+    def test_install_artifacts_requires_output(self) -> None:
+        """install without --output is rejected."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["install"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_install_artifacts_output_parsed(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["install", "--output", "/tmp/out"])
+        self.assertEqual(args.output, "/tmp/out")
+        self.assertEqual(args.subcommand, "install")
+
+    def test_install_artifacts_available_restricted(self) -> None:
+        """install is accepted when in the available set."""
+        parser = build_parser(available=("install", "help"))
+        args = parser.parse_args(["install", "--output", "/tmp/x"])
+        self.assertEqual(args.subcommand, "install")
 
 
 if __name__ == "__main__":

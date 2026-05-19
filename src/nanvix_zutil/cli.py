@@ -37,6 +37,7 @@ SUBCOMMANDS: tuple[str, ...] = (
     "lock",
     "lint",
     "format",
+    "install",
     "help",
 )
 
@@ -59,6 +60,7 @@ SUBCOMMAND_HELP: dict[str, str] = {
     "lock": "Resolve dependencies and write nanvix.lock",
     "lint": "Run linters (black --check + pyright) on .nanvix/*.py",
     "format": "Format .nanvix/*.py with black",
+    "install": "Export build artifacts to a target directory",
     "help": "Show help message",
 }
 
@@ -159,6 +161,40 @@ def build_parser(
                 " subsequent build/release/clean commands use it"
                 " automatically. test and benchmark always run on"
                 " the host.",
+            )
+            sub.add_argument(
+                "--offline",
+                action="store_true",
+                default=False,
+                help="Skip the dependency resolver entirely and require"
+                " all artifacts to be available locally via --with-nanvix.",
+            )
+            sub.add_argument(
+                "--with-nanvix",
+                type=str,
+                metavar="PATH",
+                dest="with_nanvix",
+                help="Path to a local build directory containing"
+                " deps/<name>/{lib,include}/ artifacts."
+                " Overrides the WITH_NANVIX environment variable.",
+            )
+            sub.add_argument(
+                "--sysroot-path",
+                type=str,
+                metavar="PATH",
+                dest="sysroot_path",
+                help="Explicit path to a local sysroot directory."
+                " Alternative to setting NANVIX_VERSION to a path.",
+            )
+        if name == "install":
+            sub.add_argument(
+                "--output",
+                type=str,
+                required=True,
+                metavar="PATH",
+                dest="output",
+                help="Target directory to export build artifacts to."
+                " Creates <output>/{lib,include,bin}/ subdirectories.",
             )
 
     return parser
