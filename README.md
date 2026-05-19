@@ -67,6 +67,20 @@ Consumer repos typically don't install manually — the bootstrap wrappers
 (`z`, `z.sh`, `z.ps1`) auto-create a virtualenv and install the pinned
 version into `.nanvix/venv/`.
 
+To iterate on `nanvix-zutil` itself against a downstream consumer, point the
+bootstrapper at a local source checkout (a directory containing
+`pyproject.toml`).  An editable install is materialised in `.nanvix/venv/`
+and the pinned-version check is bypassed:
+
+```bash
+WITH_ZUTIL=~/src/zutils ./z.sh build      # Linux/macOS
+$env:WITH_ZUTIL = 'C:\src\zutils'; .\z.ps1 build   # Windows
+```
+
+The override is re-applied when the recorded source path changes or when
+the venv is missing, so repeated invocations stay fast.  `./z distclean`
+removes the venv, so the override must be set again on the next bootstrap.
+
 ## Documentation
 
 | Document | Description |

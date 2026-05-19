@@ -13,6 +13,37 @@ ZUTIL_VERSION="${RAW_ZUTIL_VERSION#v}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 VENV="$REPO_ROOT/.nanvix/venv"
 
+# Optional override: install nanvix-zutil from a local source tree (editable)
+# instead of fetching the pinned wheel from GitHub Releases.  Useful when
+# iterating on zutils itself against a downstream consumer repo.
+#
+#   WITH_ZUTIL=~/src/zutils ./z.sh build
+#
+# The path must point at a nanvix-zutil source checkout (a directory
+# containing pyproject.toml).  The venv version-match check is bypassed; the
+# editable install is rebuilt only when the recorded source path changes.
+WITH_ZUTIL="${WITH_ZUTIL:-}"
+if [ -n "$WITH_ZUTIL" ]; then
+    _zutil_raw="$WITH_ZUTIL"
+    if [ ! -e "$_zutil_raw" ]; then
+        echo "ERROR: WITH_ZUTIL path does not exist: ${_zutil_raw}" >&2
+        exit 1
+    fi
+    if [ ! -d "$_zutil_raw" ]; then
+        echo "ERROR: WITH_ZUTIL is not a directory: ${_zutil_raw}" >&2
+        exit 1
+    fi
+    if ! WITH_ZUTIL="$(cd -- "$_zutil_raw" 2>/dev/null && pwd -P)"; then
+        echo "ERROR: WITH_ZUTIL is not accessible (cd failed): ${_zutil_raw}" >&2
+        exit 1
+    fi
+    if [ ! -f "$WITH_ZUTIL/pyproject.toml" ]; then
+        echo "ERROR: WITH_ZUTIL is not a Python source tree (no pyproject.toml): ${WITH_ZUTIL}" >&2
+        exit 1
+    fi
+    unset _zutil_raw
+fi
+
 # Resolve venv layout (bin/ vs Scripts/) based on what exists on disk.
 # Can be called before venv creation to initialize default paths; call it
 # again after venv creation to pick up the actual layout.
@@ -27,6 +58,23 @@ function _resolve_venv_paths() {
 }
 _resolve_venv_paths
 ZUTIL_GLOBAL_VERSION="$(nanvix-zutil --version 2>/dev/null || true)"
+
+function bootstrap_local() {
+    # Install nanvix-zutil from $WITH_ZUTIL as an editable install.
+    echo "nanvix-zutil -- installing editable from ${WITH_ZUTIL}..." >&2
+    if ! command -v python3 &>/dev/null; then
+        echo "Error: python3 not found. Install Python 3 and ensure python3 is on PATH." >&2
+        exit 1
+    fi
+    if [ -d "$VENV" ]; then
+        python3 -m venv --clear "$VENV"
+    else
+        python3 -m venv "$VENV"
+    fi
+    _resolve_venv_paths
+    "$VENV_PYTHON" -m pip install --quiet -e "${WITH_ZUTIL}[lint]"
+    printf '%s\n' "$WITH_ZUTIL" >"$VENV/.with-zutil"
+}
 
 function bootstrap() {
     # Pin nanvix-zutil version for reproducible bootstrapping.
@@ -52,7 +100,16 @@ function bootstrap() {
 
 # Prefer the venv copy if it exists; otherwise use the global install.
 BIN=""
-if [ ! -d "$VENV" ] && [ -z "$ZUTIL_GLOBAL_VERSION" ]; then
+if [ -n "$WITH_ZUTIL" ]; then
+    RECORDED_ZUTIL=""
+    if [ -f "$VENV/.with-zutil" ]; then
+        RECORDED_ZUTIL="$(cat "$VENV/.with-zutil")"
+    fi
+    if [ ! -x "$VENV_BIN" ] || [ "$RECORDED_ZUTIL" != "$WITH_ZUTIL" ]; then
+        bootstrap_local
+    fi
+    BIN="$VENV_BIN"
+elif [ ! -d "$VENV" ] && [ -z "$ZUTIL_GLOBAL_VERSION" ]; then
     bootstrap
     BIN="$VENV_BIN"
 elif [ -x "$VENV_BIN" ]; then

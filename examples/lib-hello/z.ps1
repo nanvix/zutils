@@ -19,6 +19,29 @@ else {
 }
 $zutilVersion = $zutilVersion -replace "^v", ""
 
+# Optional override: install nanvix-zutil from a local source tree (editable)
+# instead of fetching the pinned wheel from GitHub Releases.  Useful when
+# iterating on zutils itself against a downstream consumer repo.
+#
+#   $env:WITH_ZUTIL = "C:\src\zutils"; .\z.ps1 build
+#
+# The path must point at a nanvix-zutil source checkout (a directory
+# containing pyproject.toml).  The venv version-match check is bypassed; the
+# editable install is rebuilt only when the recorded source path changes.
+$withZutil = if ($env:WITH_ZUTIL) {
+    $resolved = Resolve-Path -LiteralPath $env:WITH_ZUTIL -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        throw "ERROR: WITH_ZUTIL path does not exist: $($env:WITH_ZUTIL)"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $resolved.Path 'pyproject.toml'))) {
+        throw "ERROR: WITH_ZUTIL is not a Python source tree (no pyproject.toml): $($resolved.Path)"
+    }
+    $resolved.Path
+}
+else {
+    $null
+}
+
 # z.ps1 lives at the repository root, so use its directory directly
 # instead of relying on git to discover the top-level checkout directory.
 $repoRoot = $PSScriptRoot
@@ -41,15 +64,8 @@ catch {
     $null
 }
 
-function Bootstrap {
-    param([string]$Reason = "not found")
-    # Pin nanvix-zutil version for reproducible bootstrapping.
-    # Override with NANVIX_ZUTIL_VERSION env var if needed.
-    Write-Information "nanvix-zutil ${Reason} -- bootstrapping nanvix-zutil==${zutilVersion}..." -InformationAction Continue
-
-    $wheelUrl = "https://github.com/nanvix/zutils/releases/download/v${zutilVersion}/nanvix_zutil-${zutilVersion}-py3-none-any.whl"
-
-    # Discover a Python 3 interpreter.
+function NewZutilVenv {
+    # Discover a Python 3 interpreter and (re)create the venv.
     $venvArgs = @("-m", "venv")
     if (Test-Path $venvDir) {
         $venvArgs += "--clear"
@@ -71,15 +87,50 @@ function Bootstrap {
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "venv creation failed (exit code $LASTEXITCODE)"
     }
+}
+
+function Bootstrap {
+    param([string]$Reason = "not found")
+    # Pin nanvix-zutil version for reproducible bootstrapping.
+    # Override with NANVIX_ZUTIL_VERSION env var if needed.
+    Write-Information "nanvix-zutil ${Reason} -- bootstrapping nanvix-zutil==${zutilVersion}..." -InformationAction Continue
+
+    $wheelUrl = "https://github.com/nanvix/zutils/releases/download/v${zutilVersion}/nanvix_zutil-${zutilVersion}-py3-none-any.whl"
+    NewZutilVenv
     & $venvPython -m pip install --quiet "nanvix-zutil[lint] @ $($wheelUrl)"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "pip install failed (exit code $LASTEXITCODE)"
     }
 }
 
+function BootstrapLocal {
+    # Install nanvix-zutil from $withZutil as an editable install.
+    Write-Information "nanvix-zutil -- installing editable from ${withZutil}..." -InformationAction Continue
+    NewZutilVenv
+    & $venvPython -m pip install --quiet -e "$($withZutil)[lint]"
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "pip install (editable) failed (exit code $LASTEXITCODE)"
+    }
+    Set-Content -LiteralPath (Join-Path $venvDir '.with-zutil') -Value $withZutil -NoNewline
+}
+
 # Prefer the venv copy if it exists; otherwise use the global install.
 $bin = $null
-if ((-not (Test-Path $venvDir)) -and (-not $zutilGlobalVersion)) {
+if ($withZutil) {
+    $zutilMarker = Join-Path $venvDir '.with-zutil'
+    $recordedZutil = if (Test-Path -LiteralPath $zutilMarker) {
+        (Get-Content -LiteralPath $zutilMarker -Raw).Trim()
+    }
+    else { $null }
+    if ((-not (Test-Path $venvZutil)) -or ($recordedZutil -ne $withZutil)) {
+        BootstrapLocal
+    }
+    if (-not (Test-Path $venvZutil)) {
+        throw "BootstrapLocal completed but $venvZutil not found."
+    }
+    $bin = $venvZutil
+}
+elseif ((-not (Test-Path $venvDir)) -and (-not $zutilGlobalVersion)) {
     Bootstrap
     if (-not (Test-Path $venvZutil)) {
         throw "Bootstrap completed but $venvZutil not found."
