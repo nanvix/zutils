@@ -33,6 +33,9 @@ $withZutil = if ($env:WITH_ZUTIL) {
     if (-not $resolved) {
         throw "ERROR: WITH_ZUTIL path does not exist: $($env:WITH_ZUTIL)"
     }
+    if (-not (Test-Path -LiteralPath $resolved.Path -PathType Container)) {
+        throw "ERROR: WITH_ZUTIL is not a directory: $($resolved.Path)"
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $resolved.Path 'pyproject.toml'))) {
         throw "ERROR: WITH_ZUTIL is not a Python source tree (no pyproject.toml): $($resolved.Path)"
     }

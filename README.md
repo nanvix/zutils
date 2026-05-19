@@ -72,9 +72,16 @@ bootstrapper at a local source checkout (a directory containing
 `pyproject.toml`).  An editable install is materialised in `.nanvix/venv/`
 and the pinned-version check is bypassed:
 
+Linux/macOS:
+
 ```bash
-WITH_ZUTIL=~/src/zutils ./z.sh build      # Linux/macOS
-$env:WITH_ZUTIL = 'C:\src\zutils'; .\z.ps1 build   # Windows
+WITH_ZUTIL=~/src/zutils ./z.sh build
+```
+
+Windows:
+
+```powershell
+$env:WITH_ZUTIL = 'C:\src\zutils'; .\z.ps1 build
 ```
 
 The override is re-applied when the recorded source path changes or when
