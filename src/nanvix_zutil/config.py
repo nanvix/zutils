@@ -48,9 +48,6 @@ DEFAULT_MEMORY_SIZE: str = _DEFAULTS["NANVIX_MEMORY_SIZE"]
 CFG_SYSROOT: str = "NANVIX_SYSROOT"
 """Path to the downloaded Nanvix sysroot directory."""
 
-CFG_TOOLCHAIN: str = "NANVIX_TOOLCHAIN"
-"""Path to the Nanvix cross-compilation toolchain."""
-
 CFG_GH_TOKEN: str = "GH_TOKEN"
 """GitHub token for authenticated API requests (rate limits)."""
 
@@ -67,7 +64,6 @@ ENV_VARS: dict[str, str] = {
     "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE})",
     "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE})",
     "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
-    "NANVIX_TOOLCHAIN": "Path to cross-compilation toolchain",
     "NANVIX_DOCKER_IMAGE": "Docker image override (set by setup --with-docker)",
     "GH_TOKEN": "GitHub token for API rate limits",
 }
