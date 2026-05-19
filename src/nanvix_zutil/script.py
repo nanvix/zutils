@@ -96,8 +96,6 @@ class ZScript:
             :meth:`setup`, or ``None`` before setup runs.
         buildroot: The :class:`~nanvix_zutil.Buildroot` populated by
             :meth:`setup`, or ``None`` when there are no dependencies.
-        docker: Active :class:`~nanvix_zutil.DockerConfig`, or ``None``
-            when Docker mode is not in use.
     """
 
     SYSROOT_REQUIRED_FILES: tuple[str, ...] = (
@@ -266,7 +264,7 @@ class ZScript:
                     code=EXIT_MISSING_DEP,
                 )
 
-    def docker_config(self, image: str) -> DockerConfig:
+    def docker_config(self, image: str | None = None) -> DockerConfig:
         """Build the :class:`~nanvix_zutil.DockerConfig` for *image*.
 
         Constructs a standard configuration that mounts:
@@ -312,6 +310,14 @@ class ZScript:
                     readonly=True,
                 )
             )
+
+        if image is None:
+            image = self.config.get(CFG_DOCKER_IMAGE)
+            if image is None:
+                log.fatal(
+                    "No Docker image configured. Run 'setup --with-docker IMAGE' first.",
+                    code=EXIT_INVALID_ARGS,
+                )
 
         return DockerConfig(
             image=image,
@@ -1109,8 +1115,8 @@ class ZScript:
         # to .nanvix/env.json so that subsequent commands can use it,
         # but we do not require Docker to be installed or the image to
         # exist locally.
+        image: str | None = getattr(args, "with_docker", None)
         if args.subcommand in ZScript.DOCKER_COMMANDS:
-            image: str | None = getattr(args, "with_docker", None)
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
 
             if image is None:
@@ -1137,9 +1143,9 @@ class ZScript:
                 # may exit if Docker is required but not available
                 instance._check_docker(image)
 
-            # Persist Docker image on setup so subsequent commands
-            # automatically use the same image.
-            instance.docker = instance.docker_config(image)
+        # Persist Docker image on setup so subsequent commands
+        # automatically use the same image.
+        instance.docker = instance.docker_config(image)
 
         # ------------------------------------------------------------------
         # Dispatch to lifecycle hook

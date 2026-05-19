@@ -95,9 +95,10 @@ class TestIntegrationLifecycle(unittest.TestCase):
         if subcommand == "setup" and "--with-docker" not in argv:
             argv += ["--with-docker", "test/image:tag"]
 
-        # build/release/clean need a persisted Docker image.
-        _DOCKER_COMMANDS = {"build", "release", "clean"}
-        if subcommand in _DOCKER_COMMANDS:
+        # docker_config() is now called unconditionally for every
+        # subcommand, so any command other than `setup` (which provides
+        # the image via --with-docker) needs a persisted Docker image.
+        if subcommand != "setup":
             nanvix_dir = self._repo_root / ".nanvix"
             env_json = nanvix_dir / "env.json"
             if not env_json.exists():

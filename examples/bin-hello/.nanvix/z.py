@@ -9,7 +9,7 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
     nanvix-zutil setup                     # download sysroot + lib-hello (Docker auto-enabled)
     nanvix-zutil setup --with-docker IMG   # download sysroot + lib-hello (custom Docker image)
     nanvix-zutil build                     # cross-compile inside Docker container (auto)
-    nanvix-zutil test                      # run tests (smoke + integration + functional)
+    nanvix-zutil test                      # run tests (smoke + integration + functional, host-local)
     nanvix-zutil clean                     # remove build artifacts (host)
 """
 
@@ -35,7 +35,7 @@ class BinHello(ZScript):
     # Docker configuration
     # ------------------------------------------------------------------
 
-    def docker_config(self, image: str) -> DockerConfig:
+    def docker_config(self, image: str | None = None) -> DockerConfig:
         """Add output_files so hello.elf is copied back on Windows."""
         cfg = super().docker_config(image)
         return dataclasses.replace(cfg, output_files=["hello.elf"])
@@ -113,11 +113,10 @@ class BinHello(ZScript):
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
 
-        The functional test phase runs under ``nanvixd.elf`` inside a
-        Docker container on Linux, or natively under ``nanvixd.exe`` on
-        Windows.  On Linux, functional tests are skipped when Docker is
-        not configured (the ``test`` subcommand does not enable Docker
-        automatically).
+        All phases run directly on the host — only ``build`` is wrapped
+        in Docker.  The functional phase invokes the sysroot-shipped
+        ``nanvixd`` binary (``nanvixd.exe`` on Windows, ``nanvixd.elf``
+        elsewhere).
         """
         binary = self.repo_root / "hello.elf"
 
@@ -141,42 +140,15 @@ class BinHello(ZScript):
             log.fatal(f"{binary} is not a valid ELF binary.", code=EXIT_TEST_FAILURE)
         log.success(f"OK: {binary.name} is a valid ELF binary")
 
-        # Functional: run under nanvixd on the appropriate platform.
-        #
-        # On Linux the functional test requires Docker (nanvixd.elf
-        # cannot run directly on the CI host).  The ``test`` subcommand
-        # does not enable Docker, so functional tests are skipped unless
-        # Docker was explicitly configured.
-        #
-        # On Windows, nanvixd.exe is a native host binary and runs
-        # without Docker.
-        if sys.platform == "win32":
-            self._test_functional_windows(binary)
-        elif self.docker:
-            self._test_functional_docker(binary)
-        else:
-            log.info("=== skipping functional tests (Docker not configured) ===")
+        # Functional: run nanvixd directly from the sysroot on the host.
+        # The sysroot ships a per-OS nanvixd binary (``nanvixd.exe`` on
+        # Windows, ``nanvixd.elf`` elsewhere) so no Docker wrapping is
+        # needed for ``test`` — only ``build`` runs in Docker.
+        self._test_functional(binary)
 
-    def _test_functional_docker(self, binary: Path) -> None:
-        """Run functional tests inside a Docker container (Linux)."""
-        log.info("=== bin-hello functional tests (Docker) ===")
-        sysroot = self._sysroot()
-        workspace_binary = self.translate_path(binary)
-        self.run(
-            "timeout",
-            "--foreground",
-            "60",
-            f"{sysroot}/bin/nanvixd.elf",
-            "-bin-dir",
-            f"{sysroot}/bin",
-            "--",
-            str(workspace_binary),
-        )
-        log.success("PASS: bin-hello functional tests")
-
-    def _test_functional_windows(self, binary: Path) -> None:
-        """Run functional tests natively on Windows using nanvixd.exe."""
-        log.info("=== bin-hello functional tests (Windows) ===")
+    def _test_functional(self, binary: Path) -> None:
+        """Run nanvixd from the sysroot directly on the host."""
+        log.info("=== bin-hello functional tests ===")
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
             log.fatal(
@@ -184,7 +156,8 @@ class BinHello(ZScript):
                 code=EXIT_TEST_FAILURE,
             )
         sysroot = Path(sysroot_str)  # type: ignore[arg-type]
-        nanvixd = sysroot / "bin" / "nanvixd.exe"
+        nanvixd_name = "nanvixd.exe" if sys.platform == "win32" else "nanvixd.elf"
+        nanvixd = sysroot / "bin" / nanvixd_name
         if not nanvixd.exists():
             log.fatal(
                 f"{nanvixd} not found — run 'nanvix-zutil setup' to download it.",
@@ -197,6 +170,7 @@ class BinHello(ZScript):
             "--",
             str(binary),
             timeout=60,
+            docker=False,
         )
         log.success("PASS: bin-hello functional tests")
 
