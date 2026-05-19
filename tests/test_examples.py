@@ -3,14 +3,19 @@
 
 """Integration tests for the example projects (lib-hello and bin-hello).
 
-These tests exercise both examples end-to-end via ``nanvix-zutil``,
-the same way a real user would.
+These tests exercise both examples end-to-end **through the bootstrap
+wrapper** (``z.sh`` / ``z.ps1``), the same way a real user would.  The
+wrapper is pointed at the in-tree source via ``--with-zutils <repo root>``,
+which performs an editable install into ``examples/<name>/.nanvix/venv/``
+and bypasses the pinned-wheel version check.  This means the bootstrap
+logic itself is covered by these tests, not just the underlying CLI.
 
 **CI Linux** (Docker available):
     Full lifecycle — ``setup → build → test`` — for both examples.
 
 **CI Windows** (pre-built artifacts downloaded from Linux job):
-    Test-only — ``nanvix-zutil test`` — for both examples.
+    Test-only — ``nanvix-zutil test`` — for both examples.  Requires
+    ``pwsh`` on PATH.
 
 **Local** (no Docker):
     CLI smoke tests only (``--help``, ``--json``).
@@ -89,16 +94,29 @@ def _run_z(
     timeout: int = _TIMEOUT,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Invoke ``nanvix-zutil`` in *cwd* and return the completed process."""
+    """Invoke the bootstrap wrapper in *cwd* and return the completed process.
+
+    Calls ``z.sh`` (Linux/macOS) or ``z.ps1`` via ``pwsh`` (Windows) with
+    ``--with-zutils <repo root>`` prepended, so the wrapper materialises
+    an editable install of ``nanvix-zutil`` into ``cwd/.nanvix/venv/`` and
+    dispatches the subcommand through that venv.  The first call per
+    example dir pays the editable-install cost (~5-30s); subsequent calls
+    hit the recorded-path fast path.
+    """
     env = os.environ.copy()
-    # Ensure the source tree is importable regardless of subprocess cwd.
-    src_dir = str(_REPO_ROOT / "src")
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing}" if existing else src_dir
+    # An outer venv must not bleed into the wrapper's `python -m venv`
+    # invocation (`pip install -e` would otherwise target the outer venv
+    # when the wrapper's resolved python happens to be `sys.executable`).
+    env.pop("VIRTUAL_ENV", None)
     if extra_env:
         env.update(extra_env)
+    z_args = ("--with-zutils", str(_REPO_ROOT), *args)
+    if sys.platform == "win32":
+        cmd = ["pwsh", "-NoProfile", "-File", str(cwd / "z.ps1"), *z_args]
+    else:
+        cmd = [str(cwd / "z.sh"), *z_args]
     return subprocess.run(
-        [sys.executable, "-m", "nanvix_zutil", *args],
+        cmd,
         cwd=str(cwd),
         capture_output=True,
         text=True,
@@ -196,7 +214,12 @@ class TestLibHelloCLI(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_json_mode(self) -> None:
-        """``--json`` produces parseable JSON on stderr."""
+        """``--json`` produces parseable JSON on stderr.
+
+        ``distclean`` is benign but triggers the wrapper's post-distclean
+        ``rm -rf .nanvix/venv``, so the next ``_run_z`` invocation in this
+        dir re-bootstraps (~5s).  Acceptable as a per-example one-off.
+        """
         r = _run_z(_LIB_HELLO, "--json", "distclean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
@@ -218,7 +241,7 @@ class TestBinHelloCLI(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_json_mode(self) -> None:
-        """``--json`` produces parseable JSON on stderr."""
+        """``--json`` produces parseable JSON on stderr.  See lib-hello sibling."""
         r = _run_z(_BIN_HELLO, "--json", "distclean")
         self.assertEqual(r.returncode, 0, r.stderr)
         json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
