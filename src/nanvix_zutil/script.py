@@ -274,7 +274,7 @@ class ZScript:
         * :attr:`repo_root` → ``/mnt/workspace`` (writable, workdir)
         * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only),
           if the sysroot has been configured
-        * ``.nanvix/buildroot`` → ``/mnt/buildroot`` (read-only),
+        * ``.nanvix/buildroot`` → ``/mnt/buildroot`` (writable),
           if the buildroot directory exists on disk
 
         Override in a subclass to add extra mounts or environment variables.
@@ -309,7 +309,7 @@ class ZScript:
                 Mount(
                     host_path=buildroot_dir,
                     container_path=BUILDROOT_CONTAINER_PATH,
-                    readonly=True,
+                    readonly=False,
                 )
             )
 

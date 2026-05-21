@@ -804,7 +804,7 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         self.assertIsNotNone(buildroot_mount)
         assert buildroot_mount is not None
         self.assertEqual(buildroot_mount.host_path, buildroot_dir)
-        self.assertTrue(buildroot_mount.readonly)
+        self.assertFalse(buildroot_mount.readonly)
 
     def test_translate_path_no_docker(self) -> None:
         """Without Docker, translate_path returns the input unchanged."""
