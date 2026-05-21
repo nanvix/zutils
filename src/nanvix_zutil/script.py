@@ -354,12 +354,13 @@ class ZScript:
         Call ``super().setup()`` to retain the automatic download behaviour::
 
             def setup(self) -> bool:
-                used_fallback = super().setup()
+                failed = super().setup()
                 # extra verification or configuration here
-                return used_fallback
+                return failed
 
         Returns:
-            ``True`` if any dependency was resolved via version fallback,
+            ``True`` if any dependency was resolved via version fallback, or any
+            other failure condition
             ``False`` if all dependencies matched their exact requested
             versions.
         """
@@ -1181,19 +1182,21 @@ class ZScript:
         handler = dispatch.get(subcommand) if subcommand is not None else None
         if callable(handler) and subcommand is not None:
             handler_result = handler()
-            if subcommand == "setup":
-                used_fallback = instance._used_fallback or bool(handler_result)
-                instance._used_fallback = used_fallback
-            else:
-                used_fallback = False
 
-            if subcommand == "setup" and used_fallback:
-                log.warning(
-                    f"{subcommand.capitalize()} complete with fallback dependencies",
-                    code=EXIT_DEGRADED_SETUP,
-                )
-                sys.exit(EXIT_DEGRADED_SETUP)
-            else:
-                log.success(f"{subcommand.capitalize()} complete")
+            if subcommand == "setup":
+                if instance._used_fallback:
+                    log.fatal(
+                        f"{subcommand.capitalize()} complete with fallback dependencies",
+                        code=EXIT_DEGRADED_SETUP,
+                    )
+                # NOTE: This is semantically backwards,
+                # but we're going to be making setup standalone soon.
+                # Leave it so we don't have to modify downstreams.
+                elif handler_result is True:
+                    log.fatal(
+                        "Setup override returned True, indicating failure.",
+                        code=EXIT_DEGRADED_SETUP,
+                    )
+            log.success(f"{subcommand.capitalize()} complete")
         else:
             log.fatal(f"Unknown subcommand: {subcommand}", code=EXIT_INVALID_ARGS)

@@ -1207,8 +1207,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         ]
         self.assertTrue(success_calls, "Expected a success log on clean setup")
 
-    def test_main_json_warning_includes_degraded_code(self) -> None:
-        """main() emits a warning JSON object with code on degraded setup."""
+    def test_main_json_fatal_includes_degraded_code(self) -> None:
+        """main() emits a fatal JSON object with code on degraded setup."""
         from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
 
         buf = StringIO()
@@ -1233,7 +1233,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         json_lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith("{")]
         self.assertTrue(json_lines, "Expected JSON output on stderr")
         obj = json.loads(json_lines[-1])
-        self.assertEqual(obj["level"], "warning")
+        self.assertEqual(obj["level"], "error")
         self.assertEqual(obj["code"], EXIT_DEGRADED_SETUP)
 
 
