@@ -2,7 +2,7 @@
 
 ## What This Is
 
-`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks (`setup`, `build`, `test`, `benchmark`, `release`, `clean`, `lock`, `lint`, `format`), structured logging, config persistence, GitHub release artifact downloading, lockfile-based dependency resolution with transitive discovery, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.sh` / `z.ps1` bootstrap wrappers at the repo root.
+`nanvix_zutil` is a **Python 3.12+ library** that provides unified build orchestration for all Nanvix ecosystem repositories. It exposes a `ZScript` base class with lifecycle hooks, structured logging, config persistence, GitHub release artifact downloading, lockfile-based dependency resolution with transitive discovery, and deterministic exit codes. Consumer repos (e.g., `nanvix/zlib`, `nanvix/cpython`) subclass `ZScript` in a `.nanvix/z.py` file and invoke it via thin `z` / `z.sh` / `z.ps1` bootstrap wrappers at the repo root.
 
 The canonical specification lives in [Issue #1](https://github.com/nanvix/zutils/issues/1).
 
@@ -55,7 +55,13 @@ __init__.py    ←  public library API (re-exports all public symbols)
 
 `script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
 
+<<<<<<< HEAD
 Hooks `setup`, `lock`, `lint`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them. `distclean`, `info`, and `resolve` are exposed as **standalone** commands directly under `nanvix-zutil` (no `.nanvix/z.py` required) and are not part of the `ZScript` API.
+||||||| parent of 5aef1e3 ([zutils] E: Make lint standalone)
+Hooks `setup`, `distclean`, `lock`, `lint`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them.
+=======
+Hooks `setup`, `distclean`, `lock`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. `lint` is a standalone command (no `ZScript` subclass required); see `src/nanvix_zutil/lint_cmd.py`. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them.
+>>>>>>> 5aef1e3 ([zutils] E: Make lint standalone)
 
 ### Bootstrap Chain
 

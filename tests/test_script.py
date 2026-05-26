@@ -1234,107 +1234,6 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         mock_resolve.assert_not_called()
 
 
-class TestZScriptLint(unittest.TestCase):
-    """Tests for ZScript.lint() default implementation."""
-
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
-    def _make_script(self) -> ZScript:
-        return ZScript(Path(self._tmpdir.name))
-
-    def test_lint_runs_black_and_pyright(self) -> None:
-        """lint() runs black --check and pyright on .nanvix/*.py files."""
-        script = self._make_script()
-        # Create a .py file in .nanvix/
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        calls: list[list[str]] = []
-
-        def fake_run(
-            args: tuple[str, ...], **kwargs: object
-        ) -> sp.CompletedProcess[str]:
-            cmd = list(args)
-            calls.append(cmd)
-            return sp.CompletedProcess(args=cmd, returncode=0)
-
-        with (
-            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-            patch("importlib.util.find_spec", return_value=True),
-        ):
-            script.lint()
-
-        self.assertEqual(len(calls), 2)
-        self.assertIn("-m", calls[0])
-        self.assertIn("black", calls[0])
-        self.assertIn("--config", calls[0])
-        self.assertIn("--check", calls[0])
-        self.assertIn("-m", calls[1])
-        self.assertIn("pyright", calls[1])
-        self.assertIn("--project", calls[1])
-
-    def test_lint_no_py_files_warns(self) -> None:
-        """lint() warns and returns when no .py files exist."""
-        script = self._make_script()
-        # Remove all .py files from .nanvix/
-        for f in script.nanvix_dir.glob("*.py"):
-            f.unlink()
-
-        with patch("nanvix_zutil.script.log") as mock_log:
-            script.lint()
-
-        mock_log.warning.assert_called_once()
-        self.assertIn("nothing to lint", mock_log.warning.call_args[0][0].lower())
-
-    def test_lint_exits_on_black_failure(self) -> None:
-        """lint() exits with EXIT_BUILD_FAILURE when black fails."""
-        script = self._make_script()
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        def fake_run(
-            args: tuple[str, ...], **kwargs: object
-        ) -> sp.CompletedProcess[str]:
-            cmd = list(args)
-            # helpers.run() passes check=True; emulate the real subprocess.run
-            # behaviour by raising CalledProcessError on non-zero exit.
-            raise sp.CalledProcessError(returncode=1, cmd=cmd)
-
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-                patch("importlib.util.find_spec", return_value=True),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                script.lint()
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
-
-    def test_lint_exits_when_tool_missing(self) -> None:
-        """lint() exits with EXIT_MISSING_DEP when black is not installed."""
-        script = self._make_script()
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("importlib.util.find_spec", return_value=None),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                script.lint()
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
-
-
 class TestZScriptFormat(unittest.TestCase):
     """Tests for ZScript.format() default implementation."""
 
@@ -1442,7 +1341,7 @@ class TestZScriptFormat(unittest.TestCase):
 
 
 class TestZScriptLintInAutoHooks(unittest.TestCase):
-    """lint and format appear in AUTO_HOOKS and available_subcommands."""
+    """format appears in AUTO_HOOKS and available_subcommands; lint is standalone."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -1451,15 +1350,15 @@ class TestZScriptLintInAutoHooks(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
 
-    def test_lint_in_auto_hooks(self) -> None:
-        self.assertIn("lint", ZScript.AUTO_HOOKS)
+    def test_lint_not_in_auto_hooks(self) -> None:
+        self.assertNotIn("lint", ZScript.AUTO_HOOKS)
 
     def test_format_in_auto_hooks(self) -> None:
         self.assertIn("format", ZScript.AUTO_HOOKS)
 
-    def test_lint_always_available(self) -> None:
+    def test_lint_not_available(self) -> None:
         script = ZScript(Path(self._tmpdir.name))
-        self.assertIn("lint", script.available_subcommands())
+        self.assertNotIn("lint", script.available_subcommands())
 
     def test_format_always_available(self) -> None:
         script = ZScript(Path(self._tmpdir.name))
