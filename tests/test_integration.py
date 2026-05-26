@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
+from nanvix_zutil.helpers import run
 from tests.testutils import write_manifest
 
 # ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
-        p = patch.object(ZScript, "_check_docker", return_value=None)
+        p = patch("nanvix_zutil.script.check_docker", return_value=None)
         p.start()
         self.addCleanup(p.stop)
 
@@ -284,7 +285,7 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
 
 
 class TestIntegrationRunSubprocess(unittest.TestCase):
-    """ZScript.run() executes subprocesses and propagates errors."""
+    """The ``run`` helper executes subprocesses and propagates errors."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -297,16 +298,21 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
         log_mod.set_json_mode(False)
 
     def test_run_echo_succeeds(self) -> None:
-        script = _MockConsumer(self._repo_root)
-        result = script.run(sys.executable, "-c", "import sys; sys.exit(0)")
+        result = run(
+            sys.executable, "-c", "import sys; sys.exit(0)", cwd=self._repo_root
+        )
         self.assertEqual(result.returncode, 0)
 
     def test_run_exit_nonzero_raises_system_exit_5(self) -> None:
-        script = _MockConsumer(self._repo_root)
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.run(sys.executable, "-c", "import sys; sys.exit(2)")
+                run(
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.exit(2)",
+                    cwd=self._repo_root,
+                )
             self.assertEqual(ctx.exception.code, 5)
         finally:
             log_mod.set_json_mode(False)

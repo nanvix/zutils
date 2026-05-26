@@ -35,6 +35,10 @@ Public re-exports:
 - :data:`~nanvix_zutil.release.DEFAULT_FORMATS` — default archive formats
 - :func:`~nanvix_zutil.release.package` — create release archives
 - :func:`~nanvix_zutil.docker.is_windows` — Windows platform detection helper
+- :func:`~nanvix_zutil.helpers.ensure_tool_installed` — verify an external CLI tool is on PATH
+- :func:`~nanvix_zutil.helpers.sync_configs` — sync packaged configs into a Nanvix tree
+- :func:`~nanvix_zutil.helpers.make_initrd` — build an initrd image
+- :func:`~nanvix_zutil.helpers.run` — run a subprocess with standardized logging
 """
 
 from nanvix_zutil.buildroot import (
@@ -77,6 +81,13 @@ from nanvix_zutil.exitcodes import (
     EXIT_TEST_FAILURE,
 )
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
+from nanvix_zutil.helpers import (
+    InitRdArgs,
+    ensure_tool_installed,
+    make_initrd,
+    run,
+    sync_configs,
+)
 from nanvix_zutil.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -130,17 +141,22 @@ __all__ = [
     "Sysroot",
     "ZScript",
     "is_windows",
+    "ensure_tool_installed",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
     "get_nanvix_info",
     "is_stale",
     "load_manifest",
+    "make_initrd",
     "package",
     "parse_semver_tuple",
     "read_lockfile",
     "resolve",
     "resolve_release",
     "resolve_release_with_fallback",
+    "run",
     "suffix_dep",
+    "sync_configs",
     "write_lockfile",
+    "InitRdArgs",
 ]

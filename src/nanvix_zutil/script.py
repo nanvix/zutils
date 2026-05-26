@@ -26,14 +26,13 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import importlib.resources
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
-from nanvix_zutil import log
+from nanvix_zutil import EXIT_BUILD_FAILURE, log
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
@@ -53,12 +52,12 @@ from nanvix_zutil.docker import (
     is_windows,
 )
 from nanvix_zutil.exitcodes import (
-    EXIT_BUILD_FAILURE,
     EXIT_DEGRADED_SETUP,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
+from nanvix_zutil.helpers import check_docker, ensure_tool_installed, run, sync_configs
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.resolver import is_stale, resolve
@@ -231,41 +230,6 @@ class ZScript:
     # Docker hooks — override in subclass to customise
     # ------------------------------------------------------------------
 
-    def _check_docker(self, image: str) -> None:
-        """Ensure the Docker CLI and the requested *image* are available.
-
-        Verifies that the ``docker`` binary is on ``PATH``, then runs
-        ``docker image inspect`` to check whether *image* is present locally.
-        If the image is missing, ``docker pull`` is invoked to fetch it.
-
-        Args:
-            image: Fully qualified Docker image reference to ensure is
-                available locally.
-
-        Raises:
-            SystemExit: Calls :func:`log.fatal` with
-                :data:`EXIT_MISSING_DEP` if the ``docker`` CLI is not on
-                ``PATH`` or if the auto-pull of *image* fails.
-        """
-
-        if shutil.which("docker") is None:
-            log.fatal(
-                "Docker is not available. Install Docker to continue.",
-                code=EXIT_MISSING_DEP,
-            )
-
-        image_exists = (
-            subprocess.run(["docker", "image", "inspect", image]).returncode == 0
-        )
-
-        if not image_exists:
-            res = subprocess.run(["docker", "pull", image]).returncode
-            if res != 0:
-                log.fatal(
-                    f"Docker image '{image}' could not be pulled.",
-                    code=EXIT_MISSING_DEP,
-                )
-
     def docker_config(self, image: str) -> DockerConfig:
         """Build the :class:`~nanvix_zutil.DockerConfig` for *image*.
 
@@ -335,6 +299,9 @@ class ZScript:
             Container-side :class:`~pathlib.PurePosixPath` when Docker is active,
             otherwise *host_path*.
         """
+        log.warning(
+            "DEPRECATED: Use self.docker.translate_path instead of self.translate_path."
+        )
         if self.docker is not None:
             return self.docker.translate_path(host_path)
         return host_path
@@ -537,39 +504,8 @@ class ZScript:
                     raise
 
         self.config.save()
-        self._sync_configs()
+        sync_configs(self.nanvix_dir)
         return self._used_fallback
-
-    # ------------------------------------------------------------------
-    # Config synchronisation
-    # ------------------------------------------------------------------
-
-    #: Mapping of canonical config filename -> destination relative to .nanvix/.
-    _CONFIG_FILES: dict[str, str] = {
-        "pyrightconfig.json": "pyrightconfig.json",
-        ".yamllint.yml": ".yamllint.yml",
-        "black.toml": "black.toml",
-        ".gitignore": ".gitignore",
-    }
-
-    def _sync_configs(self) -> None:
-        """Sync canonical tool configuration files into ``.nanvix/``.
-
-        Copies config files shipped inside ``nanvix_zutil.configs`` to the
-        ``.nanvix/`` directory, ensuring all downstream repos use
-        consistent linter/type-checker settings.  Files whose content
-        already matches are skipped.  Configs are confined to ``.nanvix/``
-        so consumer repo roots are never modified.
-        """
-        configs = importlib.resources.files("nanvix_zutil.configs")
-        for src_name, dst_rel in self._CONFIG_FILES.items():
-            src = configs / src_name
-            dst = self.nanvix_dir / dst_rel
-            content = src.read_bytes()
-            if dst.exists() and dst.read_bytes() == content:
-                continue
-            dst.write_bytes(content)
-            log.note(f"Synced .nanvix/{dst_rel}")
 
     def distclean(self) -> None:
         """Remove all transient ``.nanvix/`` artifacts.
@@ -690,17 +626,37 @@ class ZScript:
 
         Runs ``black --check`` followed by ``pyright`` on all Python
         files in the ``.nanvix/`` directory.  Exits with
+        ``EXIT_MISSING_DEP`` if either tool is not installed, or with
         ``EXIT_BUILD_FAILURE`` if either tool reports problems.
         """
+
         py_files = sorted(self.nanvix_dir.glob("*.py"))
         if not py_files:
             log.warning("No .py files found in .nanvix/ — nothing to lint")
             return
+        for tool in ("black", "pyright"):
+            ensure_tool_installed(tool)
+
         str_files = [str(f) for f in py_files]
         black_cfg = str(self.nanvix_dir / "black.toml")
         pyright_cfg = str(self.nanvix_dir / "pyrightconfig.json")
-        self._run_tool("black", "--config", black_cfg, "--check", *str_files)
-        self._run_tool("pyright", "--project", pyright_cfg, *str_files)
+        run(
+            sys.executable,
+            "-m",
+            "black",
+            "--config",
+            black_cfg,
+            "--check",
+            *str_files,
+        )
+        run(
+            sys.executable,
+            "-m",
+            "pyright",
+            "--project",
+            pyright_cfg,
+            *str_files,
+        )
 
     def format(self, *, check: bool = False) -> None:
         """Format ``.nanvix/*.py`` with black.
@@ -708,38 +664,21 @@ class ZScript:
         Args:
             check: When ``True``, run ``black --check`` instead of
                 auto-formatting (exit non-zero on diff).
+
+        Exits with ``EXIT_MISSING_DEP`` if black is not installed.
         """
         py_files = sorted(self.nanvix_dir.glob("*.py"))
         if not py_files:
             log.warning("No .py files found in .nanvix/ — nothing to format")
             return
+        ensure_tool_installed("black")
         str_files = [str(f) for f in py_files]
         black_cfg = str(self.nanvix_dir / "black.toml")
-        cmd = ["black", "--config", black_cfg]
+        cmd = [sys.executable, "-m", "black", "--config", black_cfg]
         if check:
             cmd.append("--check")
         cmd.extend(str_files)
-        self._run_tool(*cmd)
-
-    def _run_tool(self, *args: str) -> None:
-        """Run a host-side tool via ``sys.executable -m``, exiting on failure."""
-        import importlib.util as _imputil
-
-        tool = args[0]
-        if _imputil.find_spec(tool) is None:
-            log.fatal(
-                f"'{tool}' not found — install it with: "
-                f"pip install nanvix-zutil[lint]",
-                code=EXIT_MISSING_DEP,
-            )
-        cmd = [sys.executable, "-m", *args]
-        log.info(f"$ {' '.join(args)}")
-        result = subprocess.run(cmd, cwd=self.repo_root)
-        if result.returncode != 0:
-            log.fatal(
-                f"{tool} failed with exit code {result.returncode}",
-                code=EXIT_BUILD_FAILURE,
-            )
+        run(*cmd)
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass
@@ -843,6 +782,7 @@ class ZScript:
             SystemExit: If *app* contains path separators, the sysroot
                 is unavailable, or ``mkimage`` is missing.
         """
+        log.warning("DEPRECATED: Use helpers.make_initrd instead of self.make_initrd.")
         # Validate that app is a bare filename — no directory components.
         if "/" in app or "\\" in app:
             log.fatal(
@@ -960,6 +900,7 @@ class ZScript:
             SystemExit: With exit code ``5`` if the process exits with a
                 non-zero status or the timeout expires.
         """
+        log.warning("DEPRECATED: Use helpers.run instead of self.run.")
         if self.docker is not None and docker:
             cfg = self.docker
             if env:
@@ -1136,7 +1077,7 @@ class ZScript:
 
             if not is_windows():
                 # may exit if Docker is required but not available
-                instance._check_docker(image)
+                check_docker(image)
 
             # Persist Docker image on setup so subsequent commands
             # automatically use the same image.
