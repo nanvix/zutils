@@ -18,6 +18,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.info import HELP as _INFO_HELP
 from nanvix_zutil.lockfile import get_zutil_version
 from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
@@ -25,6 +26,7 @@ from nanvix_zutil.script import ZScript
 
 # Standalone command help text, keyed by subcommand name.
 _STANDALONE_HELP: dict[str, str] = {
+    "distclean": _DISTCLEAN_HELP,
     "info": _INFO_HELP,
     "resolve": _RESOLVE_HELP,
 }
@@ -86,7 +88,7 @@ def _build_top_level_parser() -> argparse.ArgumentParser:
             "\n"
             "Consumer commands require a .nanvix/z.py file in the "
             "working directory.\n"
-            "Standalone commands (info, resolve) work anywhere."
+            "Standalone commands (distclean, info, resolve) work anywhere."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_build_env_var_epilog(),
@@ -127,6 +129,13 @@ def main() -> None:
     help_requested = "-h" in remaining or "--help" in remaining
 
     # --- Standalone commands ---
+    if subcmd == "distclean":
+        from nanvix_zutil.distclean_cmd import main as distclean_main
+
+        sys.argv = ["nanvix-zutil distclean", *remaining]
+        distclean_main()
+        return
+
     if subcmd == "info":
         from nanvix_zutil.info import main as info_main
 

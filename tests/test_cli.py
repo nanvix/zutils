@@ -49,18 +49,18 @@ class TestBuildParser(unittest.TestCase):
             parser.parse_args(["--version"])
         self.assertEqual(ctx.exception.code, 0)
 
-    def test_distclean_registered(self) -> None:
-        """distclean must be in the default parser."""
+    def test_distclean_not_registered(self) -> None:
+        """distclean is standalone and must not be a consumer subcommand."""
         parser = build_parser()
-        args = parser.parse_args(["distclean"])
-        self.assertEqual(args.subcommand, "distclean")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["distclean"])
 
     def test_available_param_restricts_subcommands(self) -> None:
         """build_parser(available=...) registers only the given subcommands."""
-        available = ("setup", "distclean", "build", "help")
+        available = ("setup", "build", "help")
         parser = build_parser(available=available)
         # Registered commands parse correctly.
-        for cmd in ("setup", "distclean", "build", "help"):
+        for cmd in ("setup", "build", "help"):
             argv = [cmd]
             if cmd == "setup":
                 argv += ["--with-docker", "test/image:tag"]
@@ -69,6 +69,11 @@ class TestBuildParser(unittest.TestCase):
         # Unregistered command raises SystemExit.
         with self.assertRaises(SystemExit):
             parser.parse_args(["test"])
+
+    def test_available_param_rejects_distclean(self) -> None:
+        """distclean is no longer a known subcommand for build_parser."""
+        with self.assertRaises(ValueError):
+            build_parser(available=("distclean", "help"))
 
     def test_available_none_registers_all(self) -> None:
         """available=None (default) registers every subcommand."""
