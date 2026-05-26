@@ -57,7 +57,13 @@ from nanvix_zutil.exitcodes import (
     EXIT_MISSING_DEP,
 )
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
-from nanvix_zutil.helpers import check_docker, ensure_tool_installed, run, sync_configs
+from nanvix_zutil.helpers import (
+    check_docker,
+    ensure_tool_installed,
+    filter_container_env,
+    run,
+    sync_configs,
+)
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.resolver import is_stale, resolve
@@ -904,7 +910,10 @@ class ZScript:
         if self.docker is not None and docker:
             cfg = self.docker
             if env:
-                merged = {**cfg.extra_env, **env}
+                # Strip host-only / shell-managed keys (e.g. Windows' ``PATH``)
+                # before forwarding into the container.  See
+                # :func:`helpers.filter_container_env` for the rationale.
+                merged = {**cfg.extra_env, **filter_container_env(env)}
                 cfg = dataclasses.replace(cfg, extra_env=merged)
             if is_windows():
                 cmd = cfg.build_windows_run_cmd(*args)
