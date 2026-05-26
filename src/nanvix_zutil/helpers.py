@@ -20,6 +20,49 @@ if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
 
 
+# Env vars that must never leak from the host into the Docker container.
+#
+# Forwarding ``PATH`` is the catastrophic case on Windows: the host value is a
+# semicolon-separated list of ``C:\...`` paths with no ``/bin`` or ``/usr/bin``,
+# which overrides the image's Linux ``PATH`` and makes runc fail to resolve the
+# container's entrypoint (``exec: "sh": executable file not found in $PATH``).
+# ``HOME`` is always set explicitly by ``DockerConfig`` (currently to ``/tmp``);
+# ``USER`` is set explicitly on the standard (non-Windows) path.  In both cases
+# the caller must not override them.  ``LD_LIBRARY_PATH`` and ``PYTHONPATH``
+# similarly refer to host filesystem locations that do not exist inside the
+# container.
+_CONTAINER_ENV_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "USERNAME",
+        "PWD",
+        "OLDPWD",
+        "SHELL",
+        "TERM",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "PYTHONPATH",
+        "PYTHONHOME",
+    }
+)
+
+
+def filter_container_env(env: dict[str, str]) -> dict[str, str]:
+    """Strip host-only / shell-managed keys before forwarding into the container.
+
+    The match is case-insensitive so that mixed-case variants (e.g. Windows'
+    ``Path``) are also rejected.
+    """
+    return {
+        k: v
+        for k, v in env.items()
+        if k not in _CONTAINER_ENV_BLOCKLIST
+        and k.upper() not in _CONTAINER_ENV_BLOCKLIST
+    }
+
+
 def check_docker(image: str) -> None:
     """Ensure the Docker CLI and the requested *image* are available.
 
@@ -263,7 +306,15 @@ def run(
     subprocess_env: dict[str, str] | None = None
     if docker is not None:
         if env:
-            merged = {**docker.extra_env, **env}
+            # When the caller hands us ``dict(os.environ)`` (a common pattern
+            # for autotools wrappers), the host's environment leaks into the
+            # container via ``-e KEY=VALUE`` flags.  On Windows that includes
+            # ``PATH`` (full of ``C:\...`` paths with no ``/bin`` or
+            # ``/usr/bin``), which overrides the image's Linux ``PATH`` and
+            # makes runc fail to resolve the container's entrypoint (e.g.
+            # ``sh``) with ``exec: "sh": executable file not found in $PATH``.
+            # Strip host-only / shell-managed keys before forwarding.
+            merged = {**docker.extra_env, **filter_container_env(env)}
             docker = dataclasses.replace(docker, extra_env=merged)
         if is_windows():
             cmd = docker.build_windows_run_cmd(*args)

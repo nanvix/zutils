@@ -748,6 +748,102 @@ class TestHelpersRun(unittest.TestCase):
         self.assertIn("-e", cmd)
         self.assertIn("MY_VAR=hello", cmd)
 
+    @patch.dict(
+        os.environ,
+        {"USER": "test-runner-user", "USERNAME": "test-runner-user"},
+        clear=False,
+    )
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
+    def test_run_strips_blocklisted_env_vars(self, *_mocks: object) -> None:
+        """helpers.run() must not forward host-only env vars
+        (PATH/HOME/USER/...) into the container, including mixed-case
+        variants.  Non-blocklisted keys still pass through."""
+        docker = DockerConfig(
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        env = {
+            # Blocklisted (uppercase canonical).
+            "PATH": "C:\\Windows\\System32",
+            "HOME": "/home/host",
+            "USER": "host-user",
+            "USERNAME": "host-user",
+            "PWD": "/some/host/path",
+            "OLDPWD": "/other/host/path",
+            "SHELL": "/bin/bash",
+            "TERM": "xterm",
+            "LD_LIBRARY_PATH": "/host/lib",
+            "DYLD_LIBRARY_PATH": "/host/dyld",
+            "PYTHONPATH": "/host/py",
+            "PYTHONHOME": "/host/pyhome",
+            # Blocklisted (mixed case).
+            "Path": "C:\\mixed",
+            "home": "/home/lower",
+            # Non-blocklisted — must pass through.
+            "CC": "gcc",
+            "CFLAGS": "-O2",
+            "PKG_CONFIG_PATH": "/usr/local/lib/pkgconfig",
+        }
+
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker, env=env)
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Collect every "KEY=VALUE" token that follows a "-e" flag.
+        forwarded: list[tuple[str, str]] = []
+        for i, tok in enumerate(cmd):
+            if tok == "-e" and i + 1 < len(cmd):
+                key, _, val = cmd[i + 1].partition("=")
+                forwarded.append((key, val))
+
+        # The caller's host-only values must never reach the container.
+        # ``DockerConfig`` legitimately sets ``HOME``/``USER`` itself, so we
+        # check VALUES rather than keys for those cases.
+        host_values = {
+            "PATH": "C:\\Windows\\System32",
+            "HOME": "/home/host",
+            "USER": "host-user",
+            "USERNAME": "host-user",
+            "PWD": "/some/host/path",
+            "OLDPWD": "/other/host/path",
+            "SHELL": "/bin/bash",
+            "TERM": "xterm",
+            "LD_LIBRARY_PATH": "/host/lib",
+            "DYLD_LIBRARY_PATH": "/host/dyld",
+            "PYTHONPATH": "/host/py",
+            "PYTHONHOME": "/host/pyhome",
+            "Path": "C:\\mixed",
+            "home": "/home/lower",
+        }
+        for key, host_val in host_values.items():
+            self.assertNotIn(
+                (key, host_val),
+                forwarded,
+                f"blocklisted env var {key!r}={host_val!r} leaked into docker run",
+            )
+
+        # Non-blocklisted keys must still pass through with their values.
+        for allowed_key, allowed_val in (
+            ("CC", "gcc"),
+            ("CFLAGS", "-O2"),
+            ("PKG_CONFIG_PATH", "/usr/local/lib/pkgconfig"),
+        ):
+            self.assertIn(
+                (allowed_key, allowed_val),
+                forwarded,
+                f"non-blocklisted env var {allowed_key!r} missing from docker run",
+            )
+
 
 class TestZScriptSysrootRequiredFiles(unittest.TestCase):
     """sysroot_required_files() varies by deployment mode."""
