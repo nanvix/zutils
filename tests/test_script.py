@@ -15,6 +15,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil import helpers
+from nanvix_zutil.helpers import InitRdArgs
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -22,7 +24,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
 )
-from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_LATEST_WITH_DEPS,
@@ -553,8 +555,8 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
             self.assertIn(hook, available)
 
 
-class TestZScriptRun(unittest.TestCase):
-    """ZScript.run() executes subprocesses correctly."""
+class TestHelpersRun(unittest.TestCase):
+    """helpers.run() executes subprocesses correctly."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -564,55 +566,59 @@ class TestZScriptRun(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_run_success(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
-        result = script.run(sys.executable, "-c", "print('ok')")
+        result = helpers.run(sys.executable, "-c", "print('ok')")
         self.assertEqual(result.returncode, 0)
 
     def test_run_failure_exits(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.run(sys.executable, "-c", "raise SystemExit(1)")
-            self.assertEqual(ctx.exception.code, 5)
+                helpers.run(sys.executable, "-c", "raise SystemExit(1)")
+            self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
         finally:
             log_mod.set_json_mode(False)
 
     def test_run_timeout_exits(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.run(
+                helpers.run(
                     sys.executable, "-c", "import time; time.sleep(10)", timeout=1
                 )
-            self.assertEqual(ctx.exception.code, 5)
+            self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
-    def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
-        """run() delegates to build_windows_run_cmd on Windows."""
-        script = ZScript(Path(self._tmpdir.name))
-        script.docker = DockerConfig(
+    def test_run_without_docker_uses_args_directly(self) -> None:
+        """Without a docker config, run() executes the command as-is."""
+        result = helpers.run(sys.executable, "-c", "print('ok')")
+        self.assertEqual(result.returncode, 0)
+
+    def _make_docker(self, repo_root: Path) -> DockerConfig:
+        return DockerConfig(
             image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
-                    host_path=script.repo_root,
+                    host_path=repo_root,
                     container_path=WORKSPACE_CONTAINER_PATH,
                 )
             ],
             uid=1000,
             gid=1000,
         )
+
+    @patch("nanvix_zutil.helpers.is_windows", return_value=True)
+    def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
+        """run() delegates to build_windows_run_cmd on Windows."""
+        docker = self._make_docker(Path(self._tmpdir.name))
         captured_cmds: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
             captured_cmds.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker)
 
         self.assertTrue(captured_cmds)
         cmd = captured_cmds[0]
@@ -620,17 +626,16 @@ class TestZScriptRun(unittest.TestCase):
         self.assertIn("sh", cmd)
         self.assertIn("-c", cmd)
 
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_run_dispatch_windows_default_docker(self, _mock: object) -> None:
         """run() uses build_windows_run_cmd on Windows even with default
         (empty) output_files — the dispatch no longer requires
         these fields to be populated."""
-        script = ZScript(Path(self._tmpdir.name))
-        script.docker = DockerConfig(
+        docker = DockerConfig(
             image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
-                    host_path=script.repo_root,
+                    host_path=Path(self._tmpdir.name),
                     container_path=WORKSPACE_CONTAINER_PATH,
                 )
             ],
@@ -644,8 +649,8 @@ class TestZScriptRun(unittest.TestCase):
             captured_cmds.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker)
 
         self.assertTrue(captured_cmds)
         cmd = captured_cmds[0]
@@ -655,18 +660,76 @@ class TestZScriptRun(unittest.TestCase):
         self.assertIn("-c", cmd)
 
     @patch("nanvix_zutil.docker.is_windows", return_value=False)
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_run_dispatch_linux_uses_build_run_cmd(self, *_mocks: object) -> None:
         """run() uses build_run_cmd on Linux (not the Windows tar-copy path)."""
-        script = ZScript(Path(self._tmpdir.name))
-        script.docker = DockerConfig(
+        docker = self._make_docker(Path(self._tmpdir.name))
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker)
+
+        self.assertTrue(captured_cmds)
+        cmd = captured_cmds[0]
+        # Standard docker run — should NOT use sh -c wrapping.
+        self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
+        # Inner command is appended directly (not wrapped in sh -c).
+        self.assertEqual(cmd[-2:], ["make", "all"])
+        self.assertNotEqual(cmd[-3:-1], ["sh", "-c"])
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
+    def test_run_with_docker_wraps_command(self, *_mocks: object) -> None:
+        """When a docker config is supplied, run() prepends docker run."""
+        docker = self._make_docker(Path(self._tmpdir.name))
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker)
+
+        self.assertTrue(captured)
+        self.assertIn("docker", captured[0])
+        self.assertIn("make", captured[0])
+        self.assertIn("all", captured[0])
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
+    def test_run_env_forwarded_into_container(self, *_mocks: object) -> None:
+        """env vars passed to run() are forwarded as -e flags in Docker mode."""
+        docker = DockerConfig(
             image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
-            mounts=[
-                Mount(
-                    host_path=script.repo_root,
-                    container_path=WORKSPACE_CONTAINER_PATH,
-                )
-            ],
+            mounts=[],
+            uid=1000,
+            gid=1000,
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured_kwargs.append(dict(kwargs))
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker, env={"MY_VAR": "hello"})
+
+        self.assertTrue(captured_kwargs)
+        # env should NOT be passed to the docker subprocess itself
+        self.assertIsNone(captured_kwargs[0].get("env"))
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
+    def test_run_env_forwarded_into_container_as_flags(self, *_mocks: object) -> None:
+        """env vars appear as -e KEY=VAL in the docker run command."""
+        docker = DockerConfig(
+            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            mounts=[],
             uid=1000,
             gid=1000,
         )
@@ -676,16 +739,14 @@ class TestZScriptRun(unittest.TestCase):
             captured_cmds.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.run("make", "all", docker=docker, env={"MY_VAR": "hello"})
 
         self.assertTrue(captured_cmds)
         cmd = captured_cmds[0]
-        # Standard docker run — should NOT use sh -c wrapping.
-        self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
-        # Inner command is appended directly (not wrapped in sh -c).
-        self.assertEqual(cmd[-2:], ["make", "all"])
-        self.assertNotEqual(cmd[-3:-1], ["sh", "-c"])
+        # -e MY_VAR=hello must appear in the docker run command
+        self.assertIn("-e", cmd)
+        self.assertIn("MY_VAR=hello", cmd)
 
 
 class TestZScriptSysrootRequiredFiles(unittest.TestCase):
@@ -747,8 +808,8 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
         self.assertNotIn("bin/uservm.elf", files)
 
 
-class TestZScriptDockerIntegration(unittest.TestCase):
-    """Tests for ZScript Docker mode."""
+class TestZScriptDockerConfig(unittest.TestCase):
+    """Tests for ZScript.docker / ZScript.docker_config()."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -805,124 +866,6 @@ class TestZScriptDockerIntegration(unittest.TestCase):
         assert buildroot_mount is not None
         self.assertEqual(buildroot_mount.host_path, buildroot_dir)
         self.assertFalse(buildroot_mount.readonly)
-
-    def test_translate_path_no_docker(self) -> None:
-        """Without Docker, translate_path returns the input unchanged."""
-        script = self._make_script()
-        p = Path("/some/host/path")
-        self.assertEqual(script.translate_path(p), p)
-
-    def test_translate_path_with_docker(self) -> None:
-        """With Docker active, translate_path translates via DockerConfig."""
-        script = self._make_script()
-        script.docker = DockerConfig(
-            image="test-image",
-            mounts=[
-                Mount(
-                    host_path=script.repo_root,
-                    container_path=WORKSPACE_CONTAINER_PATH,
-                )
-            ],
-        )
-        result = script.translate_path(script.repo_root / "src" / "main.c")
-        self.assertEqual(result, WORKSPACE_CONTAINER_PATH / "src" / "main.c")
-
-    def test_run_without_docker_uses_args_directly(self) -> None:
-        """Without Docker, run() executes the command as-is."""
-        script = self._make_script()
-        result = script.run(sys.executable, "-c", "print('ok')")
-        self.assertEqual(result.returncode, 0)
-
-    def test_run_with_docker_false_opt_out(self) -> None:
-        """docker=False bypasses Docker even when _docker is set."""
-        script = self._make_script()
-        script.docker = DockerConfig(
-            image="should-not-be-used",
-            mounts=[],
-        )
-        # This should run on host, not via docker
-        result = script.run(sys.executable, "-c", "print('ok')", docker=False)
-        self.assertEqual(result.returncode, 0)
-
-    @patch("nanvix_zutil.docker.is_windows", return_value=False)
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
-    def test_run_with_docker_wraps_command(self, *_mocks: object) -> None:
-        """When Docker is active, run() prepends docker run to the command."""
-        script = self._make_script()
-        script.docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
-            mounts=[
-                Mount(
-                    host_path=script.repo_root,
-                    container_path=WORKSPACE_CONTAINER_PATH,
-                )
-            ],
-            uid=1000,
-            gid=1000,
-        )
-        captured: list[list[str]] = []
-
-        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
-            captured.append(cmd)
-            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
-
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all")
-
-        self.assertTrue(captured)
-        self.assertIn("docker", captured[0])
-        self.assertIn("make", captured[0])
-        self.assertIn("all", captured[0])
-
-    @patch("nanvix_zutil.docker.is_windows", return_value=False)
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
-    def test_run_env_forwarded_into_container(self, *_mocks: object) -> None:
-        """env vars passed to run() are forwarded as -e flags in Docker mode."""
-        script = self._make_script()
-        script.docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
-            mounts=[],
-            uid=1000,
-            gid=1000,
-        )
-        captured_kwargs: list[dict[str, object]] = []
-
-        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
-            captured_kwargs.append(dict(kwargs))
-            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
-
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all", env={"MY_VAR": "hello"})
-
-        self.assertTrue(captured_kwargs)
-        # env should NOT be passed to the docker subprocess itself
-        self.assertIsNone(captured_kwargs[0].get("env"))
-
-    @patch("nanvix_zutil.docker.is_windows", return_value=False)
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
-    def test_run_env_forwarded_into_container_as_flags(self, *_mocks: object) -> None:
-        """env vars appear as -e KEY=VAL in the docker run command."""
-        script = self._make_script()
-        script.docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
-            mounts=[],
-            uid=1000,
-            gid=1000,
-        )
-        captured_cmds: list[list[str]] = []
-
-        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
-            captured_cmds.append(cmd)
-            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
-
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.run("make", "all", env={"MY_VAR": "hello"})
-
-        self.assertTrue(captured_cmds)
-        cmd = captured_cmds[0]
-        # -e MY_VAR=hello must appear in the docker run command
-        self.assertIn("-e", cmd)
-        self.assertIn("MY_VAR=hello", cmd)
 
 
 class TestZScriptAutoDocker(unittest.TestCase):
@@ -991,8 +934,8 @@ class TestZScriptAutoDocker(unittest.TestCase):
         with (
             patch("sys.argv", ["z.py", "build"]),
             patch("nanvix_zutil.script.is_windows", return_value=False),
-            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
@@ -1146,7 +1089,10 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-        p = patch.object(ZScript, "_check_docker", return_value=None)
+        # script.py calls helpers.check_docker (imported into the script
+        # module namespace). Patch it to a no-op so these tests don't try to
+        # actually pull a Docker image.
+        p = patch("nanvix_zutil.script.check_docker", return_value=None)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1339,7 +1285,7 @@ class TestZScriptLint(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0)
 
         with (
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
             patch("importlib.util.find_spec", return_value=True),
         ):
             script.lint()
@@ -1376,12 +1322,14 @@ class TestZScriptLint(unittest.TestCase):
             args: tuple[str, ...], **kwargs: object
         ) -> sp.CompletedProcess[str]:
             cmd = list(args)
-            return sp.CompletedProcess(args=cmd, returncode=1)
+            # helpers.run() passes check=True; emulate the real subprocess.run
+            # behaviour by raising CalledProcessError on non-zero exit.
+            raise sp.CalledProcessError(returncode=1, cmd=cmd)
 
         log_mod.set_json_mode(True)
         try:
             with (
-                patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
                 patch("importlib.util.find_spec", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):
@@ -1403,7 +1351,7 @@ class TestZScriptLint(unittest.TestCase):
                 self.assertRaises(SystemExit) as ctx,
             ):
                 script.lint()
-            self.assertEqual(ctx.exception.code, 3)
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
 
@@ -1437,7 +1385,7 @@ class TestZScriptFormat(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0)
 
         with (
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
             patch("importlib.util.find_spec", return_value=True),
         ):
             script.format()
@@ -1464,7 +1412,7 @@ class TestZScriptFormat(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0)
 
         with (
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
             patch("importlib.util.find_spec", return_value=True),
         ):
             script.format(check=True)
@@ -1497,12 +1445,14 @@ class TestZScriptFormat(unittest.TestCase):
             args: tuple[str, ...], **kwargs: object
         ) -> sp.CompletedProcess[str]:
             cmd = list(args)
-            return sp.CompletedProcess(args=cmd, returncode=1)
+            # helpers.run() passes check=True; emulate subprocess.run by
+            # raising CalledProcessError on non-zero exit.
+            raise sp.CalledProcessError(returncode=1, cmd=cmd)
 
         log_mod.set_json_mode(True)
         try:
             with (
-                patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
                 patch("importlib.util.find_spec", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):
@@ -1678,8 +1628,8 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
 
 
-class TestMakeInitrd(unittest.TestCase):
-    """ZScript.make_initrd() builds the correct mkimage command."""
+class TestHelpersMakeInitrd(unittest.TestCase):
+    """helpers.make_initrd() builds the correct mkimage command."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -1701,7 +1651,7 @@ class TestMakeInitrd(unittest.TestCase):
         script.sysroot = fake_sysroot
         return script
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_basic_invocation_linux(self, _mock: object) -> None:
         """Produces the expected command on Linux."""
         script = self._make_script()
@@ -1711,8 +1661,8 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            result = script.make_initrd("my-app.elf")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            result = helpers.make_initrd(script, "my-app.elf", InitRdArgs())
 
         self.assertEqual(result, script.repo_root / "my-app.img")
         cmd = captured[0]
@@ -1725,7 +1675,7 @@ class TestMakeInitrd(unittest.TestCase):
         self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
         self.assertEqual(cmd[6], f"{script.repo_root / 'my-app.elf'};my-app.elf")
 
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_basic_invocation_windows(self, _mock: object) -> None:
         """Uses mkimage.exe on Windows."""
         script = self._make_script()
@@ -1735,13 +1685,13 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(script, "my-app.elf", InitRdArgs())
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_args(self, _mock: object) -> None:
         """App arguments are appended to the app entry."""
         script = self._make_script()
@@ -1751,8 +1701,10 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", app_args=["--verbose", "--port=8080"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script, "my-app.elf", InitRdArgs(app_args=["--verbose", "--port=8080"])
+            )
 
         app_entry = captured[0][6]
         self.assertEqual(
@@ -1760,7 +1712,7 @@ class TestMakeInitrd(unittest.TestCase):
             f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose --port=8080",
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_args(self, _mock: object) -> None:
         """Daemon arguments are appended to respective entries."""
         script = self._make_script()
@@ -1770,12 +1722,15 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd(
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script,
                 "my-app.elf",
-                procd_args=["--debug"],
-                memd_args=["--heap=64m"],
-                vfsd_args=["--cache=off"],
+                InitRdArgs(
+                    procd_args=["--debug"],
+                    memd_args=["--heap=64m"],
+                    vfsd_args=["--cache=off"],
+                ),
             )
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
@@ -1783,7 +1738,7 @@ class TestMakeInitrd(unittest.TestCase):
         self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd --heap=64m")
         self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd --cache=off")
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_kernel_args(self, _mock: object) -> None:
         """Kernel arguments are passed via --kernel-args."""
         script = self._make_script()
@@ -1793,15 +1748,17 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", kernel_args=["console=ttyS0", "debug"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script, "my-app.elf", InitRdArgs(kernel_args=["console=ttyS0", "debug"])
+            )
 
         cmd = captured[0]
         # -kernel-args should appear after -o <output>
         ka_idx = cmd.index("-kernel-args")
         self.assertEqual(cmd[ka_idx + 1], "console=ttyS0 debug")
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_semicolons_escaped_in_args(self, _mock: object) -> None:
         """Semicolons in arguments are escaped as \\;."""
         script = self._make_script()
@@ -1811,15 +1768,15 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", app_args=["--sep=;"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(script, "my-app.elf", InitRdArgs(app_args=["--sep=;"]))
 
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry, f"{script.repo_root / 'my-app.elf'};my-app.elf --sep=\\;"
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_semicolons_escaped_in_kernel_args(self, _mock: object) -> None:
         """Semicolons in kernel arguments are escaped."""
         script = self._make_script()
@@ -1829,14 +1786,14 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", kernel_args=["a;b"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(script, "my-app.elf", InitRdArgs(kernel_args=["a;b"]))
 
         cmd = captured[0]
         ka_idx = cmd.index("-kernel-args")
         self.assertEqual(cmd[ka_idx + 1], "a\\;b")
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_custom_bin_dir(self, _mock: object) -> None:
         """A custom bin_dir is used instead of the sysroot."""
         script = self._make_script()
@@ -1849,25 +1806,25 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", bin_dir=custom_bin)
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(script, "my-app.elf", InitRdArgs(bin_dir=custom_bin))
 
         self.assertEqual(captured[0][0], str(custom_bin / "mkimage.elf"))
         self.assertIn(str(custom_bin / "procd.elf"), captured[0][3])
 
     def test_no_sysroot_exits(self) -> None:
-        """Exits with EXIT_MISSING_DEP when sysroot is None."""
+        """Exits with EXIT_MISSING_DEP when sysroot is None and config lacks one."""
         script = ZScript(Path(self._tmpdir.name))
         script.sysroot = None
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.make_initrd("my-app.elf")
-            self.assertEqual(ctx.exception.code, 3)
+                helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_stem_derived_from_filename(self, _mock: object) -> None:
         """The output .img uses the stem; argv0 uses the full filename."""
         script = self._make_script()
@@ -1877,8 +1834,8 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            result = script.make_initrd("hello-world.elf")
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            result = helpers.make_initrd(script, "hello-world.elf", InitRdArgs())
 
         self.assertEqual(result, script.repo_root / "hello-world.img")
         self.assertEqual(
@@ -1891,12 +1848,12 @@ class TestMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.make_initrd("build/hello.elf")
-            self.assertEqual(ctx.exception.code, 3)
+                helpers.make_initrd(script, "build/hello.elf", InitRdArgs())
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_mkimage_not_found_exits(self, _mock: object) -> None:
         """Exits with EXIT_MISSING_DEP when mkimage binary is missing."""
         repo_root = Path(self._tmpdir.name)
@@ -1910,12 +1867,12 @@ class TestMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                script.make_initrd("my-app.elf")
-            self.assertEqual(ctx.exception.code, 3)
+                helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_env(self, _mock: object) -> None:
         """Environment variables are appended after a semicolon separator."""
         script = self._make_script()
@@ -1925,8 +1882,10 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", app_env=["VAR1=foo", "VAR2=bar"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script, "my-app.elf", InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"])
+            )
 
         app_entry = captured[0][6]
         self.assertEqual(
@@ -1934,7 +1893,7 @@ class TestMakeInitrd(unittest.TestCase):
             f"{script.repo_root / 'my-app.elf'};my-app.elf;VAR1=foo VAR2=bar",
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_args_and_env(self, _mock: object) -> None:
         """Both app arguments and environment variables are emitted."""
         script = self._make_script()
@@ -1944,11 +1903,11 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd(
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script,
                 "my-app.elf",
-                app_args=["--verbose"],
-                app_env=["DEBUG=1"],
+                InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
             )
 
         app_entry = captured[0][6]
@@ -1957,7 +1916,7 @@ class TestMakeInitrd(unittest.TestCase):
             f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_env(self, _mock: object) -> None:
         """Daemon environment variables are appended to respective entries."""
         script = self._make_script()
@@ -1967,12 +1926,15 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd(
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script,
                 "my-app.elf",
-                procd_env=["LOG=debug"],
-                memd_env=["HEAP=64m"],
-                vfsd_env=["CACHE=off"],
+                InitRdArgs(
+                    procd_env=["LOG=debug"],
+                    memd_env=["HEAP=64m"],
+                    vfsd_env=["CACHE=off"],
+                ),
             )
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
@@ -1980,7 +1942,7 @@ class TestMakeInitrd(unittest.TestCase):
         self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd;HEAP=64m")
         self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd;CACHE=off")
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_env_semicolons_escaped(self, _mock: object) -> None:
         """Semicolons in env values are escaped."""
         script = self._make_script()
@@ -1990,8 +1952,10 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd("my-app.elf", app_env=["PATH=/a;/b"])
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script, "my-app.elf", InitRdArgs(app_env=["PATH=/a;/b"])
+            )
 
         app_entry = captured[0][6]
         self.assertEqual(
@@ -1999,7 +1963,7 @@ class TestMakeInitrd(unittest.TestCase):
             f"{script.repo_root / 'my-app.elf'};my-app.elf;PATH=/a\\;/b",
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=False)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_args_and_env(self, _mock: object) -> None:
         """Daemon entries include both CLI arguments and environment variables."""
         script = self._make_script()
@@ -2009,11 +1973,13 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd(
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script,
                 "my-app.elf",
-                procd_args=["--log-level", "trace"],
-                procd_env=["LOG=debug"],
+                InitRdArgs(
+                    procd_args=["--log-level", "trace"], procd_env=["LOG=debug"]
+                ),
             )
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
@@ -2022,7 +1988,7 @@ class TestMakeInitrd(unittest.TestCase):
             f"{bin_dir / 'procd.elf'};procd --log-level trace;LOG=debug",
         )
 
-    @patch("nanvix_zutil.script.is_windows", return_value=True)
+    @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_env_windows(self, _mock: object) -> None:
         """Environment variables work correctly on Windows (mkimage.exe)."""
         script = self._make_script()
@@ -2032,12 +1998,13 @@ class TestMakeInitrd(unittest.TestCase):
             captured.append(cmd)
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-        with patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run):
-            script.make_initrd(
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            helpers.make_initrd(
+                script,
                 "my-app.elf",
-                app_args=["--verbose"],
-                app_env=["DEBUG=1"],
-                procd_env=["LOG=debug"],
+                InitRdArgs(
+                    app_args=["--verbose"], app_env=["DEBUG=1"], procd_env=["LOG=debug"]
+                ),
             )
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
@@ -2049,44 +2016,31 @@ class TestMakeInitrd(unittest.TestCase):
         )
 
 
-class TestZScriptCheckDocker(unittest.TestCase):
-    """_check_docker() probes for the image and auto-pulls when missing."""
+class TestHelpersCheckDocker(unittest.TestCase):
+    """helpers.check_docker() probes for the image and auto-pulls when missing."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
-    def _make_script(self) -> ZScript:
-        return ZScript(Path(self._tmpdir.name))
-
     def test_missing_docker_binary_exits_fatal(self) -> None:
         """No `docker` on PATH -> fatal EXIT_MISSING_DEP, no subprocess calls."""
-        from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-
-        script = self._make_script()
         mock_run = MagicMock()
         log_mod.set_json_mode(True)
         try:
             with (
-                patch("nanvix_zutil.script.shutil.which", return_value=None),
-                patch("nanvix_zutil.script.subprocess.run", mock_run),
+                patch("nanvix_zutil.helpers.shutil.which", return_value=None),
+                patch("nanvix_zutil.helpers.subprocess.run", mock_run),
                 self.assertRaises(SystemExit) as ctx,
             ):
-                script._check_docker("test/image:tag")
+                helpers.check_docker("test/image:tag")
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
         mock_run.assert_not_called()
-        self.assertIsNone(script.docker)
 
     def test_image_present_skips_pull(self) -> None:
         """`docker image inspect` returns 0 -> no pull, no fatal."""
-        script = self._make_script()
         image = "test/image:tag"
 
         calls: list[list[str]] = []
@@ -2096,17 +2050,16 @@ class TestZScriptCheckDocker(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with (
-            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
         ):
-            script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+            helpers.check_docker(image)
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0], ["docker", "image", "inspect", image])
 
     def test_image_missing_pull_succeeds(self) -> None:
         """`image inspect` fails, `docker pull` succeeds -> no fatal."""
-        script = self._make_script()
         image = "test/image:tag"
 
         calls: list[list[str]] = []
@@ -2119,10 +2072,10 @@ class TestZScriptCheckDocker(unittest.TestCase):
             )
 
         with (
-            patch("nanvix_zutil.script.shutil.which", return_value="/usr/bin/docker"),
-            patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+            patch("nanvix_zutil.helpers.shutil.which", return_value="/usr/bin/docker"),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
         ):
-            script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+            helpers.check_docker(image)
 
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0], ["docker", "image", "inspect", image])
@@ -2130,9 +2083,6 @@ class TestZScriptCheckDocker(unittest.TestCase):
 
     def test_image_missing_pull_fails_exits_fatal(self) -> None:
         """`image inspect` fails, `docker pull` fails -> fatal EXIT_MISSING_DEP."""
-        from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-
-        script = self._make_script()
         image = "test/image:tag"
 
         calls: list[list[str]] = []
@@ -2148,13 +2098,13 @@ class TestZScriptCheckDocker(unittest.TestCase):
         try:
             with (
                 patch(
-                    "nanvix_zutil.script.shutil.which",
+                    "nanvix_zutil.helpers.shutil.which",
                     return_value="/usr/bin/docker",
                 ),
-                patch("nanvix_zutil.script.subprocess.run", side_effect=fake_run),
+                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
                 self.assertRaises(SystemExit) as ctx,
             ):
-                script._check_docker(image)  # pyright: ignore[reportPrivateUsage]
+                helpers.check_docker(image)
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -2162,7 +2112,6 @@ class TestZScriptCheckDocker(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0], ["docker", "image", "inspect", image])
         self.assertEqual(calls[1], ["docker", "pull", image])
-        self.assertIsNone(script.docker)
 
 
 class TestOfflineMode(unittest.TestCase):

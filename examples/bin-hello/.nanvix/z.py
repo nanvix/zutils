@@ -26,6 +26,7 @@ from nanvix_zutil import (
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
+from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 
 
 class BinHello(ZScript):
@@ -53,7 +54,7 @@ class BinHello(ZScript):
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.translate_path(host) if self.docker else host
+        return self.docker.translate_path(host) if self.docker else host
 
     def _buildroot_path(self) -> PurePosixPath | Path:
         """Return the effective buildroot path (translated for Docker if active)."""
@@ -98,17 +99,19 @@ class BinHello(ZScript):
 
         # Single shell invocation so intermediate .o survives across
         # compile and link steps inside the same Docker container.
-        self.run(
+        run(
             "sh",
             "-c",
             f"{cc} {cflags} -c -o main.o src/main.c"
             f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
+            cwd=self.repo_root,
+            docker=self.docker,
         )
 
         # For standalone deployment mode, produce an initrd image
         # containing the system daemons and the application binary.
         if self.config.deployment_mode == "standalone":
-            self.make_initrd("hello.elf")
+            make_initrd(self, "hello.elf", InitRdArgs())
 
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
@@ -190,12 +193,13 @@ class BinHello(ZScript):
                 f"{nanvixd} not found — run 'nanvix-zutil setup' to download it.",
                 code=EXIT_TEST_FAILURE,
             )
-        self.run(
+        run(
             str(nanvixd),
             "-bin-dir",
             str(sysroot / "bin"),
             "--",
             str(binary),
+            cwd=self.repo_root,
             timeout=60,
         )
         log.success("PASS: bin-hello functional tests")

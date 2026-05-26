@@ -24,6 +24,7 @@ from nanvix_zutil import (
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
+from nanvix_zutil.helpers import run
 
 
 class LibHello(ZScript):
@@ -51,7 +52,7 @@ class LibHello(ZScript):
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.translate_path(host) if self.docker else host
+        return self.docker.translate_path(host) if self.docker else host
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -66,10 +67,12 @@ class LibHello(ZScript):
 
         # Single shell invocation so intermediate .o survives across
         # compile and archive steps inside the same Docker container.
-        self.run(
+        run(
             "sh",
             "-c",
             f"{cc} {cflags} -c -o hello.o src/hello.c && {ar} rcs libhello.a hello.o",
+            cwd=self.repo_root,
+            docker=self.docker,
         )
 
     def test(self) -> None:
