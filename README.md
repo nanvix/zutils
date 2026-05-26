@@ -33,6 +33,7 @@ Then invoke via the bootstrap wrapper or the `nanvix-zutil` CLI:
 ./z test             # run tests
 ./z lint             # black --check + pyright on .nanvix/*.py
 ./z format           # auto-format .nanvix/*.py with black
+./z format --check   # verify formatting without writing (non-zero on diff)
 ./z distclean        # remove all generated artifacts
 ```
 
@@ -43,8 +44,9 @@ nanvix-zutil lock    # resolve dependency graph → nanvix.lock
 nanvix-zutil setup   # download sysroot + install deps
 nanvix-zutil build   # cross-compile
 nanvix-zutil test    # run tests
-nanvix-zutil lint    # lint .nanvix/*.py
-nanvix-zutil format  # format .nanvix/*.py
+nanvix-zutil lint            # lint .nanvix/*.py
+nanvix-zutil format          # format .nanvix/*.py
+nanvix-zutil format --check  # verify formatting (non-zero on diff)
 ```
 
 ## Installation

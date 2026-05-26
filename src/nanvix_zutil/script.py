@@ -59,9 +59,7 @@ from nanvix_zutil.exitcodes import (
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.helpers import (
     check_docker,
-    ensure_tool_installed,
     filter_container_env,
-    run,
     sync_configs,
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
@@ -145,7 +143,6 @@ class ZScript:
     AUTO_HOOKS: tuple[str, ...] = (
         "setup",
         "lock",
-        "format",
         "install",
         "help",
     )
@@ -588,32 +585,6 @@ class ZScript:
             )
 
     # ------------------------------------------------------------------
-    # Format hook — auto-implemented
-    # ------------------------------------------------------------------
-
-    def format(self, *, check: bool = False) -> None:
-        """Format ``.nanvix/*.py`` with black.
-
-        Args:
-            check: When ``True``, run ``black --check`` instead of
-                auto-formatting (exit non-zero on diff).
-
-        Exits with ``EXIT_MISSING_DEP`` if black is not installed.
-        """
-        py_files = sorted(self.nanvix_dir.glob("*.py"))
-        if not py_files:
-            log.warning("No .py files found in .nanvix/ — nothing to format")
-            return
-        ensure_tool_installed("black")
-        str_files = [str(f) for f in py_files]
-        black_cfg = str(self.nanvix_dir / "black.toml")
-        cmd = [sys.executable, "-m", "black", "--config", black_cfg]
-        if check:
-            cmd.append("--check")
-        cmd.extend(str_files)
-        run(*cmd)
-
-    # ------------------------------------------------------------------
     # Lifecycle hooks — override in subclass
     # ------------------------------------------------------------------
 
@@ -1031,12 +1002,6 @@ class ZScript:
                 log.success("Lockfile is up-to-date")
             else:
                 instance.lock(shallow=args.shallow)
-            return
-
-        # Special handling for format subcommand (--check flag).
-        if subcommand == "format":
-            instance.format(check=args.check)
-            log.success("Format complete")
             return
 
         # Special handling for install subcommand (--output flag).

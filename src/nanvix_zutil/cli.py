@@ -17,11 +17,6 @@ from pathlib import Path
 from nanvix_zutil.lockfile import get_zutil_version
 
 # ---------------------------------------------------------------------------
-# Version helper
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Parser factory
 # ---------------------------------------------------------------------------
 
@@ -34,7 +29,6 @@ SUBCOMMANDS: tuple[str, ...] = (
     "release",
     "clean",
     "lock",
-    "format",
     "install",
     "help",
 )
@@ -55,7 +49,6 @@ SUBCOMMAND_HELP: dict[str, str] = {
     "release": "Package a release",
     "clean": "Remove build artifacts",
     "lock": "Resolve dependencies and write nanvix.lock",
-    "format": "Format .nanvix/*.py with black",
     "install": "Export build artifacts to a target directory",
     "help": "Show help message",
 }
@@ -137,13 +130,6 @@ def build_parser(
                 action="store_true",
                 default=False,
                 help="Resolve only direct dependencies (skip transitive discovery)",
-            )
-        if name == "format":
-            sub.add_argument(
-                "--check",
-                action="store_true",
-                default=False,
-                help="Check formatting without modifying files (exit non-zero on diff)",
             )
         if name in DOCKER_SUBCOMMANDS:
             sub.add_argument(
