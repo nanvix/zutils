@@ -19,6 +19,7 @@ Commands:
   yaml-lint     Lint YAML files with yamllint
 """
 
+import re
 import shutil
 import subprocess
 import sys
@@ -132,9 +133,17 @@ def _step(label: str) -> None:
 def _bump_version(uv: str, bump: str) -> None:
     """Bump pyproject.toml version via uv and sync example bootstrappers."""
     _run_checked(uv, "version", "--bump", bump)
+    new_version = _read_version()
+    pinned_tag = f"v{new_version}\n"
+
+    # Pin templates/.zutils-version so the shipped templates.tar.gz and the
+    # in-tree examples agree with the just-bumped release. The file is
+    # tracked, so `git checkout -- templates/` correctly restores it during
+    # the release packaging round-trip.
+    templates_dir = _REPO_ROOT / "templates"
+    (templates_dir / ".zutils-version").write_text(pinned_tag)
 
     # Sync bootstrapper templates into each example directory.
-    templates_dir = _REPO_ROOT / "templates"
     examples_dir = _REPO_ROOT / "examples"
     for example in sorted(examples_dir.iterdir()):
         if not example.is_dir():
@@ -143,6 +152,9 @@ def _bump_version(uv: str, bump: str) -> None:
             src = templates_dir / name
             if src.exists():
                 shutil.copy(src, example / name)
+        # Pin .zutils-version to the freshly-bumped tag so in-tree examples
+        # exercise the same source-of-truth file shipped to consumer repos.
+        (example / ".zutils-version").write_text(pinned_tag)
         nanvix_dir = example / ".nanvix"
         if nanvix_dir.is_dir():
             gi = templates_dir / ".gitignore"
@@ -151,14 +163,14 @@ def _bump_version(uv: str, bump: str) -> None:
 
 
 def _patch_templates(version: str) -> None:
-    """Replace version placeholders in template files and verify."""
-    templates = _REPO_ROOT / "templates"
+    """Substitute {{WORKFLOW_VERSION}} in templates and verify no placeholder
+    residue remains.
 
-    # Replace {{ZUTIL_VERSION}}
-    for name in ("z.sh", "z.ps1", "nanvix-ci.yml"):
-        path = templates / name
-        content = path.read_text()
-        path.write_text(content.replace("{{ZUTIL_VERSION}}", version))
+    Note: templates/.zutils-version is maintained by `_bump_version` as a
+    tracked file, not by this function.
+    """
+    del version  # currently unused; kept for API stability and future use
+    templates = _REPO_ROOT / "templates"
 
     # Fetch latest nanvix/workflows version and replace {{WORKFLOW_VERSION}}
     result = subprocess.run(
@@ -183,14 +195,20 @@ def _patch_templates(version: str) -> None:
     content = ci_yml.read_text()
     ci_yml.write_text(content.replace("{{WORKFLOW_VERSION}}", wflow_ver))
 
-    # Verify no unreplaced placeholders remain
+    # Verify no unreplaced `{{ANYTHING}}` placeholder remains in any
+    # template file. Generic scan future-proofs against newly-introduced
+    # placeholders that someone forgets to wire into this function.
+    placeholder = re.compile(r"\{\{[A-Z_]+\}\}")
     for path in templates.iterdir():
-        if path.is_file():
-            content = path.read_text()
-            if "{{ZUTIL_VERSION}}" in content or "{{WORKFLOW_VERSION}}" in content:
-                raise RuntimeError(f"Unreplaced placeholder in {path.name}")
+        if not path.is_file():
+            continue
+        m = placeholder.search(path.read_text())
+        if m:
+            raise RuntimeError(
+                f"Unreplaced placeholder {m.group(0)} in {path.name}"
+            )
 
-    print(f"  Patched templates to {version} (workflows: {wflow_ver})")
+    print(f"  Patched templates (workflows: {wflow_ver})")
 
 
 def _package_templates() -> None:
@@ -198,10 +216,15 @@ def _package_templates() -> None:
     dist = _REPO_ROOT / "dist"
     dist.mkdir(exist_ok=True)
     base = str(dist / "templates")
-    shutil.make_archive(base, "gztar", str(_REPO_ROOT / "templates"))
-    shutil.make_archive(base, "zip", str(_REPO_ROOT / "templates"))
-    # Restore placeholders so the working tree stays clean
-    _run_checked("git", "checkout", "--", "templates/")
+    try:
+        shutil.make_archive(base, "gztar", str(_REPO_ROOT / "templates"))
+        shutil.make_archive(base, "zip", str(_REPO_ROOT / "templates"))
+    finally:
+        # Always restore the in-tree templates so a crash mid-archive does
+        # not leave the working tree with a substituted {{WORKFLOW_VERSION}}.
+        # All mutated files (.zutils-version, nanvix-ci.yml) are tracked, so
+        # `git checkout` is sufficient; no separate unlink needed.
+        _run_checked("git", "checkout", "--", "templates/")
     print("  Created dist/templates.tar.gz and dist/templates.zip")
 
 
