@@ -99,6 +99,40 @@ class TestResolveDispatch(unittest.TestCase):
         mock_resolve_main.assert_called_once()
 
 
+class TestLintDispatch(unittest.TestCase):
+    """``nanvix-zutil lint`` dispatches to lint_cmd.main() with rewritten argv."""
+
+    def test_lint_dispatches(self) -> None:
+        captured: dict[str, list[str]] = {}
+
+        def fake_lint_main() -> None:
+            captured["argv"] = sys.argv[:]
+
+        original_argv = sys.argv[:]
+        try:
+            with (
+                patch(
+                    "nanvix_zutil.lint_cmd.main",
+                    side_effect=fake_lint_main,
+                ) as mock_lint_main,
+                patch(
+                    "sys.argv",
+                    ["nanvix-zutil", "lint", "--nanvix-dir", "foo"],
+                ),
+            ):
+                try:
+                    main()
+                except SystemExit:
+                    pass
+            mock_lint_main.assert_called_once()
+        finally:
+            sys.argv = original_argv
+        self.assertEqual(
+            captured["argv"],
+            ["nanvix-zutil lint", "--nanvix-dir", "foo"],
+        )
+
+
 class TestConsumerCommandNoZPy(unittest.TestCase):
     """Consumer commands with no ``.nanvix/z.py`` exit with code 3."""
 

@@ -13,13 +13,14 @@ from pathlib import Path
 from nanvix_zutil import log
 from nanvix_zutil.cli import SUBCOMMAND_HELP, build_parser
 from nanvix_zutil.config import ENV_VARS
+from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.exitcodes import (
     EXIT_GENERAL_ERROR,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
-from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.info import HELP as _INFO_HELP
+from nanvix_zutil.lint_cmd import HELP as _LINT_HELP
 from nanvix_zutil.lockfile import get_zutil_version
 from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
 from nanvix_zutil.script import ZScript
@@ -28,6 +29,7 @@ from nanvix_zutil.script import ZScript
 _STANDALONE_HELP: dict[str, str] = {
     "distclean": _DISTCLEAN_HELP,
     "info": _INFO_HELP,
+    "lint": _LINT_HELP,
     "resolve": _RESOLVE_HELP,
 }
 
@@ -88,7 +90,7 @@ def _build_top_level_parser() -> argparse.ArgumentParser:
             "\n"
             "Consumer commands require a .nanvix/z.py file in the "
             "working directory.\n"
-            "Standalone commands (distclean, info, resolve) work anywhere."
+            "Standalone commands work anywhere."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_build_env_var_epilog(),
@@ -148,6 +150,13 @@ def main() -> None:
 
         sys.argv = ["nanvix-zutil resolve", *remaining]
         resolve_main()
+        return
+
+    if subcmd == "lint":
+        from nanvix_zutil.lint_cmd import main as lint_main
+
+        sys.argv = ["nanvix-zutil lint", *remaining]
+        lint_main()
         return
 
     if subcmd == "help":

@@ -142,12 +142,7 @@ class TestDockerFlags(unittest.TestCase):
 
 
 class TestLintFormatSubcommands(unittest.TestCase):
-    """Tests for lint and format subcommands."""
-
-    def test_lint_registered(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["lint"])
-        self.assertEqual(args.subcommand, "lint")
+    """Tests for the format subcommand (lint is standalone, see test_lint_cmd)."""
 
     def test_format_registered(self) -> None:
         parser = build_parser()
@@ -164,17 +159,17 @@ class TestLintFormatSubcommands(unittest.TestCase):
         args = parser.parse_args(["format"])
         self.assertFalse(args.check)
 
-    def test_lint_in_subcommands(self) -> None:
-        self.assertIn("lint", SUBCOMMANDS)
+    def test_lint_not_in_subcommands(self) -> None:
+        """lint has moved to a standalone command and is no longer a consumer subcommand."""
+        self.assertNotIn("lint", SUBCOMMANDS)
 
     def test_format_in_subcommands(self) -> None:
         self.assertIn("format", SUBCOMMANDS)
 
-    def test_lint_available_restricted(self) -> None:
-        """lint is accepted when in the available set."""
-        parser = build_parser(available=("lint", "help"))
-        args = parser.parse_args(["lint"])
-        self.assertEqual(args.subcommand, "lint")
+    def test_lint_unknown_in_available(self) -> None:
+        """lint is rejected when passed in the available set."""
+        with self.assertRaises(ValueError):
+            build_parser(available=("lint", "help"))
 
     def test_format_available_restricted(self) -> None:
         """format is accepted when in the available set."""

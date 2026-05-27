@@ -145,7 +145,6 @@ class ZScript:
     AUTO_HOOKS: tuple[str, ...] = (
         "setup",
         "lock",
-        "lint",
         "format",
         "install",
         "help",
@@ -589,45 +588,8 @@ class ZScript:
             )
 
     # ------------------------------------------------------------------
-    # Lint & format hooks — auto-implemented
+    # Format hook — auto-implemented
     # ------------------------------------------------------------------
-
-    def lint(self) -> None:
-        """Run linters on ``.nanvix/*.py``.
-
-        Runs ``black --check`` followed by ``pyright`` on all Python
-        files in the ``.nanvix/`` directory.  Exits with
-        ``EXIT_MISSING_DEP`` if either tool is not installed, or with
-        ``EXIT_BUILD_FAILURE`` if either tool reports problems.
-        """
-
-        py_files = sorted(self.nanvix_dir.glob("*.py"))
-        if not py_files:
-            log.warning("No .py files found in .nanvix/ — nothing to lint")
-            return
-        for tool in ("black", "pyright"):
-            ensure_tool_installed(tool)
-
-        str_files = [str(f) for f in py_files]
-        black_cfg = str(self.nanvix_dir / "black.toml")
-        pyright_cfg = str(self.nanvix_dir / "pyrightconfig.json")
-        run(
-            sys.executable,
-            "-m",
-            "black",
-            "--config",
-            black_cfg,
-            "--check",
-            *str_files,
-        )
-        run(
-            sys.executable,
-            "-m",
-            "pyright",
-            "--project",
-            pyright_cfg,
-            *str_files,
-        )
 
     def format(self, *, check: bool = False) -> None:
         """Format ``.nanvix/*.py`` with black.
@@ -1090,7 +1052,6 @@ class ZScript:
             "benchmark": instance.benchmark,
             "release": instance.release,
             "clean": instance.clean,
-            "lint": instance.lint,
         }
 
         handler = dispatch.get(subcommand) if subcommand is not None else None
