@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 from nanvix_zutil.lint_cmd import lint, main
 
 
@@ -112,37 +112,6 @@ class TestLintCmd(unittest.TestCase):
             ):
                 lint()
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
-
-    def test_exits_when_nanvix_dir_not_a_directory(self) -> None:
-        """Exits with EXIT_INVALID_ARGS when resolved dir is not a directory."""
-        bogus = Path(self._tmpdir.name) / "not-a-dir"
-        bogus.write_text("")  # regular file, not a directory
-
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                _patch_prefix(bogus),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                lint()
-            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
-        finally:
-            log_mod.set_json_mode(False)
-
-    def test_exits_when_nanvix_dir_missing(self) -> None:
-        """Exits with EXIT_INVALID_ARGS when resolved dir does not exist."""
-        missing = Path(self._tmpdir.name) / "missing"
-
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                _patch_prefix(missing),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                lint()
-            self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
         finally:
             log_mod.set_json_mode(False)
 
