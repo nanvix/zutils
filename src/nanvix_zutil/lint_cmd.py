@@ -37,17 +37,10 @@ def _build_parser() -> argparse.ArgumentParser:
             " directory."
         ),
     )
-    parser.add_argument(
-        "--nanvix-dir",
-        default=".nanvix",
-        metavar="PATH",
-        dest="nanvix_dir",
-        help="Path to the .nanvix/ directory (default: .nanvix)",
-    )
     return parser
 
 
-def lint(nanvix_dir: Path) -> None:
+def lint() -> None:
     """Run ``black --check`` and ``pyright`` on every ``.py`` file in
     *nanvix_dir*.
 
@@ -62,6 +55,8 @@ def lint(nanvix_dir: Path) -> None:
     with :data:`EXIT_INVALID_ARGS` if *nanvix_dir* is not an existing
     directory.
     """
+    # venv root is always bootstrapped at .nanvix/venv
+    nanvix_dir = Path(sys.prefix).parent
     if not nanvix_dir.is_dir():
         log.fatal(
             f"Not a directory: {nanvix_dir}",
@@ -100,9 +95,7 @@ def lint(nanvix_dir: Path) -> None:
 def main() -> None:
     """Entry point for ``nanvix-zutil lint``."""
     parser = _build_parser()
-    args = parser.parse_args()
-
-    nanvix_dir = Path(args.nanvix_dir)
-    lint(nanvix_dir)
+    _args = parser.parse_args()
+    lint()
 
     sys.exit(EXIT_SUCCESS)
