@@ -32,29 +32,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nanvix-zutil lint",
         description=(
-            "Run black --check and pyright on .nanvix/*.py using the"
-            " black.toml and pyrightconfig.json files in the same"
-            " directory."
+            "Run black --check and pyright on every *.py file in the"
+            " nanvix directory, using the black and pyright configuration"
+            " files shipped alongside them."
         ),
     )
     return parser
 
 
 def lint() -> None:
-    """Run ``black --check`` and ``pyright`` on every ``.py`` file in
-    *nanvix_dir*.
-
-    Args:
-        nanvix_dir: Directory containing the Python files to lint and the
-            black/pyright configuration files.
-
-    Behaviour mirrors the previous ``ZScript.lint`` implementation: warns
-    and returns when no ``.py`` files are present, exits with
-    :data:`EXIT_MISSING_DEP` if either tool is missing, and exits with
-    :data:`EXIT_BUILD_FAILURE` if either tool reports problems.  Exits
-    with :data:`EXIT_INVALID_ARGS` if *nanvix_dir* is not an existing
-    directory.
-    """
     # venv root is always bootstrapped at .nanvix/venv
     nanvix_dir = Path(sys.prefix).parent
     if not nanvix_dir.is_dir():
