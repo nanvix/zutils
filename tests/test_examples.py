@@ -18,7 +18,7 @@ logic itself is covered by these tests, not just the underlying CLI.
     ``pwsh`` on PATH.
 
 **Local** (no Docker):
-    CLI smoke tests only (``--help``, ``--json``).
+    CLI smoke tests only.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from typing import cast
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB_HELLO = _REPO_ROOT / "examples" / "lib-hello"
@@ -212,24 +211,6 @@ class TestLibHelloCLI(unittest.TestCase):
         r = _run_z(_LIB_HELLO, "--help")
         self.assertEqual(r.returncode, 0, r.stderr)
 
-    def test_json_mode(self) -> None:
-        """``--json`` produces parseable JSON on stderr.
-
-        ``distclean`` is benign but triggers the wrapper's post-distclean
-        ``rm -rf .nanvix/venv``, so the next ``_run_z`` invocation in this
-        dir re-bootstraps (~5s).  Acceptable as a per-example one-off.
-        """
-        r = _run_z(_LIB_HELLO, "--json", "distclean")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
-        self.assertTrue(json_lines, "expected at least one JSON line on stderr")
-        for line in json_lines:
-            obj: object = json.loads(line)
-            self.assertIsInstance(obj, dict)
-            assert isinstance(obj, dict)
-            typed = cast(dict[str, object], obj)
-            self.assertIn("level", typed)
-
 
 class TestBinHelloCLI(unittest.TestCase):
     """CLI flag tests for the bin-hello example."""
@@ -238,19 +219,6 @@ class TestBinHelloCLI(unittest.TestCase):
         """``--help`` exits successfully."""
         r = _run_z(_BIN_HELLO, "--help")
         self.assertEqual(r.returncode, 0, r.stderr)
-
-    def test_json_mode(self) -> None:
-        """``--json`` produces parseable JSON on stderr.  See lib-hello sibling."""
-        r = _run_z(_BIN_HELLO, "--json", "distclean")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        json_lines = [ln for ln in r.stderr.splitlines() if ln.startswith("{")]
-        self.assertTrue(json_lines, "expected at least one JSON line on stderr")
-        for line in json_lines:
-            obj: object = json.loads(line)
-            self.assertIsInstance(obj, dict)
-            assert isinstance(obj, dict)
-            typed = cast(dict[str, object], obj)
-            self.assertIn("level", typed)
 
 
 # ===================================================================

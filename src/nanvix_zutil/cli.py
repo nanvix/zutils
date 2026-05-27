@@ -28,7 +28,6 @@ from nanvix_zutil.lockfile import get_zutil_version
 #: All lifecycle subcommand names.
 SUBCOMMANDS: tuple[str, ...] = (
     "setup",
-    "distclean",
     "build",
     "test",
     "benchmark",
@@ -51,7 +50,6 @@ DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 #: Human-readable descriptions for each subcommand.
 SUBCOMMAND_HELP: dict[str, str] = {
     "setup": "Prepare the build environment",
-    "distclean": "Remove all transient .nanvix/ artifacts",
     "build": "Build the project",
     "test": "Run tests",
     "benchmark": "Run benchmarks",

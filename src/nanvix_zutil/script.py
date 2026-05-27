@@ -77,8 +77,8 @@ class ZScript:
     structured logging.  Consumers subclass this and implement the lifecycle
     hooks they need.
 
-    The :meth:`setup`, :meth:`distclean`, and :meth:`lock` hooks are
-    *auto-implemented* in the base class and are always available in the CLI.
+    The :meth:`setup` and :meth:`lock` hooks are *auto-implemented* in
+    the base class and are always available in the CLI.
     The remaining hooks (``build``, ``test``, ``benchmark``, ``release``,
     ``clean``) only appear in the help menu when the subclass overrides them.
 
@@ -144,7 +144,6 @@ class ZScript:
     #: available in the CLI, regardless of subclass overrides.
     AUTO_HOOKS: tuple[str, ...] = (
         "setup",
-        "distclean",
         "lock",
         "lint",
         "format",
@@ -512,40 +511,6 @@ class ZScript:
         self.config.save()
         sync_configs(self.nanvix_dir)
         return self._used_fallback
-
-    def distclean(self) -> None:
-        """Remove all transient ``.nanvix/`` artifacts.
-
-        Deletes the ``sysroot``, ``buildroot``, ``cache``, ``venv``, and
-        ``__pycache__`` directories and the ``env.json`` config file inside
-        ``.nanvix/``.  Only the manifest (``nanvix.toml``) and lockfile
-        (``nanvix.lock``) are preserved.
-
-        Removal is best-effort: artifacts that cannot be deleted (e.g. a
-        locked venv on Windows) are skipped with a warning so the
-        remaining artifacts are still cleaned.
-        """
-        for artifact in (
-            "sysroot",
-            "buildroot",
-            "cache",
-            "env.json",
-            "venv",
-            "__pycache__",
-        ):
-            path = self.nanvix_dir / artifact
-            if not path.exists() and not path.is_symlink():
-                continue
-            try:
-                if path.is_symlink() or path.is_file():
-                    path.unlink()
-                elif path.is_dir():
-                    shutil.rmtree(path)
-                else:
-                    continue
-                log.info(f"Removed {path}")
-            except OSError as exc:
-                log.warning(f"Could not remove {path}: {exc}")
 
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.
@@ -1120,7 +1085,6 @@ class ZScript:
 
         dispatch: dict[str, object] = {
             "setup": instance.setup,
-            "distclean": instance.distclean,
             "build": instance.build,
             "test": instance.test,
             "benchmark": instance.benchmark,
