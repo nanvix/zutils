@@ -7,11 +7,78 @@
 
 set -euo pipefail
 
-PINNED_VERSION="{{ZUTIL_VERSION}}"
-RAW_ZUTIL_VERSION="${NANVIX_ZUTIL_VERSION:-$PINNED_VERSION}"
-ZUTIL_VERSION="${RAW_ZUTIL_VERSION#v}"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 VENV="$REPO_ROOT/.nanvix/venv"
+VERSION_FILE="$REPO_ROOT/.zutils-version"
+
+# Resolve the pinned nanvix-zutil version.
+#
+# Precedence:
+#   1. NANVIX_ZUTIL_VERSION env var (explicit override).
+#   2. .zutils-version file at repo root (source of truth).
+#   3. Fetch the latest release from GitHub and pin it by writing
+#      .zutils-version. The user is told to commit the file.
+function _fetch_latest_zutil_tag() {
+    if ! command -v gh &>/dev/null; then
+        echo "Error: .zutils-version not found and 'gh' is unavailable to fetch the latest release." >&2
+        echo "       Create a .zutils-version file with a pinned version (e.g. 'v0.10.2') or install the GitHub CLI: https://cli.github.com" >&2
+        return 1
+    fi
+    local tag
+    # --exclude-drafts/--exclude-pre-releases avoids accidentally pinning
+    # an in-flight draft if the caller has write access to nanvix/zutils.
+    if ! tag="$(gh release list --repo nanvix/zutils \
+        --exclude-drafts --exclude-pre-releases \
+        -L 1 --json tagName --jq '.[0].tagName' 2>/dev/null)"; then
+        echo "Error: failed to fetch latest nanvix/zutils release via 'gh'. Are you authenticated? (gh auth login)" >&2
+        echo "       Alternatively, create a .zutils-version file with a pinned version (e.g. 'v0.10.2')." >&2
+        return 1
+    fi
+    if [ -z "$tag" ]; then
+        echo "Error: 'gh' returned no stable releases for nanvix/zutils." >&2
+        return 1
+    fi
+    printf '%s' "$tag"
+}
+
+function _resolve_zutil_version() {
+    # RAW_ZUTIL_VERSION and ZUTIL_VERSION are intentionally global;
+    # they are consumed by bootstrap() below.
+    local source raw
+    local pin_after_validation=0
+    if [ -n "${NANVIX_ZUTIL_VERSION:-}" ]; then
+        raw="$NANVIX_ZUTIL_VERSION"
+        source="NANVIX_ZUTIL_VERSION env var"
+    elif [ -f "$VERSION_FILE" ]; then
+        raw="$(tr -d '[:space:]' <"$VERSION_FILE")"
+        source=".zutils-version"
+        if [ -z "$raw" ]; then
+            echo "Error: $VERSION_FILE exists but is empty." >&2
+            exit 1
+        fi
+    else
+        # Use explicit `if !` so a helper failure aborts cleanly;
+        # `raw="$(_fetch_latest_zutil_tag)"` alone would silently set
+        # raw="" under set -e (subshell-exit-in-assignment gotcha).
+        if ! raw="$(_fetch_latest_zutil_tag)"; then
+            exit 1
+        fi
+        source="GitHub latest release"
+        pin_after_validation=1
+    fi
+    if [[ ! "$raw" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][[:alnum:].-]+)?$ ]]; then
+        echo "Error: invalid nanvix-zutil version '$raw' from ${source} (expected vX.Y.Z)." >&2
+        exit 1
+    fi
+    if [ "$pin_after_validation" -eq 1 ]; then
+        printf '%s\n' "$raw" >"$VERSION_FILE"
+        echo "nanvix-zutil: no .zutils-version found; pinned to latest release ${raw} and wrote ${VERSION_FILE}." >&2
+        echo "             Commit this file to lock the version for your repo, or set NANVIX_ZUTIL_VERSION to skip this auto-pin next time." >&2
+    fi
+    RAW_ZUTIL_VERSION="$raw"
+    ZUTIL_VERSION="${RAW_ZUTIL_VERSION#v}"
+}
+_resolve_zutil_version
 
 # Resolve venv layout (bin/ vs Scripts/) based on what exists on disk.
 # Can be called before venv creation to initialize default paths; call it
