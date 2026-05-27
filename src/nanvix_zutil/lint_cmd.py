@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil import log
-from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_SUCCESS
+from nanvix_zutil.exitcodes import EXIT_SUCCESS
 from nanvix_zutil.helpers import ensure_tool_installed, run
 
 HELP: str = "Run linters (black --check + pyright) on <nanvix-dir>/*.py"
@@ -43,12 +43,6 @@ def _build_parser() -> argparse.ArgumentParser:
 def lint() -> None:
     # venv root is always bootstrapped at .nanvix/venv
     nanvix_dir = Path(sys.prefix).parent
-    if not nanvix_dir.is_dir():
-        log.fatal(
-            f"Not a directory: {nanvix_dir}",
-            code=EXIT_INVALID_ARGS,
-            hint="Pass --nanvix-dir PATH pointing at an existing directory.",
-        )
     py_files = sorted(nanvix_dir.glob("*.py"))
     if not py_files:
         log.warning(f"No .py files found in {nanvix_dir} — nothing to lint")
