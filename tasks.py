@@ -19,7 +19,6 @@ Commands:
   yaml-lint     Lint YAML files with yamllint
 """
 
-import re
 import shutil
 import subprocess
 import sys
@@ -162,55 +161,6 @@ def _bump_version(uv: str, bump: str) -> None:
                 shutil.copy(gi, nanvix_dir / ".gitignore")
 
 
-def _patch_templates(version: str) -> None:
-    """Substitute {{WORKFLOW_VERSION}} in templates and verify no placeholder
-    residue remains.
-
-    Note: templates/.zutils-version is maintained by `_bump_version` as a
-    tracked file, not by this function.
-    """
-    del version  # currently unused; kept for API stability and future use
-    templates = _REPO_ROOT / "templates"
-
-    # Fetch latest nanvix/workflows version and replace {{WORKFLOW_VERSION}}
-    result = subprocess.run(
-        [
-            "gh",
-            "release",
-            "view",
-            "--repo",
-            "nanvix/workflows",
-            "--json",
-            "tagName",
-            "-q",
-            ".tagName",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=_REPO_ROOT,
-    )
-    wflow_ver = result.stdout.strip().lstrip("v")
-    ci_yml = templates / "nanvix-ci.yml"
-    content = ci_yml.read_text()
-    ci_yml.write_text(content.replace("{{WORKFLOW_VERSION}}", wflow_ver))
-
-    # Verify no unreplaced `{{ANYTHING}}` placeholder remains in any
-    # template file. Generic scan future-proofs against newly-introduced
-    # placeholders that someone forgets to wire into this function.
-    placeholder = re.compile(r"\{\{[A-Z_]+\}\}")
-    for path in templates.iterdir():
-        if not path.is_file():
-            continue
-        m = placeholder.search(path.read_text())
-        if m:
-            raise RuntimeError(
-                f"Unreplaced placeholder {m.group(0)} in {path.name}"
-            )
-
-    print(f"  Patched templates (workflows: {wflow_ver})")
-
-
 def _package_templates() -> None:
     """Create template archives (.tar.gz and .zip) and restore originals."""
     dist = _REPO_ROOT / "dist"
@@ -325,9 +275,6 @@ def _build_artifacts(uv: str, version: str) -> None:
     """Build wheel/sdist, patch templates, and package template archives."""
     _step("Building wheel and sdist")
     _run_checked(uv, "build")
-
-    _step("Patching template versions")
-    _patch_templates(version)
 
     _step("Packaging templates")
     _package_templates()
