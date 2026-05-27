@@ -79,7 +79,16 @@ function Resolve-ZutilVersion {
         throw "Error: invalid nanvix-zutil version '$raw' from $source (expected vX.Y.Z)."
     }
     if ($pinAfterValidation) {
-        Set-Content -LiteralPath $versionFile -Value $raw -Encoding UTF8
+        # Write UTF-8 without BOM and with a trailing newline so the file
+        # round-trips cleanly through the bash bootstrap's
+        # `tr -d '[:space:]' <.zutils-version` read on Unix.
+        #
+        # `Set-Content -Encoding UTF8` writes a BOM on Windows PowerShell
+        # 5.1 (only PS 6+ supports `utf8NoBOM`), and the unparameterized
+        # default is ANSI/UTF-16-ish depending on host. Go through .NET to
+        # get identical behavior on both PS 5.1 and PS Core.
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($versionFile, "$raw`n", $utf8NoBom)
         Write-Information "nanvix-zutil: no .zutils-version found; pinned to latest release $raw and wrote $versionFile." -InformationAction Continue
         Write-Information "             Commit this file to lock the version for your repo, or set NANVIX_ZUTIL_VERSION to skip this auto-pin next time." -InformationAction Continue
     }

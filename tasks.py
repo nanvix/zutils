@@ -19,6 +19,7 @@ Commands:
   yaml-lint     Lint YAML files with yamllint
 """
 
+import re
 import shutil
 import subprocess
 import sys
@@ -137,9 +138,11 @@ def _bump_version(uv: str, bump: str) -> None:
 
     # Pin templates/.zutils-version so the shipped templates.tar.gz and the
     # in-tree examples agree with the just-bumped release. The file is
-    # tracked, so `git checkout -- templates/` correctly restores it during
-    # the release packaging round-trip.
+    # tracked and gets staged in `_commit_and_push`; `_package_templates`
+    # narrows its restore to `templates/nanvix-ci.yml` so this write
+    # survives the build round-trip.
     templates_dir = _REPO_ROOT / "templates"
+    (templates_dir / ".zutils-version").write_text(pinned_tag)
 
     # Sync bootstrapper templates into each example directory.
     examples_dir = _REPO_ROOT / "examples"
@@ -160,6 +163,59 @@ def _bump_version(uv: str, bump: str) -> None:
                 shutil.copy(gi, nanvix_dir / ".gitignore")
 
 
+def _patch_templates() -> None:
+    """Substitute `{{WORKFLOW_VERSION}}` in templates and verify no
+    `{{...}}` placeholder residue remains.
+
+    Note: `templates/.zutils-version` is maintained by `_bump_version` as a
+    tracked file, not by this function.
+    """
+    templates = _REPO_ROOT / "templates"
+
+    # Resolve the latest nanvix/workflows tag and stamp it into
+    # `templates/nanvix-ci.yml`. We resolve at release time rather than
+    # pinning a literal so the shipped workflow always references a
+    # workflows release that exists upstream.
+    result = subprocess.run(
+        [
+            "gh",
+            "release",
+            "view",
+            "--repo",
+            "nanvix/workflows",
+            "--json",
+            "tagName",
+            "-q",
+            ".tagName",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=_REPO_ROOT,
+    )
+    wflow_ver = result.stdout.strip().lstrip("v")
+    ci_yml = templates / "nanvix-ci.yml"
+    ci_yml.write_text(
+        ci_yml.read_text().replace("{{WORKFLOW_VERSION}}", wflow_ver)
+    )
+
+    # Verify no unreplaced `{{ANYTHING}}` placeholder remains in any
+    # template file. The generic scan future-proofs against newly
+    # introduced placeholders that someone forgets to wire into this
+    # function.
+    placeholder = re.compile(r"\{\{[A-Z_]+\}\}")
+    for path in templates.iterdir():
+        if not path.is_file():
+            continue
+        m = placeholder.search(path.read_text())
+        if m:
+            raise RuntimeError(
+                f"Unreplaced placeholder {m.group(0)} in {path.name}"
+            )
+
+    print(f"  Patched templates (workflows: {wflow_ver})")
+
+
 def _package_templates() -> None:
     """Create template archives (.tar.gz and .zip) and restore originals."""
     dist = _REPO_ROOT / "dist"
@@ -169,11 +225,11 @@ def _package_templates() -> None:
         shutil.make_archive(base, "gztar", str(_REPO_ROOT / "templates"))
         shutil.make_archive(base, "zip", str(_REPO_ROOT / "templates"))
     finally:
-        # Always restore the in-tree templates so a crash mid-archive does
-        # not leave the working tree with a substituted {{WORKFLOW_VERSION}}.
-        # All mutated files (.zutils-version, nanvix-ci.yml) are tracked, so
-        # `git checkout` is sufficient; no separate unlink needed.
-        _run_checked("git", "checkout", "--", "templates/")
+        # Restore only the file we substituted into. A broader
+        # `git checkout -- templates/` would also revert the bumped
+        # `templates/.zutils-version` (tracked) written by `_bump_version`,
+        # which `_commit_and_push` needs to stage.
+        _run_checked("git", "checkout", "--", "templates/nanvix-ci.yml")
     print("  Created dist/templates.tar.gz and dist/templates.zip")
 
 
@@ -272,8 +328,12 @@ def _check_tag_available(tag: str) -> None:
 
 def _build_artifacts(uv: str, version: str) -> None:
     """Build wheel/sdist, patch templates, and package template archives."""
+    del version  # currently unused; kept for API stability
     _step("Building wheel and sdist")
     _run_checked(uv, "build")
+
+    _step("Patching template versions")
+    _patch_templates()
 
     _step("Packaging templates")
     _package_templates()
@@ -282,7 +342,14 @@ def _build_artifacts(uv: str, version: str) -> None:
 def _commit_and_push(tag: str, *, ci_mode: bool) -> None:
     """Commit the version bump and push to dev (without tagging)."""
     _step(f"Committing and pushing {tag}")
-    _run_checked("git", "add", "pyproject.toml", "uv.lock", "examples/")
+    _run_checked(
+        "git",
+        "add",
+        "pyproject.toml",
+        "uv.lock",
+        "examples/",
+        "templates/.zutils-version",
+    )
     if ci_mode:
         _run_checked(
             "git",
