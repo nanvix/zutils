@@ -49,17 +49,10 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--nanvix-dir",
-        default=".nanvix",
-        metavar="PATH",
-        dest="nanvix_dir",
-        help="Path to the .nanvix/ directory (default: .nanvix)",
-    )
     return parser
 
 
-def distclean(nanvix_dir: Path) -> None:
+def distclean() -> None:
     """Remove all transient ``.nanvix/`` artifacts.
 
     Deletes the ``sysroot``, ``buildroot``, ``cache``, ``venv``, and
@@ -74,6 +67,7 @@ def distclean(nanvix_dir: Path) -> None:
     Args:
         nanvix_dir: Path to the ``.nanvix/`` directory.
     """
+    nanvix_dir = Path(sys.prefix).parent
     for artifact in _ARTIFACTS:
         path = nanvix_dir / artifact
         if not path.exists() and not path.is_symlink():
@@ -90,7 +84,7 @@ def distclean(nanvix_dir: Path) -> None:
             log.warning(f"Could not remove {path}: {exc}")
 
 
-def _run_consumer_clean(nanvix_dir: Path) -> None:
+def _run_consumer_clean() -> None:
     """Invoke the consumer's ``ZScript.clean()`` if a ``z.py`` exists.
 
     Locates ``<nanvix_dir>/z.py``, imports it via
@@ -107,6 +101,7 @@ def _run_consumer_clean(nanvix_dir: Path) -> None:
     Args:
         nanvix_dir: Path to the ``.nanvix/`` directory.
     """
+    nanvix_dir = Path(sys.prefix).parent
     z_py = nanvix_dir / "z.py"
     if not z_py.exists():
         return
@@ -127,10 +122,9 @@ def _run_consumer_clean(nanvix_dir: Path) -> None:
 def main() -> None:
     """Entry point for ``nanvix-zutil distclean``."""
     parser = _build_parser()
-    args = parser.parse_args()
+    _args = parser.parse_args()
 
-    nanvix_dir = Path(args.nanvix_dir)
-    _run_consumer_clean(nanvix_dir)
-    distclean(nanvix_dir)
+    _run_consumer_clean()
+    distclean()
 
     sys.exit(EXIT_SUCCESS)
