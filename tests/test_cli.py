@@ -141,43 +141,6 @@ class TestDockerFlags(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
-class TestLintFormatSubcommands(unittest.TestCase):
-    """Tests for the format subcommand (lint is standalone, see test_lint_cmd)."""
-
-    def test_format_registered(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["format"])
-        self.assertEqual(args.subcommand, "format")
-
-    def test_format_check_flag(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["format", "--check"])
-        self.assertTrue(args.check)
-
-    def test_format_check_default_false(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["format"])
-        self.assertFalse(args.check)
-
-    def test_lint_not_in_subcommands(self) -> None:
-        """lint has moved to a standalone command and is no longer a consumer subcommand."""
-        self.assertNotIn("lint", SUBCOMMANDS)
-
-    def test_format_in_subcommands(self) -> None:
-        self.assertIn("format", SUBCOMMANDS)
-
-    def test_lint_unknown_in_available(self) -> None:
-        """lint is rejected when passed in the available set."""
-        with self.assertRaises(ValueError):
-            build_parser(available=("lint", "help"))
-
-    def test_format_available_restricted(self) -> None:
-        """format is accepted when in the available set."""
-        parser = build_parser(available=("format", "help"))
-        args = parser.parse_args(["format"])
-        self.assertEqual(args.subcommand, "format")
-
-
 class TestOfflineFlag(unittest.TestCase):
     """Tests for the --offline flag on the setup subcommand."""
 

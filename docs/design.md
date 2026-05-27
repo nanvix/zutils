@@ -107,7 +107,7 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 | Benchmark | `./z benchmark`                                           | ❌          | ✅           | Runs benchmarks.                                                        |
 | Clean     | `./z clean`                                               | ❌          | ✅           | Cleans up build files.                                                  |
 | Distclean | `./z distclean`                                           | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.   |
-| Format    | `./z format`                                              | ✅          | ❌           | Formats python files in `.nanvix` with black.                           |
+| Format    | `./z format [--check]`                                    | ✅          | ❌           | Formats python files in `.nanvix` with black. Pass `--check` to verify without modifying (non-zero on diff). |
 | Lint      | `./z lint`                                                | ✅          | ❌           | Lints python files in `.nanvix` with pyright.                           |
 | Info      | `./z info`                                                | ✅          | ❌           | Standalone command that queries GitHub for the relevant release files.  |
 

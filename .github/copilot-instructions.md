@@ -55,7 +55,7 @@ __init__.py    ←  public library API (re-exports all public symbols)
 
 `script.py` (`ZScript`) is the public-facing orchestrator. Consumers interact almost exclusively with `ZScript`, `Config`, `Buildroot`, `Sysroot`, `Dependency`, `Lockfile`, `DockerConfig`, `NanvixInfo`, and `resolve` — all re-exported from `__init__.py`.
 
-Hooks `setup`, `lock`, `format`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them. `distclean`, `info`, `lint`, and `resolve` are exposed as **standalone** commands directly under `nanvix-zutil` (no `.nanvix/z.py` required) and are not part of the `ZScript` API.
+Hooks `setup`, `lock`, and `help` are auto-implemented in the base class and always available in the CLI. Consumer hooks (`build`, `test`, `benchmark`, `release`, `clean`) only appear when the subclass overrides them. `distclean`, `info`, `lint`, `format`, and `resolve` are exposed as **standalone** commands directly under `nanvix-zutil` (no `.nanvix/z.py` required) and are not part of the `ZScript` API.
 
 ### Bootstrap Chain
 

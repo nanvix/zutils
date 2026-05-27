@@ -16,7 +16,6 @@ from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import helpers
-from nanvix_zutil.helpers import InitRdArgs
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -25,6 +24,7 @@ from nanvix_zutil.docker import (
     Mount,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
+from nanvix_zutil.helpers import InitRdArgs
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_LATEST_WITH_DEPS,
@@ -1232,137 +1232,6 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         # The dependency was satisfied locally so GitHub resolve should not
         # have been called.
         mock_resolve.assert_not_called()
-
-
-class TestZScriptFormat(unittest.TestCase):
-    """Tests for ZScript.format() default implementation."""
-
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
-    def _make_script(self) -> ZScript:
-        return ZScript(Path(self._tmpdir.name))
-
-    def test_format_runs_black(self) -> None:
-        """format() runs black on .nanvix/*.py files."""
-        script = self._make_script()
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        calls: list[list[str]] = []
-
-        def fake_run(
-            args: tuple[str, ...], **kwargs: object
-        ) -> sp.CompletedProcess[str]:
-            cmd = list(args)
-            calls.append(cmd)
-            return sp.CompletedProcess(args=cmd, returncode=0)
-
-        with (
-            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-            patch("importlib.util.find_spec", return_value=True),
-        ):
-            script.format()
-
-        self.assertEqual(len(calls), 1)
-        self.assertIn("-m", calls[0])
-        self.assertIn("black", calls[0])
-        self.assertIn("--config", calls[0])
-        self.assertNotIn("--check", calls[0])
-
-    def test_format_check_mode(self) -> None:
-        """format(check=True) runs black --check."""
-        script = self._make_script()
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        calls: list[list[str]] = []
-
-        def fake_run(
-            args: tuple[str, ...], **kwargs: object
-        ) -> sp.CompletedProcess[str]:
-            cmd = list(args)
-            calls.append(cmd)
-            return sp.CompletedProcess(args=cmd, returncode=0)
-
-        with (
-            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-            patch("importlib.util.find_spec", return_value=True),
-        ):
-            script.format(check=True)
-
-        self.assertEqual(len(calls), 1)
-        self.assertIn("-m", calls[0])
-        self.assertIn("black", calls[0])
-        self.assertIn("--config", calls[0])
-        self.assertIn("--check", calls[0])
-
-    def test_format_no_py_files_warns(self) -> None:
-        """format() warns and returns when no .py files exist."""
-        script = self._make_script()
-        for f in script.nanvix_dir.glob("*.py"):
-            f.unlink()
-
-        with patch("nanvix_zutil.script.log") as mock_log:
-            script.format()
-
-        mock_log.warning.assert_called_once()
-        self.assertIn("nothing to format", mock_log.warning.call_args[0][0].lower())
-
-    def test_format_exits_on_failure(self) -> None:
-        """format() exits with EXIT_BUILD_FAILURE when black fails."""
-        script = self._make_script()
-        py_file = script.nanvix_dir / "z.py"
-        py_file.write_text("x = 1\n")
-
-        def fake_run(
-            args: tuple[str, ...], **kwargs: object
-        ) -> sp.CompletedProcess[str]:
-            cmd = list(args)
-            # helpers.run() passes check=True; emulate subprocess.run by
-            # raising CalledProcessError on non-zero exit.
-            raise sp.CalledProcessError(returncode=1, cmd=cmd)
-
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-                patch("importlib.util.find_spec", return_value=True),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                script.format()
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
-
-
-class TestZScriptLintInAutoHooks(unittest.TestCase):
-    """format appears in AUTO_HOOKS and available_subcommands; lint is standalone."""
-
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
-    def test_lint_not_in_auto_hooks(self) -> None:
-        self.assertNotIn("lint", ZScript.AUTO_HOOKS)
-
-    def test_format_in_auto_hooks(self) -> None:
-        self.assertIn("format", ZScript.AUTO_HOOKS)
-
-    def test_lint_not_available(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
-        self.assertNotIn("lint", script.available_subcommands())
-
-    def test_format_always_available(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
-        self.assertIn("format", script.available_subcommands())
 
 
 class TestZScriptSetupLocalSysroot(unittest.TestCase):

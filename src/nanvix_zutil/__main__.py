@@ -19,6 +19,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.format_cmd import HELP as _FORMAT_HELP
 from nanvix_zutil.info import HELP as _INFO_HELP
 from nanvix_zutil.lint_cmd import HELP as _LINT_HELP
 from nanvix_zutil.lockfile import get_zutil_version
@@ -28,6 +29,7 @@ from nanvix_zutil.script import ZScript
 # Standalone command help text, keyed by subcommand name.
 _STANDALONE_HELP: dict[str, str] = {
     "distclean": _DISTCLEAN_HELP,
+    "format": _FORMAT_HELP,
     "info": _INFO_HELP,
     "lint": _LINT_HELP,
     "resolve": _RESOLVE_HELP,
@@ -157,6 +159,12 @@ def main() -> None:
 
         sys.argv = ["nanvix-zutil lint", *remaining]
         lint_main()
+
+    if subcmd == "format":
+        from nanvix_zutil.format_cmd import main as format_main
+
+        sys.argv = ["nanvix-zutil format", *remaining]
+        format_main()
         return
 
     if subcmd == "help":
