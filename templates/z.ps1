@@ -79,7 +79,7 @@ function Resolve-ZutilVersion {
         throw "Error: invalid nanvix-zutil version '$raw' from $source (expected vX.Y.Z)."
     }
     if ($pinAfterValidation) {
-        Set-Content -LiteralPath $versionFile -Value $raw
+        Set-Content -LiteralPath $versionFile -Value $raw -Encoding UTF8
         Write-Information "nanvix-zutil: no .zutils-version found; pinned to latest release $raw and wrote $versionFile." -InformationAction Continue
         Write-Information "             Commit this file to lock the version for your repo, or set NANVIX_ZUTIL_VERSION to skip this auto-pin next time." -InformationAction Continue
     }

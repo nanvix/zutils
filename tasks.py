@@ -140,7 +140,6 @@ def _bump_version(uv: str, bump: str) -> None:
     # tracked, so `git checkout -- templates/` correctly restores it during
     # the release packaging round-trip.
     templates_dir = _REPO_ROOT / "templates"
-    (templates_dir / ".zutils-version").write_text(pinned_tag)
 
     # Sync bootstrapper templates into each example directory.
     examples_dir = _REPO_ROOT / "examples"
