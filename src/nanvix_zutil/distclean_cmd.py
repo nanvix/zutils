@@ -37,15 +37,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nanvix-zutil distclean",
         description=(
-            "Remove all transient .nanvix/ artifacts: sysroot, buildroot, "
-            "cache, venv, __pycache__, and env.json.  Only nanvix.toml and "
-            "nanvix.lock are preserved.  Removal is best-effort: artifacts "
+            "Remove all transient .nanvix/ artifacts."
+            "Removal is best-effort: artifacts "
             "that cannot be deleted (e.g. a locked venv on Windows) are "
             "skipped with a warning.\n\n"
             "If a .nanvix/z.py exists in the consumer repo, its ZScript "
             "subclass is imported and its clean() hook is invoked before "
             "artifact removal.  Any failure in that step is logged as a "
-            "warning and does not abort the distclean."
+            "warning and does not abort the distclean.\n\n"
+            "Aside from those defined in `clean()`, the following artifacts are removed:\n"
+            + ",\n".join(_ARTIFACTS)
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -53,20 +54,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def distclean() -> None:
-    """Remove all transient ``.nanvix/`` artifacts.
-
-    Deletes the ``sysroot``, ``buildroot``, ``cache``, ``venv``, and
-    ``__pycache__`` directories and the ``env.json`` config file inside
-    ``nanvix_dir``.  Only the manifest (``nanvix.toml``) and lockfile
-    (``nanvix.lock``) are preserved.
-
-    Removal is best-effort: artifacts that cannot be deleted (e.g. a
-    locked venv on Windows) are skipped with a warning so the remaining
-    artifacts are still cleaned.
-
-    Args:
-        nanvix_dir: Path to the ``.nanvix/`` directory.
-    """
     nanvix_dir = Path(sys.prefix).parent
     for artifact in _ARTIFACTS:
         path = nanvix_dir / artifact
@@ -85,22 +72,6 @@ def distclean() -> None:
 
 
 def _run_consumer_clean() -> None:
-    """Invoke the consumer's ``ZScript.clean()`` if a ``z.py`` exists.
-
-    Locates ``<nanvix_dir>/z.py``, imports it via
-    :func:`nanvix_zutil.__main__.discover_script_class`, instantiates the
-    discovered :class:`~nanvix_zutil.script.ZScript` subclass, and calls
-    ``clean()`` on it.  This mirrors what ``./z clean`` would execute,
-    just driven from the standalone command.
-
-    Best-effort: any failure (missing manifest, import error, missing
-    subclass, ``clean()`` raising, or the underlying discovery helper
-    calling ``log.fatal``) is logged as a warning and silently swallowed
-    so the surrounding artifact removal still runs.
-
-    Args:
-        nanvix_dir: Path to the ``.nanvix/`` directory.
-    """
     nanvix_dir = Path(sys.prefix).parent
     z_py = nanvix_dir / "z.py"
     if not z_py.exists():
