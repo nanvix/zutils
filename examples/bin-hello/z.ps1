@@ -16,81 +16,21 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
 $versionFile = Join-Path $repoRoot ".zutils-version"
 
-# Resolve the pinned nanvix-zutil version.
-#
-# Precedence:
-#   1. NANVIX_ZUTIL_VERSION env var (explicit override).
-#   2. .zutils-version file at repo root (source of truth).
-#   3. Fetch the latest release from GitHub and pin it by writing
-#      .zutils-version. The user is told to commit the file.
-function Get-LatestZutilTag {
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        Write-Error -ErrorAction Continue "Error: .zutils-version not found and 'gh' is unavailable to fetch the latest release.`n       Create a .zutils-version file with a pinned version (e.g. 'v0.10.2') or install the GitHub CLI: https://cli.github.com"
-        return $null
-    }
-    # --exclude-drafts/--exclude-pre-releases avoids accidentally pinning
-    # an in-flight draft if the caller has write access to nanvix/zutils.
-    $tag = $null
-    try {
-        $tag = & gh release list --repo nanvix/zutils `
-            --exclude-drafts --exclude-pre-releases `
-            -L 1 --json tagName --jq '.[0].tagName' 2>$null
-    }
-    catch {
-        $tag = $null
-    }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error -ErrorAction Continue "Error: failed to fetch latest nanvix/zutils release via 'gh'. Are you authenticated? (gh auth login)`n       Alternatively, create a .zutils-version file with a pinned version (e.g. 'v0.10.2')."
-        return $null
-    }
-    if ([string]::IsNullOrWhiteSpace($tag)) {
-        Write-Error -ErrorAction Continue "Error: 'gh' returned no stable releases for nanvix/zutils."
-        return $null
-    }
-    return $tag.Trim()
-}
-
+# Resolve the pinned nanvix-zutil version. `.zutils-version` at the repo
+# root is the sole source of truth: no env-var override, no GitHub fetch.
+# Downstream consumers commit this file; CI and developers see the same
+# pin without ambient configuration.
 function Resolve-ZutilVersion {
-    $source = $null
-    $raw = $null
-    $pinAfterValidation = $false
-    if ($env:NANVIX_ZUTIL_VERSION) {
-        $raw = $env:NANVIX_ZUTIL_VERSION
-        $source = "NANVIX_ZUTIL_VERSION env var"
+    if (-not (Test-Path -LiteralPath $versionFile)) {
+        throw "Error: $versionFile not found.`n       Create it with a pinned nanvix-zutil version, e.g. 'v0.10.2'."
     }
-    elseif (Test-Path -LiteralPath $versionFile) {
-        $content = Get-Content -LiteralPath $versionFile -Raw
-        $raw = if ($null -eq $content) { "" } else { $content.Trim() }
-        $source = ".zutils-version"
-        if ([string]::IsNullOrWhiteSpace($raw)) {
-            throw "Error: $versionFile exists but is empty."
-        }
-    }
-    else {
-        $raw = Get-LatestZutilTag
-        if (-not $raw) {
-            # Get-LatestZutilTag already wrote an actionable error.
-            exit 1
-        }
-        $source = "GitHub latest release"
-        $pinAfterValidation = $true
+    $content = Get-Content -LiteralPath $versionFile -Raw
+    $raw = if ($null -eq $content) { "" } else { $content.Trim() }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        throw "Error: $versionFile is empty."
     }
     if ($raw -notmatch '^v?\d+\.\d+\.\d+([.-][A-Za-z0-9.-]+)?$') {
-        throw "Error: invalid nanvix-zutil version '$raw' from $source (expected vX.Y.Z)."
-    }
-    if ($pinAfterValidation) {
-        # Write UTF-8 without BOM and with a trailing newline so the file
-        # round-trips cleanly through the bash bootstrap's
-        # `tr -d '[:space:]' <.zutils-version` read on Unix.
-        #
-        # `Set-Content -Encoding UTF8` writes a BOM on Windows PowerShell
-        # 5.1 (only PS 6+ supports `utf8NoBOM`), and the unparameterized
-        # default is ANSI/UTF-16-ish depending on host. Go through .NET to
-        # get identical behavior on both PS 5.1 and PS Core.
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-        [System.IO.File]::WriteAllText($versionFile, "$raw`n", $utf8NoBom)
-        Write-Information "nanvix-zutil: no .zutils-version found; pinned to latest release $raw and wrote $versionFile." -InformationAction Continue
-        Write-Information "             Commit this file to lock the version for your repo, or set NANVIX_ZUTIL_VERSION to skip this auto-pin next time." -InformationAction Continue
+        throw "Error: invalid nanvix-zutil version '$raw' in $versionFile (expected vX.Y.Z)."
     }
     return $raw
 }
@@ -211,8 +151,7 @@ function NewZutilVenv {
 
 function Bootstrap {
     param([string]$Reason = "not found")
-    # Pin nanvix-zutil version for reproducible bootstrapping.
-    # Override with NANVIX_ZUTIL_VERSION env var if needed.
+    # nanvix-zutil version comes from .zutils-version (resolved above).
     Write-Information "nanvix-zutil ${Reason} -- bootstrapping nanvix-zutil==${zutilVersion}..." -InformationAction Continue
 
     $wheelUrl = "https://github.com/nanvix/zutils/releases/download/v${zutilVersion}/nanvix_zutil-${zutilVersion}-py3-none-any.whl"
