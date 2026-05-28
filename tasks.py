@@ -33,6 +33,10 @@ SOURCES = ["src/", "tests/"]
 # that commands like `uv run tasks.py version patch` work regardless of the
 # caller's working directory.
 _REPO_ROOT = Path(__file__).parent
+_ZUTILS_VERSION_FILE = ".zutils-version"
+_TEMPLATES_DIR = _REPO_ROOT / "templates"
+_EXAMPLES_DIR = _REPO_ROOT / "examples"
+_ZUTILS_VERSION_TEMPLATE = _TEMPLATES_DIR / _ZUTILS_VERSION_FILE
 
 
 def _run(*args: str) -> int:
@@ -141,24 +145,22 @@ def _bump_version(uv: str, bump: str) -> None:
     # tracked and gets staged in `_commit_and_push`; `_package_templates`
     # narrows its restore to `templates/nanvix-ci.yml` so this write
     # survives the build round-trip.
-    templates_dir = _REPO_ROOT / "templates"
-    (templates_dir / ".zutils-version").write_text(pinned_tag)
+    _ZUTILS_VERSION_TEMPLATE.write_text(pinned_tag)
 
     # Sync bootstrapper templates into each example directory.
-    examples_dir = _REPO_ROOT / "examples"
-    for example in sorted(examples_dir.iterdir()):
+    for example in sorted(_EXAMPLES_DIR.iterdir()):
         if not example.is_dir():
             continue
         for name in ("z", "z.sh", "z.ps1"):
-            src = templates_dir / name
+            src = _TEMPLATES_DIR / name
             if src.exists():
                 shutil.copy(src, example / name)
         # Pin .zutils-version to the freshly-bumped tag so in-tree examples
         # exercise the same source-of-truth file shipped to consumer repos.
-        (example / ".zutils-version").write_text(pinned_tag)
+        (example / _ZUTILS_VERSION_FILE).write_text(pinned_tag)
         nanvix_dir = example / ".nanvix"
         if nanvix_dir.is_dir():
-            gi = templates_dir / ".gitignore"
+            gi = _TEMPLATES_DIR / ".gitignore"
             if gi.exists():
                 shutil.copy(gi, nanvix_dir / ".gitignore")
 
@@ -170,8 +172,6 @@ def _patch_templates() -> None:
     Note: `templates/.zutils-version` is maintained by `_bump_version` as a
     tracked file, not by this function.
     """
-    templates = _REPO_ROOT / "templates"
-
     # Resolve the latest nanvix/workflows tag and stamp it into
     # `templates/nanvix-ci.yml`. We resolve at release time rather than
     # pinning a literal so the shipped workflow always references a
@@ -194,24 +194,20 @@ def _patch_templates() -> None:
         cwd=_REPO_ROOT,
     )
     wflow_ver = result.stdout.strip().lstrip("v")
-    ci_yml = templates / "nanvix-ci.yml"
-    ci_yml.write_text(
-        ci_yml.read_text().replace("{{WORKFLOW_VERSION}}", wflow_ver)
-    )
+    ci_yml = _TEMPLATES_DIR / "nanvix-ci.yml"
+    ci_yml.write_text(ci_yml.read_text().replace("{{WORKFLOW_VERSION}}", wflow_ver))
 
     # Verify no unreplaced `{{ANYTHING}}` placeholder remains in any
     # template file. The generic scan future-proofs against newly
     # introduced placeholders that someone forgets to wire into this
     # function.
     placeholder = re.compile(r"\{\{[A-Z_]+\}\}")
-    for path in templates.iterdir():
+    for path in _TEMPLATES_DIR.iterdir():
         if not path.is_file():
             continue
         m = placeholder.search(path.read_text())
         if m:
-            raise RuntimeError(
-                f"Unreplaced placeholder {m.group(0)} in {path.name}"
-            )
+            raise RuntimeError(f"Unreplaced placeholder {m.group(0)} in {path.name}")
 
     print(f"  Patched templates (workflows: {wflow_ver})")
 
@@ -222,14 +218,14 @@ def _package_templates() -> None:
     dist.mkdir(exist_ok=True)
     base = str(dist / "templates")
     try:
-        shutil.make_archive(base, "gztar", str(_REPO_ROOT / "templates"))
-        shutil.make_archive(base, "zip", str(_REPO_ROOT / "templates"))
+        shutil.make_archive(base, "gztar", str(_TEMPLATES_DIR))
+        shutil.make_archive(base, "zip", str(_TEMPLATES_DIR))
     finally:
         # Restore only the file we substituted into. A broader
         # `git checkout -- templates/` would also revert the bumped
         # `templates/.zutils-version` (tracked) written by `_bump_version`,
         # which `_commit_and_push` needs to stage.
-        _run_checked("git", "checkout", "--", "templates/nanvix-ci.yml")
+        _run_checked("git", "checkout", "--", str(_TEMPLATES_DIR / "nanvix-ci.yml"))
     print("  Created dist/templates.tar.gz and dist/templates.zip")
 
 
@@ -326,9 +322,8 @@ def _check_tag_available(tag: str) -> None:
     print(f"  Tag {tag} is available")
 
 
-def _build_artifacts(uv: str, version: str) -> None:
+def _build_artifacts(uv: str) -> None:
     """Build wheel/sdist, patch templates, and package template archives."""
-    del version  # currently unused; kept for API stability
     _step("Building wheel and sdist")
     _run_checked(uv, "build")
 
@@ -347,8 +342,8 @@ def _commit_and_push(tag: str, *, ci_mode: bool) -> None:
         "add",
         "pyproject.toml",
         "uv.lock",
-        "examples/",
-        "templates/.zutils-version",
+        str(_EXAMPLES_DIR),
+        str(_ZUTILS_VERSION_TEMPLATE),
     )
     if ci_mode:
         _run_checked(
@@ -435,7 +430,7 @@ def release() -> int:
             return 0
 
         if ci_mode:
-            _build_artifacts(uv, new)
+            _build_artifacts(uv)
 
         _commit_and_push(tag, ci_mode=ci_mode)
 
@@ -473,9 +468,11 @@ def _find_bash_scripts() -> list[str]:
         for p in _REPO_ROOT.rglob("*.sh")
         if ".venv" not in p.parts and "venv" not in p.parts and "sysroot" not in p.parts
     )
+
     # Extensionless wrappers (templates/z, examples/*/z)
-    for pattern in ["templates/z", "examples/*/z"]:
-        files.extend(str(p) for p in _REPO_ROOT.glob(pattern))
+    files.append(str(_TEMPLATES_DIR / "z"))
+    files.extend(str(p) for p in _EXAMPLES_DIR.glob("*/z"))
+
     # Git hooks
     hooks_dir = _REPO_ROOT / ".githooks"
     if hooks_dir.is_dir():
