@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Tests for nanvix_zutil.lint_cmd."""
+"""Tests for nanvix_zutil.commands.lint."""
 
 import subprocess as sp
 import unittest
@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
+from nanvix_zutil.commands.lint import lint, main
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-from nanvix_zutil.lint_cmd import lint, main
 
 
 class TestLintCmd(unittest.TestCase):
@@ -49,7 +49,7 @@ class TestLintCmd(unittest.TestCase):
 
     def test_no_py_files_warns(self) -> None:
         """Warns and returns when no .py files exist."""
-        with patch("nanvix_zutil.lint_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.lint.log") as mock_log:
             lint()
 
         mock_log.warning.assert_called_once()

@@ -70,7 +70,7 @@ class TestHelpFlag(unittest.TestCase):
 class TestInfoDispatch(unittest.TestCase):
     """``nanvix-zutil info`` dispatches to info.main()."""
 
-    @patch("nanvix_zutil.info.main")
+    @patch("nanvix_zutil.commands.info.main")
     def test_info_dispatches(self, mock_info_main: MagicMock) -> None:
         """info subcommand calls info.main()."""
         original_argv = sys.argv[:]
@@ -85,9 +85,9 @@ class TestInfoDispatch(unittest.TestCase):
 
 
 class TestResolveDispatch(unittest.TestCase):
-    """``nanvix-zutil resolve`` dispatches to resolve_cmd.main()."""
+    """``nanvix-zutil resolve`` dispatches to commands.resolve.main()."""
 
-    @patch("nanvix_zutil.resolve_cmd.main")
+    @patch("nanvix_zutil.commands.resolve.main")
     def test_resolve_dispatches(self, mock_resolve_main: MagicMock) -> None:
         original_argv = sys.argv[:]
         try:
@@ -113,7 +113,7 @@ class TestLintDispatch(unittest.TestCase):
         try:
             with (
                 patch(
-                    "nanvix_zutil.lint_cmd.main",
+                    "nanvix_zutil.commands.lint.main",
                     side_effect=fake_lint_main,
                 ) as mock_lint_main,
                 patch(

@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Tests for nanvix_zutil.info."""
+"""Tests for nanvix_zutil.commands.info."""
 
 import json
 import sys
@@ -9,7 +9,7 @@ import unittest
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from nanvix_zutil.info import (
+from nanvix_zutil.commands.info import (
     NanvixInfo,
     get_nanvix_info,
     main,
@@ -92,7 +92,7 @@ class TestNanvixInfo(unittest.TestCase):
 class TestGetNanvixInfo(unittest.TestCase):
     """Tests for get_nanvix_info."""
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_returns_nanvix_info(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release()
         info = get_nanvix_info()
@@ -101,19 +101,19 @@ class TestGetNanvixInfo(unittest.TestCase):
         self.assertEqual(info.sha, _SHA)
         self.assertEqual(info.version, _VERSION)
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_no_version_in_release_name(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(name="Nanvix release")
         info = get_nanvix_info()
         self.assertIsNone(info.version)
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_v_prefixed_semver_in_release_name(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(name="Release v1.2.3")
         info = get_nanvix_info()
         self.assertEqual(info.version, "1.2.3")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_custom_machine_mode_memory(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(
             machine="microvm", mode="standalone", memory="256mb", sha="deadbee"
@@ -121,13 +121,13 @@ class TestGetNanvixInfo(unittest.TestCase):
         info = get_nanvix_info(machine="microvm", mode="standalone", memory="256mb")
         self.assertEqual(info.sha, "deadbee")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_single_process_mode(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(mode="single-process", sha="abc1234")
         info = get_nanvix_info(mode="single-process")
         self.assertEqual(info.sha, "abc1234")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_asset_prefix_mismatch_wrong_machine_exits(
         self, mock_resolve: MagicMock
     ) -> None:
@@ -137,7 +137,7 @@ class TestGetNanvixInfo(unittest.TestCase):
             get_nanvix_info(machine="hyperlight")
         self.assertEqual(ctx.exception.code, 3)  # EXIT_MISSING_DEP
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_missing_asset_exits(self, mock_resolve: MagicMock) -> None:
         release = _make_release()
         # Replace assets with ones that don't match
@@ -149,7 +149,7 @@ class TestGetNanvixInfo(unittest.TestCase):
             get_nanvix_info()
         self.assertEqual(ctx.exception.code, 3)  # EXIT_MISSING_DEP
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_empty_assets_exits(self, mock_resolve: MagicMock) -> None:
         release = _make_release()
         release["assets"] = []
@@ -158,7 +158,7 @@ class TestGetNanvixInfo(unittest.TestCase):
             get_nanvix_info()
         self.assertEqual(ctx.exception.code, 3)  # EXIT_MISSING_DEP
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_missing_tag_name_exits(self, mock_resolve: MagicMock) -> None:
         release = _make_release()
         del release["tag_name"]
@@ -176,7 +176,7 @@ class TestGetNanvixInfo(unittest.TestCase):
 class TestNanvixInfoMain(unittest.TestCase):
     """Tests for the nanvix-info CLI entry point."""
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_default_output_key_value(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release()
         buf = StringIO()
@@ -195,7 +195,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertIn(f"sha={_SHA}", output)
         self.assertIn(f"version={_VERSION}", output)
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_default_args_sent_to_resolve(self, mock_resolve: MagicMock) -> None:
         """CLI defaults: repo=nanvix/nanvix, version=latest."""
         mock_resolve.return_value = _make_release()
@@ -213,7 +213,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertEqual(call_args[0][0], "nanvix/nanvix")
         self.assertEqual(call_args[0][1], "latest")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_json_output(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release()
         buf = StringIO()
@@ -232,7 +232,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertEqual(obj["sha"], _SHA)
         self.assertEqual(obj["version"], _VERSION)
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_json_output_without_version(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(name="no version here")
         buf = StringIO()
@@ -256,7 +256,7 @@ class TestNanvixInfoMain(unittest.TestCase):
             main()
         self.assertEqual(ctx.exception.code, 2)  # EXIT_INVALID_ARGS
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_custom_repo_passed_to_resolve(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release()
         buf = StringIO()
@@ -272,7 +272,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         call_args = mock_resolve.call_args
         self.assertEqual(call_args[0][0], "nanvix/zlib")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_gh_token_from_env(self, mock_resolve: MagicMock) -> None:
         import os
 
@@ -293,7 +293,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         # gh_token is the third positional arg
         self.assertEqual(call_args[0][2], "test-token")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_gh_token_cli_overrides_env(self, mock_resolve: MagicMock) -> None:
         import os
 
@@ -313,7 +313,7 @@ class TestNanvixInfoMain(unittest.TestCase):
         call_args = mock_resolve.call_args
         self.assertEqual(call_args[0][2], "cli-token")
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_custom_machine_mode_memory_flags(self, mock_resolve: MagicMock) -> None:
         mock_resolve.return_value = _make_release(
             machine="microvm", mode="standalone", memory="256mb", sha="deadbee"
@@ -347,7 +347,7 @@ class TestNanvixInfoMain(unittest.TestCase):
 class TestNanvixZutilInfoInvocation(unittest.TestCase):
     """Tests for invocation via ``nanvix-zutil info`` (CLI dispatcher)."""
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_nanvix_zutil_info_key_value(self, mock_resolve: MagicMock) -> None:
         """nanvix-zutil info produces same output as nanvix-info."""
         mock_resolve.return_value = _make_release()
@@ -366,7 +366,7 @@ class TestNanvixZutilInfoInvocation(unittest.TestCase):
         self.assertIn(f"tag={_TAG}", output)
         self.assertIn(f"sha={_SHA}", output)
 
-    @patch("nanvix_zutil.info.resolve_release")
+    @patch("nanvix_zutil.commands.info.resolve_release")
     def test_nanvix_zutil_info_json(self, mock_resolve: MagicMock) -> None:
         """nanvix-zutil info --json produces valid JSON."""
         mock_resolve.return_value = _make_release()
