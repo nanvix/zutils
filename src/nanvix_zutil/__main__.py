@@ -187,7 +187,7 @@ def main() -> None:
             hint="Run this command from a Nanvix consumer repo root.",
         )
     script_cls = discover_script_class(z_py)
-    script_cls.main(repo_root=Path.cwd())
+    script_cls.main()
 
 
 if __name__ == "__main__":

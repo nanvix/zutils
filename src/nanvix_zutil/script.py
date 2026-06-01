@@ -91,7 +91,6 @@ class ZScript:
             ``.nanvix/env.json`` and environment variables.
         log: The :mod:`nanvix_zutil.log` module, accessible as ``self.log``
             for structured logging in lifecycle hooks.
-        repo_root: Absolute path to the consumer repository root.
         nanvix_dir: Absolute path to the ``.nanvix/`` directory.
         targets: Arguments passed after ``--`` on the command line.
             Lifecycle hooks can use these to customise behavior
@@ -188,12 +187,7 @@ class ZScript:
         return files
 
     def __init__(self) -> None:
-        """Initialise ZScript for *repo_root*.
-
-        Args:
-            repo_root: Path to the consumer repository root.  Typically the
-                directory that contains the ``.nanvix/`` folder.
-        """
+        """Initialise ZScript for *repo_root*."""
         self.config = Config(NANVIX_ROOT)
         self.log = log
         self.targets: list[str] = []
@@ -251,7 +245,7 @@ class ZScript:
         """
         mounts: list[Mount] = [
             Mount(
-                host_path=NANVIX_ROOT,
+                host_path=REPO_ROOT,
                 container_path=WORKSPACE_CONTAINER_PATH,
                 readonly=False,
             ),
@@ -848,7 +842,7 @@ class ZScript:
     # ------------------------------------------------------------------
 
     @classmethod
-    def main(cls, *, repo_root: Path | None = None) -> None:
+    def main(cls) -> None:
         """Parse command-line arguments and dispatch to the appropriate
         lifecycle hook.
 
@@ -906,15 +900,6 @@ class ZScript:
             build_parser().parse_args(framework_argv)  # --help/-h → sys.exit(0)
             build_parser().print_help()  # 'help' subcommand or no args
             return
-
-        # Infer repo root: the parent of the .nanvix/ directory.
-        if repo_root is None:
-            script_path = Path(sys.argv[0]).resolve()
-            # z.py lives at <repo>/.nanvix/z.py → repo_root is two levels up.
-            if script_path.parent.name == ".nanvix":
-                repo_root = script_path.parent.parent
-            else:
-                repo_root = script_path.parent
 
         # ------------------------------------------------------------------
         # Handle --mode: override NANVIX_DEPLOYMENT_MODE before Config

@@ -164,7 +164,9 @@ class InitRdArgs:
     """ Directory containing the ELF binaries and ``mkimage``.  Defaults to the sysroot ``bin/`` directory. """
 
 
-def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) -> Path:
+def make_initrd(
+    instance: "ZScript", app: str, *, test: bool = True, args: InitRdArgs = InitRdArgs()
+) -> Path:
     """Build a standalone initrd image for *app*.
 
     Invokes ``mkimage`` from the sysroot ``bin/`` directory to produce
@@ -180,6 +182,8 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
         app: A bare application binary filename (e.g. ``"my-app.elf"``).
             Must include the extension and must not contain path
             separators (``/`` or ``\\``).
+        test: Is this running test mode? If so, build to {TEST_OUT}, else build to {BIN_OUT}.
+            Defaults to True.
         args: Additional arguments controlling the image generation.
 
     Returns:

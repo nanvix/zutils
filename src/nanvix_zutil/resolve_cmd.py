@@ -65,7 +65,7 @@ def main() -> None:
         log.fatal(
             f"Manifest not found: {MANIFEST_PATH}",
             code=EXIT_MISSING_DEP,
-            hint="Run from a Nanvix consumer repo root, or pass --manifest.",
+            hint="Run from a Nanvix consumer repo root.",
         )
 
     gh_token: str | None = args.gh_token or os.environ.get("GH_TOKEN")

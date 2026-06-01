@@ -17,9 +17,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast, overload
-
-from typing_extensions import Literal
+from typing import Literal, cast, overload
 
 from nanvix_zutil import log
 from nanvix_zutil.constants import SEMVER_RE

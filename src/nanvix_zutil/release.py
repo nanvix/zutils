@@ -70,7 +70,7 @@ DEFAULT_FORMATS: tuple[ArchiveFormat, ...] = (ArchiveFormat.TAR_GZ, ArchiveForma
 # ---------------------------------------------------------------------------
 
 
-def _build_tarball(compression: Literal["gz", "bz2"]):
+def _build_tarball(artifact_name: str, compression: Literal["gz", "bz2"]):
     """Create a tarball from *source* directory.
 
     All files are added relative to the archive root (i.e. paths inside the
@@ -90,7 +90,8 @@ def _build_tarball(compression: Literal["gz", "bz2"]):
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
 
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(DIST_DIR, mode) as tf:
+    out_path = DIST_DIR / artifact_name
+    with tarfile.open(out_path, mode) as tf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
         for root, dirs, files in os.walk(BUILD_OUT, followlinks=False):
             root_path = Path(root)
@@ -124,7 +125,7 @@ def _build_tarball(compression: Literal["gz", "bz2"]):
                     )
 
 
-def _build_zip():
+def _build_zip(artifact_name: str):
     """Create a ZIP archive from *source* directory.
 
     All files are added relative to the archive root, matching the layout
@@ -141,7 +142,8 @@ def _build_zip():
         Symlinks are excluded from the archive. Symlinked directories are not
         traversed.
     """
-    with zipfile.ZipFile(DIST_DIR, "w", zipfile.ZIP_DEFLATED) as zf:
+    out_path = DIST_DIR / artifact_name
+    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
         for root, _dirs, files in os.walk(BUILD_OUT, followlinks=False):
             root_path = Path(root)
@@ -170,7 +172,6 @@ def _build_zip():
 
 def package(
     sources: list[Path],
-    dest: Path,
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
     staging: Path | None = None,
@@ -264,17 +265,17 @@ def package(
 
     # Create destination directory with proper error handling
     try:
-        dest.mkdir(parents=True, exist_ok=True)
+        DIST_DIR.mkdir(parents=True, exist_ok=True)
         # Verify it's actually a directory (not a file with the same name)
-        if not dest.is_dir():
+        if not DIST_DIR.is_dir():
             log.fatal(
-                f"Destination path exists but is not a directory: {dest}",
+                f"Destination path exists but is not a directory: {DIST_DIR}",
                 code=EXIT_GENERAL_ERROR,
                 hint="Choose a different destination path or remove the conflicting file.",
             )
     except (OSError, PermissionError) as e:
         log.fatal(
-            f"Cannot create destination directory '{dest}': {e}",
+            f"Cannot create destination directory '{DIST_DIR}': {e}",
             code=EXIT_GENERAL_ERROR,
             hint="Check parent directory permissions and available disk space.",
         )
@@ -322,15 +323,15 @@ def package(
                     hint="Use one of the supported ArchiveFormat enum values (TAR_GZ, TAR_BZ2, ZIP).",
                 )
 
-            out = dest / f"{name}{fmt.extension}"
+            artifact_name = f"{name}{fmt.extension}"
 
             try:
                 if fmt is ArchiveFormat.TAR_GZ:
-                    _build_tarball("gz")
+                    _build_tarball(artifact_name, "gz")
                 elif fmt is ArchiveFormat.TAR_BZ2:
-                    _build_tarball("bz2")
+                    _build_tarball(artifact_name, "bz2")
                 elif fmt is ArchiveFormat.ZIP:
-                    _build_zip()
+                    _build_zip(artifact_name)
                 else:
                     # This should never happen with a proper ArchiveFormat enum value
                     log.fatal(
@@ -346,17 +347,17 @@ def package(
                 )
 
             # Verify the archive was actually created before logging success
-            if not out.exists():
+            if not (DIST_DIR / artifact_name).exists():
                 log.fatal(
-                    f"Failed to create archive: {out}",
+                    f"Failed to create archive: {artifact_name}",
                     code=EXIT_GENERAL_ERROR,
                     hint="Check disk space and permissions.",
                 )
 
-            log.info(f"Created {out}")
-            created.append(out.resolve())
+            log.info(f"Created {artifact_name}")
+            created.append(DIST_DIR / artifact_name)
 
-        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {dest}")
+        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {DIST_DIR}")
         return created
 
     try:

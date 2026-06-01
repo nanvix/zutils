@@ -92,7 +92,7 @@ class BinHello(ZScript):
         # For standalone deployment mode, produce an initrd image
         # containing the system daemons and the application binary.
         if self.config.deployment_mode == "standalone":
-            make_initrd(self, "hello.elf", InitRdArgs())
+            make_initrd(self, "hello.elf", test=True, args=InitRdArgs())
 
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).
@@ -141,17 +141,19 @@ class BinHello(ZScript):
         else:
             log.info("=== skipping functional tests (Docker not configured) ===")
 
+    # TODO: Tests should NOT run in Docker.
     def _test_functional_docker(self, binary: Path) -> None:
         """Run functional tests inside a Docker container (Linux)."""
         log.info("=== bin-hello functional tests (Docker) ===")
         workspace_binary = self.translate_path(binary)
+        sysroot = self.translate_path(SYSROOT)
         self.run(
             "timeout",
             "--foreground",
             "60",
-            f"{SYSROOT}/bin/nanvixd.elf",
+            f"{sysroot}/bin/nanvixd.elf",
             "-bin-dir",
-            f"{SYSROOT}/bin",
+            f"{sysroot}/bin",
             "--",
             str(workspace_binary),
         )

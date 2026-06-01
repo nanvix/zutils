@@ -2,15 +2,26 @@
 # Licensed under the MIT License.
 
 import re
-import sys
 from pathlib import Path
+
+import nanvix_zutil.log as log
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 """Compiled regex matching a strict semver ``MAJOR.MINOR.PATCH`` string."""
 
 # Constants
-NANVIX_ROOT = Path(sys.prefix).parent
-"""Path to the .nanvix directory"""
+
+
+def resolve_nanvix_root() -> Path:
+    try:
+        return Path.cwd().rglob(".nanvix/")
+    except FileNotFoundError:
+        log.fatal("Could not find .nanvix directory.")
+
+
+NANVIX_ROOT = resolve_nanvix_root()
+"""Path to the .nanvix directory. This is resolved relative to the current
+working directory."""
 
 MANIFEST_PATH = NANVIX_ROOT / "nanvix.toml"
 """Path to the cross-compilation manifest."""

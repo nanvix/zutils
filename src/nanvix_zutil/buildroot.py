@@ -94,7 +94,7 @@ class Ref:
 
 @dataclass
 class Dependency:
-    f"""A library dependency fetched from a GitHub release.
+    """A library dependency fetched from a GitHub release.
 
     Attributes:
         name: Short library name (e.g. ``"zlib"``).
@@ -214,7 +214,7 @@ class Buildroot:
 
     @staticmethod
     def create() -> "Buildroot":
-        f"""Create (or locate) the buildroot directory and return a
+        """Create (or locate) the buildroot directory and return a
         :class:`Buildroot` instance.
 
         Returns:
@@ -239,7 +239,7 @@ class Buildroot:
         *,
         _release: dict[str, object] | None = None,
     ) -> None:
-        f"""Download a dependency release and install its libraries and headers.
+        """Download a dependency release and install its libraries and headers.
 
         The release asset is downloaded into ``.nanvix/cache/`` and then
         extracted.  Selected ``.a`` and ``.h`` files are copied into
@@ -398,7 +398,7 @@ class Buildroot:
     # ------------------------------------------------------------------
 
     def verify(self, required_libs: list[str]) -> None:
-        f"""Assert that all required build-time library files are present.
+        """Assert that all required build-time library files are present.
 
         Args:
             required_libs: List of ``.a`` file names that must exist under
