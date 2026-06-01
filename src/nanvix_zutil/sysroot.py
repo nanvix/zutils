@@ -17,15 +17,9 @@ import zipfile
 from pathlib import Path
 
 from nanvix_zutil import github, log
-from nanvix_zutil.config import Config
-from nanvix_zutil.config import DEFAULT_TARGET
+from nanvix_zutil.config import DEFAULT_TARGET, Config
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-
-# ---------------------------------------------------------------------------
-# Default location
-# ---------------------------------------------------------------------------
-
-_DEFAULT_SYSROOT_DIR = Path(".nanvix") / "sysroot"
+from nanvix_zutil.paths import sysroot as _default_sysroot_dir
 
 # ---------------------------------------------------------------------------
 # Sysroot repository / tag constants
@@ -129,7 +123,7 @@ class Sysroot:
         Returns:
             A :class:`Sysroot` pointing at the extracted directory.
         """
-        sysroot_dir = dest if dest is not None else _DEFAULT_SYSROOT_DIR
+        sysroot_dir = dest if dest is not None else _default_sysroot_dir()
 
         # Fail early if the path exists but is not a directory.
         if sysroot_dir.exists() and not sysroot_dir.is_dir():
