@@ -11,8 +11,6 @@ generate distribution archives::
     from nanvix_zutil.release import ArchiveFormat, package
 
     archives = package(
-        sources=[Path("build/output")],
-        dest=Path("dist"),
         name="mylib-microvm-standalone-256mb",
     )
 """
@@ -20,13 +18,11 @@ generate distribution archives::
 from __future__ import annotations
 
 import os
-import shutil
 import tarfile
 import zipfile
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import Literal, Sequence
 
 from nanvix_zutil import log
@@ -171,10 +167,8 @@ def _build_zip(artifact_name: str):
 
 
 def package(
-    sources: list[Path],
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
-    staging: Path | None = None,
 ) -> list[Path]:
     """Package one or more sources into release archives.
 
@@ -213,20 +207,6 @@ def package(
             directory traversal, or if an unknown format is encountered,
             or if *sources* is empty.
     """
-    if not sources:
-        log.fatal(
-            "package() requires at least one source item.",
-            code=EXIT_INVALID_ARGS,
-            hint="Pass one or more file or directory paths in the 'sources' list.",
-        )
-    for item in sources:
-        if not item.exists():
-            log.fatal(
-                f"Release source '{item}' does not exist.",
-                code=EXIT_GENERAL_ERROR,
-                hint="Ensure the build step has run and produced output in the"
-                " expected directory before calling 'release'.",
-            )
 
     # Validate name is a safe, non-empty filename
     if not name or not name.strip():
@@ -280,40 +260,8 @@ def package(
             hint="Check parent directory permissions and available disk space.",
         )
 
-    _cleanup_staging = staging is None
-    if staging is not None:
-        if not staging.exists():
-            log.fatal(
-                f"Staging directory '{staging}' does not exist.",
-                code=EXIT_INVALID_ARGS,
-                hint="Create the directory before passing it as 'staging', or omit the argument to use a temporary directory.",
-            )
-        if not staging.is_dir():
-            log.fatal(
-                f"Staging path '{staging}' exists but is not a directory.",
-                code=EXIT_INVALID_ARGS,
-                hint="Pass a directory path for 'staging', or omit the argument to use a temporary directory.",
-            )
-    staging = staging if staging else Path(mkdtemp())
-
     def package_sources() -> list[Path]:
         created: list[Path] = []
-        try:
-            for item in sources:
-                if item.is_dir():
-                    shutil.copytree(item, staging, dirs_exist_ok=True, symlinks=True)
-                else:
-                    if item.is_symlink():
-                        log.warning(f"Skipping symlink source '{item}'.")
-                        continue
-                    shutil.copy2(item, staging / item.name)
-        except (OSError, shutil.Error) as e:
-            log.fatal(
-                f"Failed to stage sources into '{staging}': {e}",
-                code=EXIT_GENERAL_ERROR,
-                hint="Check source file permissions and available disk space.",
-            )
-
         for fmt in formats:
             # Runtime validation: users could pass invalid types despite type hints
             if not isinstance(fmt, ArchiveFormat):  # type: ignore[redundant-expr]
@@ -360,8 +308,4 @@ def package(
         log.success(f"Packaged {len(created)} archive(s) for '{name}' into {DIST_DIR}")
         return created
 
-    try:
-        return package_sources()
-    finally:
-        if _cleanup_staging:
-            shutil.rmtree(staging, ignore_errors=True)
+    return package_sources()

@@ -91,7 +91,6 @@ class ZScript:
             ``.nanvix/env.json`` and environment variables.
         log: The :mod:`nanvix_zutil.log` module, accessible as ``self.log``
             for structured logging in lifecycle hooks.
-        nanvix_dir: Absolute path to the ``.nanvix/`` directory.
         targets: Arguments passed after ``--`` on the command line.
             Lifecycle hooks can use these to customise behavior
             (e.g. ``nanvix-zutil test -- smoke integration``).

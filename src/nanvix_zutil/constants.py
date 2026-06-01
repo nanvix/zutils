@@ -9,19 +9,19 @@ import nanvix_zutil.log as log
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 """Compiled regex matching a strict semver ``MAJOR.MINOR.PATCH`` string."""
 
+
 # Constants
-
-
 def resolve_nanvix_root() -> Path:
-    try:
-        return Path.cwd().rglob(".nanvix/")
-    except FileNotFoundError:
-        log.fatal("Could not find .nanvix directory.")
+    for p in (Path.cwd(), *Path.cwd().parents):
+        candidate = p / ".nanvix"
+        if candidate.is_dir():
+            return candidate
+    log.fatal("Could not find .nanvix directory.")
 
 
 NANVIX_ROOT = resolve_nanvix_root()
-"""Path to the .nanvix directory. This is resolved relative to the current
-working directory."""
+"""Path to the .nanvix directory. This is resolved by walking up the file tree
+from the current working directory."""
 
 MANIFEST_PATH = NANVIX_ROOT / "nanvix.toml"
 """Path to the cross-compilation manifest."""
