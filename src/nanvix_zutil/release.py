@@ -30,6 +30,7 @@ from tempfile import mkdtemp
 from typing import Literal, Sequence
 
 from nanvix_zutil import log
+from nanvix_zutil.constants import BUILD_OUT, DIST_DIR
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
 
 # ---------------------------------------------------------------------------
@@ -69,15 +70,13 @@ DEFAULT_FORMATS: tuple[ArchiveFormat, ...] = (ArchiveFormat.TAR_GZ, ArchiveForma
 # ---------------------------------------------------------------------------
 
 
-def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) -> Path:
+def _build_tarball(compression: Literal["gz", "bz2"]):
     """Create a tarball from *source* directory.
 
     All files are added relative to the archive root (i.e. paths inside the
     archive mirror the directory structure under *source*).
 
     Args:
-        source: Directory whose contents will be archived.
-        dest: Full path to the output tarball (e.g. ``dist/foo.tar.gz``).
         compression: Compression mode — ``"gz"`` for gzip or ``"bz2"`` for
             bzip2.
 
@@ -89,17 +88,17 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
         traversed.
     """
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
-    source_resolved = source.resolve()
 
-    with tarfile.open(dest, mode) as tf:
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(DIST_DIR, mode) as tf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
-        for root, dirs, files in os.walk(source, followlinks=False):
+        for root, dirs, files in os.walk(BUILD_OUT, followlinks=False):
             root_path = Path(root)
 
             # Security check: ensure we haven't escaped the source directory
             try:
                 root_resolved = root_path.resolve()
-                root_resolved.relative_to(source_resolved)
+                root_resolved.relative_to(BUILD_OUT)
             except ValueError:
                 # Path has escaped source directory, skip it
                 continue
@@ -110,7 +109,7 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
                 if not file_path.is_symlink() and file_path.is_file():
                     tf.add(
                         file_path,
-                        arcname=file_path.relative_to(source).as_posix(),
+                        arcname=file_path.relative_to(BUILD_OUT).as_posix(),
                         recursive=False,
                     )
 
@@ -120,13 +119,12 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
                 if not dir_path.is_symlink() and dir_path.is_dir():
                     tf.add(
                         dir_path,
-                        arcname=dir_path.relative_to(source).as_posix(),
+                        arcname=dir_path.relative_to(BUILD_OUT).as_posix(),
                         recursive=False,
                     )
-    return dest
 
 
-def _build_zip(source: Path, dest: Path) -> Path:
+def _build_zip():
     """Create a ZIP archive from *source* directory.
 
     All files are added relative to the archive root, matching the layout
@@ -143,17 +141,15 @@ def _build_zip(source: Path, dest: Path) -> Path:
         Symlinks are excluded from the archive. Symlinked directories are not
         traversed.
     """
-    source_resolved = source.resolve()
-
-    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(DIST_DIR, "w", zipfile.ZIP_DEFLATED) as zf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
-        for root, _dirs, files in os.walk(source, followlinks=False):
+        for root, _dirs, files in os.walk(BUILD_OUT, followlinks=False):
             root_path = Path(root)
 
             # Security check: ensure we haven't escaped the source directory
             try:
                 root_resolved = root_path.resolve()
-                root_resolved.relative_to(source_resolved)
+                root_resolved.relative_to(BUILD_OUT)
             except ValueError:
                 # Path has escaped source directory, skip it
                 continue
@@ -163,9 +159,8 @@ def _build_zip(source: Path, dest: Path) -> Path:
                 file_path = root_path / file_name
                 if not file_path.is_symlink() and file_path.is_file():
                     zf.write(
-                        file_path, arcname=file_path.relative_to(source).as_posix()
+                        file_path, arcname=file_path.relative_to(BUILD_OUT).as_posix()
                     )
-    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -331,11 +326,11 @@ def package(
 
             try:
                 if fmt is ArchiveFormat.TAR_GZ:
-                    _build_tarball(staging, out, "gz")
+                    _build_tarball("gz")
                 elif fmt is ArchiveFormat.TAR_BZ2:
-                    _build_tarball(staging, out, "bz2")
+                    _build_tarball("bz2")
                 elif fmt is ArchiveFormat.ZIP:
-                    _build_zip(staging, out)
+                    _build_zip()
                 else:
                     # This should never happen with a proper ArchiveFormat enum value
                     log.fatal(

@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from nanvix_zutil import log
+from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
 from nanvix_zutil.helpers import ensure_tool_installed, run
 
@@ -42,17 +42,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def lint() -> None:
     # venv root is always bootstrapped at .nanvix/venv
-    nanvix_dir = Path(sys.prefix).parent
-    py_files = sorted(nanvix_dir.glob("*.py"))
+    py_files = sorted(NANVIX_ROOT.glob("*.py"))
     if not py_files:
-        log.warning(f"No .py files found in {nanvix_dir} — nothing to lint")
+        log.warning(f"No .py files found in {NANVIX_ROOT} — nothing to lint")
         return
     for tool in ("black", "pyright"):
         ensure_tool_installed(tool)
 
     str_files = [str(f) for f in py_files]
-    black_cfg = str(nanvix_dir / "black.toml")
-    pyright_cfg = str(nanvix_dir / "pyrightconfig.json")
+    black_cfg = str(NANVIX_ROOT / "black.toml")
+    pyright_cfg = str(NANVIX_ROOT / "pyrightconfig.json")
     run(
         sys.executable,
         "-m",

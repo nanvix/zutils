@@ -17,11 +17,13 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal, cast, overload
+from typing import cast, overload
+
+from typing_extensions import Literal
 
 from nanvix_zutil import log
+from nanvix_zutil.constants import SEMVER_RE
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_NETWORK_ERROR
-from nanvix_zutil.utils import SEMVER_RE
 
 # ---------------------------------------------------------------------------
 # Constants

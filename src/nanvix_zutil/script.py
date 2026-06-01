@@ -43,6 +43,7 @@ from nanvix_zutil.buildroot import (
 )
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
+from nanvix_zutil.constants import BUILDROOT, NANVIX_ROOT, OUT_DIR, REPO_ROOT, SYSROOT
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     SYSROOT_CONTAINER_PATH,
@@ -186,19 +187,17 @@ class ZScript:
                 files.extend(self.SYSROOT_STANDALONE_FILES)
         return files
 
-    def __init__(self, repo_root: Path) -> None:
+    def __init__(self) -> None:
         """Initialise ZScript for *repo_root*.
 
         Args:
             repo_root: Path to the consumer repository root.  Typically the
                 directory that contains the ``.nanvix/`` folder.
         """
-        self.repo_root = repo_root.resolve()
-        self.nanvix_dir = self.repo_root / ".nanvix"
-        self.config = Config(self.nanvix_dir)
+        self.config = Config(NANVIX_ROOT)
         self.log = log
         self.targets: list[str] = []
-        self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
+        self.manifest: Manifest = load_manifest()
         self.sysroot: Sysroot | None = None
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
@@ -252,7 +251,7 @@ class ZScript:
         """
         mounts: list[Mount] = [
             Mount(
-                host_path=self.repo_root,
+                host_path=NANVIX_ROOT,
                 container_path=WORKSPACE_CONTAINER_PATH,
                 readonly=False,
             ),
@@ -268,11 +267,10 @@ class ZScript:
                 )
             )
 
-        buildroot_dir = self.nanvix_dir / "buildroot"
-        if buildroot_dir.is_dir():
+        if BUILDROOT.is_dir():
             mounts.append(
                 Mount(
-                    host_path=buildroot_dir,
+                    host_path=BUILDROOT,
                     container_path=BUILDROOT_CONTAINER_PATH,
                     readonly=False,
                 )
@@ -370,7 +368,7 @@ class ZScript:
                 memory_size=self.config.memory_size,
                 tag=self.manifest.sysroot_ref.value,
                 gh_token=self.config.get(CFG_GH_TOKEN),
-                dest=self.nanvix_dir / "sysroot",
+                dest=SYSROOT,
                 config=self.config,
             )
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))
@@ -424,7 +422,7 @@ class ZScript:
             # paths (deps/<name>/) which are version-agnostic.
 
         if deps:
-            self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
+            self.buildroot = Buildroot.create()
             for dep in deps:
                 # LOCAL deps: install from the filesystem path directly.
                 if dep.ref.kind == RefKind.LOCAL:
@@ -505,7 +503,7 @@ class ZScript:
                     raise
 
         self.config.save()
-        sync_configs(self.nanvix_dir)
+        sync_configs()
         return self._used_fallback
 
     def install_artifacts(self, output: str) -> None:
@@ -524,11 +522,9 @@ class ZScript:
         output_path = Path(output)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Source: .nanvix/output/{lib,include,bin}/
-        src_output = self.nanvix_dir / "output"
-
+        # Source: .nanvix/out/{lib,include,bin}/
         for subdir in ("lib", "include", "bin"):
-            src = src_output / subdir
+            src = OUT_DIR / subdir
             if src.is_dir():
                 dst = output_path / subdir
                 dst.mkdir(parents=True, exist_ok=True)
@@ -552,9 +548,8 @@ class ZScript:
             self.manifest,
             gh_token=self.config.get(CFG_GH_TOKEN),
             shallow=shallow,
-            manifest_path=self.nanvix_dir / "nanvix.toml",
         )
-        lock_path = self.nanvix_dir / "nanvix.lock"
+        lock_path = NANVIX_ROOT / "nanvix.lock"
         write_lockfile(lockfile, lock_path)
         log.success(f"Wrote {lock_path}")
 
@@ -564,8 +559,7 @@ class ZScript:
         Exits with ``EXIT_MISSING_DEP`` if the lockfile does not exist, or
         ``EXIT_INVALID_ARGS`` if it is stale relative to ``nanvix.toml``.
         """
-        lock_path = self.nanvix_dir / "nanvix.lock"
-        manifest_path = self.nanvix_dir / "nanvix.toml"
+        lock_path = NANVIX_ROOT / "nanvix.lock"
         lockfile = read_lockfile(lock_path)
 
         # Warn when "latest" lockfile may silently be stale.
@@ -577,7 +571,7 @@ class ZScript:
                 " releases."
             )
 
-        if is_stale(lockfile, manifest_path):
+        if is_stale(lockfile):
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
                 code=EXIT_INVALID_ARGS,
@@ -623,7 +617,7 @@ class ZScript:
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.
             for name in (".nanvix-configured",):
-                p = self.repo_root / name
+                p = REPO_ROOT / name
                 if p.is_file():
                     p.unlink()
                     log.info(f"Removed {name}")
@@ -721,7 +715,7 @@ class ZScript:
             )
 
         app_stem = Path(app).stem
-        output = self.repo_root / f"{app_stem}.img"
+        output = REPO_ROOT / f"{app_stem}.img"
 
         def _escape(arg: str) -> str:
             return arg.replace(";", "\\;")
@@ -754,7 +748,7 @@ class ZScript:
                 _entry(bin_dir / "procd.elf", "procd", procd_args, procd_env),
                 _entry(bin_dir / "memd.elf", "memd", memd_args, memd_env),
                 _entry(bin_dir / "vfsd.elf", "vfsd", vfsd_args, vfsd_env),
-                _entry(self.repo_root / app, app, app_args, app_env),
+                _entry(REPO_ROOT / app, app, app_args, app_env),
             ]
         )
 
@@ -817,11 +811,11 @@ class ZScript:
                 cmd = cfg.build_windows_run_cmd(*args)
             else:
                 cmd = cfg.build_run_cmd(*args)
-            working_dir = self.repo_root
+            working_dir = REPO_ROOT
             subprocess_env: dict[str, str] | None = None
         else:
             cmd = list(args)
-            working_dir = cwd if cwd is not None else self.repo_root
+            working_dir = cwd if cwd is not None else REPO_ROOT
             if env is not None:
                 subprocess_env = env
             else:
@@ -930,7 +924,7 @@ class ZScript:
         if cli_mode is not None:
             os.environ["NANVIX_DEPLOYMENT_MODE"] = cli_mode
 
-        instance = cls(repo_root)
+        instance = cls()
         instance.targets = targets
 
         # Build the parser dynamically: auto hooks are always registered;

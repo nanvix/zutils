@@ -13,7 +13,8 @@ from __future__ import annotations
 import shutil
 import tarfile
 import zipfile
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from enum import Enum
 from pathlib import Path
 
@@ -23,14 +24,8 @@ from nanvix_zutil.config import (
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
 )
+from nanvix_zutil.constants import BUILDROOT, NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-
-# ---------------------------------------------------------------------------
-# Default locations
-# ---------------------------------------------------------------------------
-
-_DEFAULT_BUILDROOT_DIR = Path(".nanvix") / "buildroot"
-
 
 # ---------------------------------------------------------------------------
 # Tarball path helpers
@@ -99,7 +94,7 @@ class Ref:
 
 @dataclass
 class Dependency:
-    """A library dependency fetched from a GitHub release.
+    f"""A library dependency fetched from a GitHub release.
 
     Attributes:
         name: Short library name (e.g. ``"zlib"``).
@@ -107,12 +102,12 @@ class Dependency:
             (e.g. ``"nanvix/zlib"``).
         ref: Version reference — one of tag, commitish, ID, or version.
         artifact_pattern: ``str.format``-style template for the asset file
-            name.  Interpolated keys: ``{name}``, ``{machine}``,
-            ``{mode}``, ``{mem}``.
+            name.  Interpolated keys: ``{{name}}``, ``{{machine}}``,
+            ``{{mode}}``, ``{{mem}}``.
         install_libs: List of ``.a`` file names to copy into
-            ``<buildroot>/lib/``.  ``None`` copies all ``.a`` files found.
+            ``{BUILDROOT}/lib/``.  ``None`` copies all ``.a`` files found.
         install_headers: List of header file names to copy into
-            ``<buildroot>/include/``.  ``None`` copies all ``.h`` files found.
+            ``{BUILDROOT}/include/``.  ``None`` copies all ``.h`` files found.
     """
 
     name: str
@@ -211,42 +206,24 @@ def parse_semver_tuple(version: str) -> tuple[int, ...]:
 
 
 class Buildroot:
-    """Manages the build-time dependency root (headers and static libraries).
-
-    Attributes:
-        path: Absolute path to the buildroot directory.
-    """
-
-    def __init__(self, path: Path) -> None:
-        """Initialise the Buildroot with an existing directory.
-
-        Args:
-            path: Path to the buildroot directory.
-        """
-        self.path = path
+    """Manages the build-time dependency root (headers and static libraries)."""
 
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
 
     @staticmethod
-    def create(dest: Path | None = None) -> "Buildroot":
-        """Create (or locate) the buildroot directory and return a
+    def create() -> "Buildroot":
+        f"""Create (or locate) the buildroot directory and return a
         :class:`Buildroot` instance.
 
-        Args:
-            dest: Directory to use.  Defaults to
-                ``.nanvix/buildroot`` relative to the current working
-                directory.
-
         Returns:
-            A :class:`Buildroot` pointing at *dest*.
+            A :class:`Buildroot` pointing at {BUILDROOT}.
         """
-        path = dest if dest is not None else _DEFAULT_BUILDROOT_DIR
-        (path / "lib").mkdir(parents=True, exist_ok=True)
-        (path / "include").mkdir(parents=True, exist_ok=True)
-        log.info(f"Buildroot at {path}")
-        return Buildroot(path.resolve())
+        (BUILDROOT / "lib").mkdir(parents=True, exist_ok=True)
+        (BUILDROOT / "include").mkdir(parents=True, exist_ok=True)
+        log.info(f"Buildroot at {BUILDROOT}")
+        return Buildroot()
 
     # ------------------------------------------------------------------
     # Dependency installation
@@ -262,11 +239,11 @@ class Buildroot:
         *,
         _release: dict[str, object] | None = None,
     ) -> None:
-        """Download a dependency release and install its libraries and headers.
+        f"""Download a dependency release and install its libraries and headers.
 
         The release asset is downloaded into ``.nanvix/cache/`` and then
         extracted.  Selected ``.a`` and ``.h`` files are copied into
-        ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
+        ``{BUILDROOT}/lib/`` and ``{BUILDROOT}/include/`` respectively.
 
         Args:
             dep: The :class:`Dependency` descriptor.
@@ -286,7 +263,7 @@ class Buildroot:
             mem=memory_size,
         )
 
-        cache_dir = self.path.parent / "cache"
+        cache_dir = NANVIX_ROOT / "cache"
 
         asset_path = github.download_release_asset(
             repo=dep.repo,
@@ -321,14 +298,14 @@ class Buildroot:
                             dep.install_libs
                         ):
                             member.name = _relative_to_segment(member_path, "lib")
-                            tf.extract(member, path=self.path / "lib", filter="data")
+                            tf.extract(member, path=BUILDROOT / "lib", filter="data")
                     elif member_path.suffix == ".h":
                         if dep.install_headers is None or member_path.name in (
                             dep.install_headers
                         ):
                             member.name = _relative_to_segment(member_path, "include")
                             tf.extract(
-                                member, path=self.path / "include", filter="data"
+                                member, path=BUILDROOT / "include", filter="data"
                             )
 
     def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
@@ -346,7 +323,7 @@ class Buildroot:
                         dep.install_libs
                     ):
                         rel = _relative_to_segment(member_path, "lib")
-                        dest = self.path / "lib" / rel
+                        dest = BUILDROOT / "lib" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -355,7 +332,7 @@ class Buildroot:
                         dep.install_headers
                     ):
                         rel = _relative_to_segment(member_path, "include")
-                        dest = self.path / "include" / rel
+                        dest = BUILDROOT / "include" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -388,7 +365,7 @@ class Buildroot:
         installed = False
         lib_dir = dep_dir / "lib"
         if lib_dir.is_dir():
-            dst_lib = self.path / "lib"
+            dst_lib = BUILDROOT / "lib"
             dst_lib.mkdir(parents=True, exist_ok=True)
             for src_file in lib_dir.iterdir():
                 if src_file.is_file() and src_file.suffix == ".a":
@@ -398,7 +375,7 @@ class Buildroot:
 
         include_dir = dep_dir / "include"
         if include_dir.is_dir():
-            dst_inc = self.path / "include"
+            dst_inc = BUILDROOT / "include"
             dst_inc.mkdir(parents=True, exist_ok=True)
             for src_file in include_dir.rglob("*"):
                 if src_file.is_file() and src_file.suffix == ".h":
@@ -421,20 +398,20 @@ class Buildroot:
     # ------------------------------------------------------------------
 
     def verify(self, required_libs: list[str]) -> None:
-        """Assert that all required build-time library files are present.
+        f"""Assert that all required build-time library files are present.
 
         Args:
             required_libs: List of ``.a`` file names that must exist under
-                ``<buildroot>/lib/``.
+                ``{BUILDROOT}/lib/``.
 
         Raises:
             SystemExit: With exit code ``3`` if any required file is missing.
         """
         for lib in required_libs:
-            lib_path = self.path / "lib" / lib
+            lib_path = BUILDROOT / "lib" / lib
             if not lib_path.exists():
                 log.fatal(
-                    f"Required library '{lib}' not found in buildroot at {self.path}",
+                    f"Required library '{lib}' not found in buildroot at {BUILDROOT}",
                     code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download build-time dependencies.",
                 )

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
+from nanvix_zutil.constants import BIN_OUT, NANVIX_ROOT, REPO_ROOT, TEST_OUT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
 
@@ -115,7 +116,7 @@ _CONFIG_FILES: dict[str, str] = {
 }
 
 
-def sync_configs(nanvix_dir: Path) -> None:
+def sync_configs() -> None:
     """Sync canonical tool configuration files into ``.nanvix/``.
 
     Copies config files shipped inside ``nanvix_zutil.configs`` to the
@@ -127,7 +128,7 @@ def sync_configs(nanvix_dir: Path) -> None:
     configs = importlib.resources.files("nanvix_zutil.configs")
     for src_name, dst_rel in _CONFIG_FILES.items():
         src = configs / src_name
-        dst = nanvix_dir / dst_rel
+        dst = NANVIX_ROOT / dst_rel
         content = src.read_bytes()
         if dst.exists() and dst.read_bytes() == content:
             continue
@@ -221,8 +222,9 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
             hint="Ensure the sysroot contains mkimage by running ./z setup.",
         )
 
+    out_dir = TEST_OUT if test else BIN_OUT
     app_stem = Path(app).stem
-    output = instance.repo_root / f"{app_stem}.img"
+    output = out_dir / f"{app_stem}.img"
 
     def _escape(arg: str) -> str:
         return arg.replace(";", "\\;")
@@ -257,7 +259,7 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
             ),
             _entry(args.bin_dir / "memd.elf", "memd", args.memd_args, args.memd_env),
             _entry(args.bin_dir / "vfsd.elf", "vfsd", args.vfsd_args, args.vfsd_env),
-            _entry(instance.repo_root / app, app, args.app_args, args.app_env),
+            _entry(REPO_ROOT / app, app, args.app_args, args.app_env),
         ]
     )
 

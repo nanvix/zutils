@@ -13,6 +13,7 @@ from pathlib import Path
 from nanvix_zutil import log
 from nanvix_zutil.cli import SUBCOMMAND_HELP, build_parser
 from nanvix_zutil.config import ENV_VARS
+from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.exitcodes import (
     EXIT_GENERAL_ERROR,
@@ -177,7 +178,7 @@ def main() -> None:
         build_parser().parse_args([subcmd, "--help"])
         return
 
-    z_py = Path.cwd() / ".nanvix" / "z.py"
+    z_py = NANVIX_ROOT / "z.py"
 
     if not z_py.exists():
         log.fatal(

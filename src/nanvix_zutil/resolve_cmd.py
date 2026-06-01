@@ -9,9 +9,9 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 
 from nanvix_zutil import log
+from nanvix_zutil.constants import MANIFEST_PATH
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
 from nanvix_zutil.resolver import resolve
@@ -33,12 +33,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "metadata as key=value lines (suitable for $GITHUB_OUTPUT) "
             "or JSON."
         ),
-    )
-    parser.add_argument(
-        "--manifest",
-        default=".nanvix/nanvix.toml",
-        metavar="PATH",
-        help="Path to the nanvix.toml manifest (default: .nanvix/nanvix.toml)",
     )
     parser.add_argument(
         "--json",
@@ -67,10 +61,9 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    manifest_path = Path(args.manifest)
-    if not manifest_path.exists():
+    if not MANIFEST_PATH.exists():
         log.fatal(
-            f"Manifest not found: {manifest_path}",
+            f"Manifest not found: {MANIFEST_PATH}",
             code=EXIT_MISSING_DEP,
             hint="Run from a Nanvix consumer repo root, or pass --manifest.",
         )
@@ -80,12 +73,11 @@ def main() -> None:
     if args.json:
         log.set_json_mode(True)
 
-    manifest = load_manifest(manifest_path)
+    manifest = load_manifest()
     lockfile = resolve(
         manifest,
         gh_token=gh_token,
         shallow=args.shallow,
-        manifest_path=manifest_path,
     )
 
     sysroot = next(

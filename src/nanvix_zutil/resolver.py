@@ -15,7 +15,8 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections import deque
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import cast
 
@@ -28,6 +29,7 @@ from nanvix_zutil.buildroot import (
     parse_semver_tuple,
     suffix_dep,
 )
+from nanvix_zutil.constants import MANIFEST_PATH
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -203,7 +205,6 @@ def resolve(
     cache_dir: Path | None = None,
     *,
     shallow: bool = False,
-    manifest_path: Path | None = None,
 ) -> Lockfile:
     """Resolve a manifest into a fully pinned lockfile.
 
@@ -226,8 +227,6 @@ def resolve(
             to a ``tempfile.mkdtemp()``; cleaned up on completion.
         shallow: When ``True``, skip transitive dependency discovery.
             Resolves only the sysroot and direct dependencies.
-        manifest_path: Path to the ``nanvix.toml`` file for hash
-            computation.  Defaults to ``.nanvix/nanvix.toml``.
 
     Returns:
         The fully resolved :class:`Lockfile`.
@@ -238,10 +237,9 @@ def resolve(
     """
     tmp_dir = Path(cache_dir) if cache_dir else Path(tempfile.mkdtemp())
     owns_tmp = cache_dir is None
-    m_path = manifest_path or Path(".nanvix") / "nanvix.toml"
 
     try:
-        return _resolve_inner(manifest, gh_token, tmp_dir, m_path, shallow=shallow)
+        return _resolve_inner(manifest, gh_token, tmp_dir, shallow=shallow)
     finally:
         if owns_tmp and tmp_dir.exists():
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -251,7 +249,6 @@ def _resolve_inner(
     manifest: Manifest,
     gh_token: str | None,
     cache_dir: Path,
-    manifest_path: Path,
     *,
     shallow: bool,
 ) -> Lockfile:
@@ -530,7 +527,7 @@ def _resolve_inner(
         pkg.assets = _collect_assets(releases[name])
 
     # 6. Assemble lockfile
-    manifest_hash = compute_manifest_hash(manifest_path)
+    manifest_hash = compute_manifest_hash(MANIFEST_PATH)
 
     metadata = LockfileMetadata(
         manifest_hash=manifest_hash,
@@ -540,7 +537,7 @@ def _resolve_inner(
     return Lockfile(metadata=metadata, packages=list(resolved.values()))
 
 
-def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
+def is_stale(lockfile: Lockfile) -> bool:
     """Check whether a lockfile is stale relative to its manifest.
 
     Compares the ``manifest_hash`` stored in the lockfile metadata
@@ -553,10 +550,9 @@ def is_stale(lockfile: Lockfile, manifest_path: Path) -> bool:
 
     Args:
         lockfile: The lockfile to check.
-        manifest_path: Path to the ``nanvix.toml`` file.
 
     Returns:
         ``True`` if the lockfile is stale (hashes differ).
     """
-    current_hash = compute_manifest_hash(manifest_path)
+    current_hash = compute_manifest_hash(MANIFEST_PATH)
     return lockfile.metadata.manifest_hash != current_hash

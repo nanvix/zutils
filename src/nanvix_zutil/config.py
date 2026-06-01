@@ -48,9 +48,11 @@ DEFAULT_MEMORY_SIZE: str = _DEFAULTS["NANVIX_MEMORY_SIZE"]
 CFG_SYSROOT: str = "NANVIX_SYSROOT"
 """Path to the downloaded Nanvix sysroot directory."""
 
+# TODO: THIS SHOULD NOT BE PERSISTED !!
 CFG_GH_TOKEN: str = "GH_TOKEN"
 """GitHub token for authenticated API requests (rate limits)."""
 
+# TODO: This should be set in the manifest
 CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
 """Docker image persisted by ``setup --with-docker``."""
 

@@ -15,7 +15,7 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
 
 import dataclasses
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from nanvix_zutil import (
     BUILDROOT_CONTAINER_PATH,
@@ -25,7 +25,9 @@ from nanvix_zutil import (
     ZScript,
     log,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
+from nanvix_zutil.constants import REPO_ROOT, SYSROOT
+from nanvix_zutil.docker import SYSROOT_CONTAINER_PATH
+from nanvix_zutil.exitcodes import EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 
 
@@ -40,27 +42,6 @@ class BinHello(ZScript):
         """Add output_files so hello.elf is copied back on Windows."""
         cfg = super().docker_config(image)
         return dataclasses.replace(cfg, output_files=["hello.elf"])
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _sysroot(self) -> PurePosixPath | Path:
-        """Return the sysroot path, translated for Docker if active."""
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.docker.translate_path(host) if self.docker else host
-
-    def _buildroot_path(self) -> PurePosixPath | Path:
-        """Return the effective buildroot path (translated for Docker if active)."""
-        if self.docker:
-            return BUILDROOT_CONTAINER_PATH
-        return self.nanvix_dir / "buildroot"
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -83,8 +64,8 @@ class BinHello(ZScript):
     def build(self) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
         tc = TOOLCHAIN_CONTAINER_PATH
-        sysroot = self._sysroot()
-        buildroot = self._buildroot_path()
+        sysroot = SYSROOT_CONTAINER_PATH
+        buildroot = BUILDROOT_CONTAINER_PATH
         cc = str(tc / "bin" / "i686-nanvix-gcc")
         cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{buildroot}/include"
         ldflags = f"-T{sysroot}/lib/user.ld -static -Wl,-z,noexecstack"
@@ -104,7 +85,7 @@ class BinHello(ZScript):
             "-c",
             f"{cc} {cflags} -c -o main.o src/main.c"
             f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
-            cwd=self.repo_root,
+            cwd=REPO_ROOT,
             docker=self.docker,
         )
 
@@ -122,7 +103,7 @@ class BinHello(ZScript):
         not configured (the ``test`` subcommand does not enable Docker
         automatically).
         """
-        binary = self.repo_root / "hello.elf"
+        binary = REPO_ROOT / "hello.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
         log.info("=== bin-hello smoke tests ===")
@@ -163,15 +144,14 @@ class BinHello(ZScript):
     def _test_functional_docker(self, binary: Path) -> None:
         """Run functional tests inside a Docker container (Linux)."""
         log.info("=== bin-hello functional tests (Docker) ===")
-        sysroot = self._sysroot()
         workspace_binary = self.translate_path(binary)
         self.run(
             "timeout",
             "--foreground",
             "60",
-            f"{sysroot}/bin/nanvixd.elf",
+            f"{SYSROOT}/bin/nanvixd.elf",
             "-bin-dir",
-            f"{sysroot}/bin",
+            f"{SYSROOT}/bin",
             "--",
             str(workspace_binary),
         )
@@ -199,7 +179,7 @@ class BinHello(ZScript):
             str(sysroot / "bin"),
             "--",
             str(binary),
-            cwd=self.repo_root,
+            cwd=REPO_ROOT,
             timeout=60,
         )
         log.success("PASS: bin-hello functional tests")
@@ -207,7 +187,7 @@ class BinHello(ZScript):
     def clean(self) -> None:
         """Remove build artifacts."""
         for name in ("main.o", "hello.elf", "hello.img"):
-            artifact = self.repo_root / name
+            artifact = REPO_ROOT / name
             if artifact.exists():
                 artifact.unlink()
 
