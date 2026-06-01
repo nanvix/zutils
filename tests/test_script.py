@@ -36,7 +36,7 @@ class TestZScriptInit(unittest.TestCase):
     """ZScript initialises correctly."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -87,7 +87,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
     """Base setup() auto-downloads sysroot and dependencies."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -117,7 +117,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
     def test_setup_with_deps_creates_buildroot(self) -> None:
         """setup() with manifest dependencies creates Buildroot and installs all deps."""
-        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -176,7 +176,7 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
     """setup() with nanvix-version = "latest" suffixes deps correctly."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd(), MANIFEST_LATEST_WITH_DEPS)
+        write_manifest(MANIFEST_LATEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -232,7 +232,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
     """setup() syncs canonical configs into .nanvix/."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -323,7 +323,7 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
     """Default consumer lifecycle hooks are no-ops."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         return ZScript()
@@ -348,7 +348,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
     """available_subcommands() reflects hook overrides."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     def test_base_class_exposes_only_auto_hooks(self) -> None:
         script = ZScript()
@@ -410,7 +410,7 @@ class TestHelpersRun(unittest.TestCase):
     """helpers.run() executes subprocesses correctly."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     def test_run_success(self) -> None:
         result = helpers.run(sys.executable, "-c", "print('ok')")
@@ -696,7 +696,7 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
     """sysroot_required_files() varies by deployment mode."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -753,7 +753,7 @@ class TestZScriptDockerConfig(unittest.TestCase):
     """Tests for ZScript.docker / ZScript.docker_config()."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         return ZScript()
@@ -809,7 +809,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
     """Docker is always enabled for setup/build/release/clean (hard fail)."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -881,7 +881,7 @@ class TestZScriptCleanWindows(unittest.TestCase):
     """ZScript.clean() Windows behavior."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_removes_configured_artifact(self, _mock: object) -> None:
@@ -909,7 +909,7 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
     """setup() reports fallback state correctly."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -957,7 +957,7 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
 
     def test_setup_no_deps_returns_false(self) -> None:
         """setup() returns False when there are no dependencies."""
-        write_manifest(Path.cwd())  # default manifest, no deps
+        write_manifest()  # default manifest, no deps
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1009,7 +1009,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
     """main() exits with EXIT_DEGRADED_SETUP when setup uses fallback."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -1108,7 +1108,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
     """setup() with WITH_NANVIX overlays local artifacts."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1150,7 +1150,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
 
     def test_setup_local_deps_skips_github(self) -> None:
         """setup() skips GitHub download for deps found locally."""
-        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         local_dir = Path.cwd() / "local-nanvix"
         (local_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
@@ -1191,7 +1191,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
-        write_manifest(repo_root)
+        write_manifest()
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
             script = ZScript()
@@ -1216,7 +1216,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
             script = ZScript()
@@ -1243,7 +1243,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1269,7 +1269,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1293,7 +1293,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         local_dep_path = repo_root / "empty-dir"
         local_dep_path.mkdir()
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1315,7 +1315,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     """helpers.make_initrd() builds the correct mkimage command."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         script = ZScript()
@@ -1805,7 +1805,7 @@ class TestOfflineMode(unittest.TestCase):
     """Tests for offline mode (--offline flag)."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1963,7 +1963,7 @@ class TestInstallArtifacts(unittest.TestCase):
     """Tests for ZScript.install_artifacts()."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 

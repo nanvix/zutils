@@ -165,7 +165,11 @@ class InitRdArgs:
 
 
 def make_initrd(
-    instance: "ZScript", app: str, *, test: bool = True, args: InitRdArgs = InitRdArgs()
+    instance: "ZScript",
+    app: str,
+    *,
+    for_release: bool = False,
+    args: InitRdArgs = InitRdArgs(),
 ) -> Path:
     """Build a standalone initrd image for *app*.
 
@@ -182,8 +186,9 @@ def make_initrd(
         app: A bare application binary filename (e.g. ``"my-app.elf"``).
             Must include the extension and must not contain path
             separators (``/`` or ``\\``).
-        test: Is this running test mode? If so, build to <test_out>, else build to <bin_out>.
-            Defaults to True.
+        for_release: Is this meant to be packaged in the release?
+            If True, will output to .nanvix/out/build/bin
+            If False, will output to .nanvix/out/test
         args: Additional arguments controlling the image generation.
 
     Returns:
@@ -226,7 +231,7 @@ def make_initrd(
             hint="Ensure the sysroot contains mkimage by running ./z setup.",
         )
 
-    out_dir = test_out() if test else bin_out()
+    out_dir = test_out() if not for_release else bin_out()
     Path.mkdir(out_dir, parents=True, exist_ok=True)
     app_stem = Path(app).stem
     output = out_dir / f"{app_stem}.img"

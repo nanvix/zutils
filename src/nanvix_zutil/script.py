@@ -196,8 +196,7 @@ class ZScript:
         return files
 
     def __init__(self) -> None:
-        """Initialise ZScript for *repo_root*."""
-        self.config = Config(nanvix_root())
+        self.config = Config()
         self.log = log
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest()
@@ -238,7 +237,7 @@ class ZScript:
 
         Constructs a standard configuration that mounts:
 
-        * :attr:`repo_root` → ``/mnt/workspace`` (writable, workdir)
+        * :func:`repo_root()` → ``/mnt/workspace`` (writable, workdir)
         * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only),
           if the sysroot has been configured
         * ``.nanvix/buildroot`` → ``/mnt/buildroot`` (writable),
@@ -780,7 +779,7 @@ class ZScript:
         Args:
             *args: Command and arguments to execute.
             cwd: Working directory for the subprocess.  Defaults to
-                :attr:`repo_root`.  Ignored when Docker wrapping is active
+                :func:`repo_root()`.  Ignored when Docker wrapping is active
                 (the container workdir is controlled by
                 :class:`~nanvix_zutil.DockerConfig`).
             env: Environment variables for the subprocess.  ``None`` inherits

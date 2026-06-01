@@ -92,7 +92,7 @@ class BinHello(ZScript):
         # For standalone deployment mode, produce an initrd image
         # containing the system daemons and the application binary.
         if self.config.deployment_mode == "standalone":
-            make_initrd(self, "hello.elf", test=True, args=InitRdArgs())
+            make_initrd(self, "hello.elf", for_release=True, args=InitRdArgs())
 
     def test(self) -> None:
         """Run the test suite (smoke + integration + functional).

@@ -88,7 +88,7 @@ class TestLockMethod(unittest.TestCase):
     """ZScript.lock() resolves deps and writes a lockfile."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
@@ -124,7 +124,7 @@ class TestLockCheck(unittest.TestCase):
     """ZScript.lock_check() verifies lockfile freshness."""
 
     def setUp(self) -> None:
-        write_manifest(Path.cwd())
+        write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)

@@ -3,7 +3,7 @@
 
 """Shared test helpers for nanvix_zutil tests."""
 
-from pathlib import Path
+from nanvix_zutil.paths import manifest_path
 
 # Minimal valid manifest content.
 MINIMAL_MANIFEST = (
@@ -64,8 +64,6 @@ def make_toml(
     return "\n".join(lines) + "\n"
 
 
-def write_manifest(repo_root: Path, content: str = MINIMAL_MANIFEST) -> None:
+def write_manifest(content: str = MINIMAL_MANIFEST) -> None:
     """Create ``.nanvix/nanvix.toml`` inside *repo_root*."""
-    nanvix_dir = repo_root / ".nanvix"
-    nanvix_dir.mkdir(parents=True, exist_ok=True)
-    (nanvix_dir / "nanvix.toml").write_text(content)
+    manifest_path().write_text(content)

@@ -8,11 +8,9 @@ Produces release archives in multiple formats (``.tar.gz``, ``.tar.bz2``,
 :func:`package` from their :meth:`~nanvix_zutil.ZScript.release` hook to
 generate distribution archives::
 
-    from nanvix_zutil.release import ArchiveFormat, package
+    from nanvix_zutil.release import package
 
-    archives = package(
-        name="mylib-microvm-standalone-256mb",
-    )
+    archives = package("mylib-microvm-standalone-256mb")
 """
 
 from __future__ import annotations
@@ -177,23 +175,14 @@ def package(
     formed as ``<name><extension>`` (e.g. ``mylib-v1.0.tar.gz``,
     ``mylib-v1.0.zip``).
 
+    This function expects build to have already run, and output to exist.
+    The output should live in <build-dir>, i.e. .nanvix/out/build/{bin,lib,include}.
+
     Args:
-        sources: Items to archive.  Each entry may be a file or a directory.
-            Directory contents are merged flat into the staging root;
-            individual files are placed at the staging root by their basename.
-            Duplicate items are clobbered.
-            Symlinks in *sources* and symlinks encountered inside source
-            directories are silently skipped.
-        dest: Output directory for archives.  Created if it does not exist.
         name: Base name for the archives (without extension). Must be a plain
             filename without path separators or parent directory traversal.
         formats: Archive formats to produce.  Defaults to
             :data:`DEFAULT_FORMATS` (tar.gz + zip).
-        staging: Directory to use as the staging area.  When supplied, sources
-            are copied directly into this directory (which must already exist)
-            and the caller is responsible for its lifetime.  When omitted, a
-            fresh temporary directory is created and removed automatically on
-            return.
 
     Returns:
         List of absolute paths to created archives, one per format, in
@@ -201,12 +190,11 @@ def package(
 
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
-            if any entry in *sources* does not exist, if staging or copying
-            fails, or if archive creation fails.  With
-            :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
+            if any expected entry is missing or creation fails.
+            With :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
             empty, whitespace-only, or contains path separators or parent
-            directory traversal, or if an unknown format is encountered,
-            or if *sources* is empty.
+            directory traversal, or if an unknown format is encountered, or if
+            .nanvix/out/build is empty.
     """
 
     # Validate name is a safe, non-empty filename

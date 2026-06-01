@@ -17,8 +17,7 @@ from unittest.mock import patch
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
 from nanvix_zutil.helpers import run
-from nanvix_zutil import paths
-from nanvix_zutil.paths import repo_root as paths_repo_root
+from nanvix_zutil.paths import manifest_path, nanvix_root, repo_root
 from tests.testutils import write_manifest
 
 # ---------------------------------------------------------------------------
@@ -64,8 +63,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
 
     def setUp(self) -> None:
         # Autouse fixture supplies a tmp CWD with .nanvix/.
-        self._repo_root = paths.repo_root()
-        write_manifest(self._repo_root)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -80,7 +78,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self, subcommand: str, extra_argv: list[str] | None = None
     ) -> _MockConsumer:
         """Run _MockConsumer.main() with *subcommand* and return the instance."""
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        fake_script = str(repo_root() / ".nanvix" / "z.py")
         argv = [fake_script, subcommand] + (extra_argv or [])
 
         # setup requires --with-docker IMAGE on the CLI.
@@ -90,7 +88,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
         # build/release/clean need a persisted Docker image.
         _DOCKER_COMMANDS = {"build", "release", "clean"}
         if subcommand in _DOCKER_COMMANDS:
-            nanvix_dir = self._repo_root / ".nanvix"
+            nanvix_dir = nanvix_root()
             env_json = nanvix_dir / "env.json"
             if not env_json.exists():
                 env_json.write_text('{"NANVIX_DOCKER_IMAGE": "test/image:tag"}')
@@ -138,10 +136,10 @@ class TestIntegrationLifecycle(unittest.TestCase):
         """--json flag produces JSON output on stderr."""
         from io import StringIO
 
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        fake_script = str(nanvix_root() / "z.py")
 
         # build needs a persisted Docker image.
-        nanvix_dir = self._repo_root / ".nanvix"
+        nanvix_dir = repo_root() / ".nanvix"
         (nanvix_dir / "env.json").write_text(
             '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
         )
@@ -166,21 +164,21 @@ class TestIntegrationLifecycle(unittest.TestCase):
 
     def test_help_subcommand_returns(self) -> None:
         """help subcommand prints help and returns without calling any hook."""
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        fake_script = str(nanvix_root() / "z.py")
         with patch("sys.argv", [fake_script, "help"]):
             # Should not raise.
             _MockConsumer.main()
 
     def test_no_subcommand_returns(self) -> None:
         """Missing subcommand prints help and returns without calling any hook."""
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        fake_script = str(nanvix_root() / "z.py")
         with patch("sys.argv", [fake_script]):
             _MockConsumer.main()
 
     def test_help_without_manifest_does_not_exit_with_missing_dep(self) -> None:
         """'help' works even when nanvix.toml is absent (no EXIT_MISSING_DEP)."""
-        (self._repo_root / ".nanvix" / "nanvix.toml").unlink()
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        manifest_path().unlink()
+        fake_script = str(nanvix_root() / "z.py")
         with patch("sys.argv", [fake_script, "help"]):
             _MockConsumer.main()
 
@@ -188,26 +186,26 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self,
     ) -> None:
         """No-subcommand invocation works even when nanvix.toml is absent."""
-        (self._repo_root / ".nanvix" / "nanvix.toml").unlink()
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        manifest_path().unlink()
+        fake_script = str(nanvix_root() / "z.py")
         with patch("sys.argv", [fake_script]):
             _MockConsumer.main()
 
     def test_repo_root_inferred_from_nanvix_dir(self) -> None:
         """paths.repo_root() resolves to the parent of the .nanvix/ directory."""
         # build needs a persisted Docker image.
-        nanvix_dir = self._repo_root / ".nanvix"
+        nanvix_dir = nanvix_root()
         (nanvix_dir / "env.json").write_text(
             '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
         )
 
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        fake_script = str(nanvix_root() / "z.py")
         captured: list[Path] = []
         original_init = _MockConsumer.__init__
 
         def capturing_init(self_: _MockConsumer) -> None:
             original_init(self_)
-            captured.append(paths_repo_root())
+            captured.append(repo_root())
 
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
@@ -215,7 +213,7 @@ class TestIntegrationLifecycle(unittest.TestCase):
         ):
             _MockConsumer.main()
 
-        self.assertEqual(captured[0], self._repo_root.resolve())
+        self.assertEqual(captured[0], repo_root())
 
     def test_config_defaults_accessible(self) -> None:
         """Config is accessible from the script and has expected defaults."""
@@ -244,8 +242,7 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
     """Config.save() / load() round-trip via ZScript."""
 
     def setUp(self) -> None:
-        self._repo_root = paths.repo_root()
-        write_manifest(self._repo_root)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -267,29 +264,21 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
     """The ``run`` helper executes subprocesses and propagates errors."""
 
     def setUp(self) -> None:
-        self._repo_root = paths.repo_root()
-        write_manifest(self._repo_root)
+        write_manifest()
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         log_mod.set_json_mode(False)
 
     def test_run_echo_succeeds(self) -> None:
-        result = run(
-            sys.executable, "-c", "import sys; sys.exit(0)", cwd=self._repo_root
-        )
+        result = run(sys.executable, "-c", "import sys; sys.exit(0)", cwd=repo_root())
         self.assertEqual(result.returncode, 0)
 
     def test_run_exit_nonzero_raises_system_exit_5(self) -> None:
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                run(
-                    sys.executable,
-                    "-c",
-                    "import sys; sys.exit(2)",
-                    cwd=self._repo_root,
-                )
+                run(sys.executable, "-c", "import sys; sys.exit(2)", cwd=repo_root())
             self.assertEqual(ctx.exception.code, 5)
         finally:
             log_mod.set_json_mode(False)

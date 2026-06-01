@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 from nanvix_zutil import paths
 from nanvix_zutil.distclean_cmd import _run_consumer_clean, distclean, main
-
 from tests.testutils import write_manifest
 
 
@@ -166,7 +165,7 @@ class TestRunConsumerClean(unittest.TestCase):
     def setUp(self) -> None:
         self.repo_root = paths.repo_root()
         self.nanvix_dir = paths.nanvix_root()
-        write_manifest(self.repo_root)
+        write_manifest()
         # Stamp file the consumer clean() can touch so we can assert it ran.
         self.stamp = self.repo_root / "clean.stamp"
 
@@ -238,7 +237,7 @@ class TestMainIntegration(unittest.TestCase):
     def test_main_calls_clean_then_distcleans(self) -> None:
         repo_root = paths.repo_root()
         nanvix_dir = paths.nanvix_root()
-        write_manifest(repo_root)
+        write_manifest()
         stamp = repo_root / "clean.stamp"
         sysroot = paths.sysroot()
         sysroot.mkdir()
