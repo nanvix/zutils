@@ -24,13 +24,18 @@ in ``tests.testutils``).
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from pathlib import Path
+
 import pytest
 
 from nanvix_zutil.paths import nanvix_root
 
 
 @pytest.fixture(autouse=True)
-def _isolated_nanvix_root(tmp_path, monkeypatch):
+def _isolated_nanvix_root(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Path, None, None]:
     """Give every test a private ``.nanvix/`` directory in a fresh CWD."""
     (tmp_path / ".nanvix").mkdir()
     monkeypatch.chdir(tmp_path)

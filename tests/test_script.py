@@ -8,14 +8,13 @@ import json
 import os
 import subprocess as sp
 import sys
-import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil import helpers
+from nanvix_zutil import helpers, paths
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -37,57 +36,48 @@ class TestZScriptInit(unittest.TestCase):
     """ZScript initialises correctly."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
     def test_repo_root_resolved(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
-        self.assertEqual(script.repo_root, repo_root.resolve())
+        repo_root = paths.repo_root()
+        self.assertEqual(paths.repo_root(), repo_root.resolve())
 
     def test_nanvix_dir(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
-        self.assertEqual(script.nanvix_dir, repo_root.resolve() / ".nanvix")
+        repo_root = paths.repo_root()
+        self.assertEqual(paths.nanvix_root(), repo_root.resolve() / ".nanvix")
 
     def test_config_accessible(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         self.assertEqual(script.config.machine, "microvm")
 
     def test_manifest_loaded(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         self.assertEqual(script.manifest.sysroot_ref.value, "0.1.0")
 
     def test_sysroot_initially_none(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         self.assertIsNone(script.sysroot)
 
     def test_buildroot_initially_none(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         self.assertIsNone(script.buildroot)
 
     def test_log_attribute_is_log_module(self) -> None:
         """self.log refers to the nanvix_zutil.log module."""
         import nanvix_zutil.log as log_module
 
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         self.assertIs(script.log, log_module)
 
     def test_missing_manifest_exits_3(self) -> None:
-        tmpdir = tempfile.TemporaryDirectory()
-        self.addCleanup(tmpdir.cleanup)
-        repo_root = Path(tmpdir.name)
+        # Autouse fixture wrote a manifest in setUp; remove it.
+        (paths.manifest_path()).unlink()
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                ZScript(repo_root)
+                ZScript()
             self.assertEqual(ctx.exception.code, 3)
         finally:
             log_mod.set_json_mode(False)
@@ -97,13 +87,9 @@ class TestZScriptAutoSetup(unittest.TestCase):
     """Base setup() auto-downloads sysroot and dependencies."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_setup_downloads_sysroot(self) -> None:
         """setup() calls Sysroot.download with config values."""
@@ -113,7 +99,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
         with patch(
             "nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot
         ) as mock_download:
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
             # Assert Sysroot.download was called once with the expected kwargs.
@@ -124,14 +110,14 @@ class TestZScriptAutoSetup(unittest.TestCase):
             self.assertEqual(kwargs["memory_size"], script.config.memory_size)
             self.assertEqual(kwargs["tag"], script.manifest.sysroot_ref.value)
             self.assertIsInstance(kwargs["dest"], Path)
-            self.assertTrue(str(kwargs["dest"]).startswith(str(script.nanvix_dir)))
+            self.assertTrue(str(kwargs["dest"]).startswith(str(paths.nanvix_root())))
             self.assertIs(kwargs["config"], script.config)
         fake_sysroot.verify.assert_called_once()
         self.assertIs(script.sysroot, fake_sysroot)
 
     def test_setup_with_deps_creates_buildroot(self) -> None:
         """setup() with manifest dependencies creates Buildroot and installs all deps."""
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -149,13 +135,11 @@ class TestZScriptAutoSetup(unittest.TestCase):
                 return_value=(fake_release, "0.1.0"),
             ),
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
-        # Buildroot.create called once with the nanvix_dir/buildroot path.
-        mock_create.assert_called_once()
-        (create_path,), _ = mock_create.call_args
-        self.assertEqual(create_path, script.nanvix_dir / "buildroot")
+        # Buildroot.create called once (now takes no arguments).
+        mock_create.assert_called_once_with()
 
         # install_dep called once per dependency in the manifest.
         dep_count = len(script.manifest.dependencies)
@@ -170,7 +154,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         self.assertIsNone(script.buildroot)
@@ -181,10 +165,10 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
-        config_file = Path(self._tmpdir.name) / ".nanvix" / "env.json"
+        config_file = paths.nanvix_root() / "env.json"
         self.assertTrue(config_file.exists())
 
 
@@ -192,13 +176,9 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
     """setup() with nanvix-version = "latest" suffixes deps correctly."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_LATEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_LATEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_setup_latest_sysroot_suffixes_deps(self) -> None:
         """setup() suffixes VERSION deps with the resolved sysroot tag."""
@@ -217,7 +197,7 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
                 return_value=(fake_release, "0.12.277"),
             ),
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         # install_dep should be called with the suffixed ref value.
@@ -240,7 +220,7 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
                 ),
                 self.assertRaises(SystemExit) as ctx,
             ):
-                script = ZScript(Path(self._tmpdir.name))
+                script = ZScript()
                 script.setup()
 
             self.assertEqual(ctx.exception.code, 3)
@@ -252,26 +232,22 @@ class TestZScriptSyncConfigs(unittest.TestCase):
     """setup() syncs canonical configs into .nanvix/."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def _run_setup(self) -> ZScript:
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
         return script
 
     def test_setup_creates_config_files(self) -> None:
         """setup() creates config files under .nanvix/."""
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         self.assertTrue((nanvix_dir / "pyrightconfig.json").exists())
         self.assertTrue((nanvix_dir / ".yamllint.yml").exists())
         self.assertTrue((nanvix_dir / "black.toml").exists())
@@ -280,7 +256,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
     def test_gitignore_contains_expected_patterns(self) -> None:
         """Synced .gitignore includes transient artifact patterns."""
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         content = (nanvix_dir / ".gitignore").read_text()
         for pattern in ("venv/", "cache/", "sysroot/", "__pycache__/"):
             self.assertIn(pattern, content)
@@ -288,14 +264,14 @@ class TestZScriptSyncConfigs(unittest.TestCase):
     def test_gitignore_does_not_ignore_lockfile(self) -> None:
         """Synced .gitignore must not ignore nanvix.lock (committed for reproducibility)."""
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         content = (nanvix_dir / ".gitignore").read_text()
         self.assertNotIn("nanvix.lock", content)
 
     def test_setup_skips_identical_configs(self) -> None:
         """setup() is a no-op for configs when content already matches."""
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         pyright_cfg = nanvix_dir / "pyrightconfig.json"
         mtime_before = pyright_cfg.stat().st_mtime
         import time
@@ -307,7 +283,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
 
     def test_setup_updates_config_when_different(self) -> None:
         """setup() overwrites config when content differs."""
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         pyright_cfg = nanvix_dir / "pyrightconfig.json"
         pyright_cfg.write_text("{}")
         self._run_setup()
@@ -316,7 +292,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
     def test_setup_confines_configs_to_nanvix_dir(self) -> None:
         """setup() never writes config files outside .nanvix/."""
         self._run_setup()
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         self.assertFalse((repo_root / "pyrightconfig.json").exists())
         self.assertFalse((repo_root / ".yamllint.yml").exists())
 
@@ -325,7 +301,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         import json
 
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         cfg = json.loads((nanvix_dir / "pyrightconfig.json").read_text())
         self.assertIn(".", cfg["include"])
 
@@ -334,7 +310,7 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         import json
 
         self._run_setup()
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         cfg = json.loads((nanvix_dir / "pyrightconfig.json").read_text())
         for entry in cfg["include"]:
             self.assertFalse(
@@ -347,14 +323,10 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
     """Default consumer lifecycle hooks are no-ops."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     def _make_script(self) -> ZScript:
-        return ZScript(Path(self._tmpdir.name))
+        return ZScript()
 
     def test_build_noop(self) -> None:
         self._make_script().build()
@@ -376,14 +348,10 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
     """available_subcommands() reflects hook overrides."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     def test_base_class_exposes_only_auto_hooks(self) -> None:
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         available = script.available_subcommands()
         for hook in ZScript.AUTO_HOOKS:
             self.assertIn(hook, available, f"{hook!r} should always be available")
@@ -400,7 +368,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
             def test(self) -> None:
                 pass
 
-        script = _Sub(Path(self._tmpdir.name))
+        script = _Sub()
         available = script.available_subcommands()
         self.assertIn("build", available)
         self.assertIn("test", available)
@@ -410,7 +378,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
             def build(self) -> None:
                 pass
 
-        script = _Sub(Path(self._tmpdir.name))
+        script = _Sub()
         available = script.available_subcommands()
         self.assertNotIn("clean", available)
         self.assertNotIn("benchmark", available)
@@ -432,7 +400,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
             def clean(self) -> None:
                 pass
 
-        script = _FullSub(Path(self._tmpdir.name))
+        script = _FullSub()
         available = script.available_subcommands()
         for hook in ZScript.CONSUMER_HOOKS:
             self.assertIn(hook, available)
@@ -442,11 +410,7 @@ class TestHelpersRun(unittest.TestCase):
     """helpers.run() executes subprocesses correctly."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     def test_run_success(self) -> None:
         result = helpers.run(sys.executable, "-c", "print('ok')")
@@ -493,7 +457,7 @@ class TestHelpersRun(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_run_uses_windows_cmd_on_windows(self, _mock: object) -> None:
         """run() delegates to build_windows_run_cmd on Windows."""
-        docker = self._make_docker(Path(self._tmpdir.name))
+        docker = self._make_docker(Path.cwd())
         captured_cmds: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -518,7 +482,7 @@ class TestHelpersRun(unittest.TestCase):
             image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
             mounts=[
                 Mount(
-                    host_path=Path(self._tmpdir.name),
+                    host_path=Path.cwd(),
                     container_path=WORKSPACE_CONTAINER_PATH,
                 )
             ],
@@ -546,7 +510,7 @@ class TestHelpersRun(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_run_dispatch_linux_uses_build_run_cmd(self, *_mocks: object) -> None:
         """run() uses build_run_cmd on Linux (not the Windows tar-copy path)."""
-        docker = self._make_docker(Path(self._tmpdir.name))
+        docker = self._make_docker(Path.cwd())
         captured_cmds: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -568,7 +532,7 @@ class TestHelpersRun(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_run_with_docker_wraps_command(self, *_mocks: object) -> None:
         """When a docker config is supplied, run() prepends docker run."""
-        docker = self._make_docker(Path(self._tmpdir.name))
+        docker = self._make_docker(Path.cwd())
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -732,33 +696,31 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
     """sysroot_required_files() varies by deployment mode."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def test_multi_process_includes_linuxd_and_uservm(self) -> None:
         os.environ["NANVIX_DEPLOYMENT_MODE"] = "multi-process"
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         files = script.sysroot_required_files()
         self.assertIn("bin/linuxd.elf", files)
         self.assertIn("bin/uservm.elf", files)
 
     def test_single_process_excludes_linuxd_and_uservm(self) -> None:
         os.environ["NANVIX_DEPLOYMENT_MODE"] = "single-process"
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         files = script.sysroot_required_files()
         self.assertNotIn("bin/linuxd.elf", files)
         self.assertNotIn("bin/uservm.elf", files)
 
     def test_standalone_excludes_linuxd_and_uservm(self) -> None:
         os.environ["NANVIX_DEPLOYMENT_MODE"] = "standalone"
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         files = script.sysroot_required_files()
         self.assertNotIn("bin/linuxd.elf", files)
         self.assertNotIn("bin/uservm.elf", files)
@@ -771,7 +733,7 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
         mkramfs = "bin/mkramfs.exe" if sys.platform == "win32" else "bin/mkramfs.elf"
         for mode in ("multi-process", "single-process", "standalone"):
             os.environ["NANVIX_DEPLOYMENT_MODE"] = mode
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             files = script.sysroot_required_files()
             self.assertIn("lib/libposix.a", files, f"missing in {mode}")
             self.assertIn("lib/user.ld", files, f"missing in {mode}")
@@ -781,7 +743,7 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
 
     def test_default_deployment_mode_is_standalone(self) -> None:
         """Default (no env override) should be standalone."""
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         files = script.sysroot_required_files()
         self.assertNotIn("bin/linuxd.elf", files)
         self.assertNotIn("bin/uservm.elf", files)
@@ -791,14 +753,10 @@ class TestZScriptDockerConfig(unittest.TestCase):
     """Tests for ZScript.docker / ZScript.docker_config()."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     def _make_script(self) -> ZScript:
-        return ZScript(Path(self._tmpdir.name))
+        return ZScript()
 
     def test_docker_not_active_by_default(self) -> None:
         script = self._make_script()
@@ -819,7 +777,7 @@ class TestZScriptDockerConfig(unittest.TestCase):
         )
         self.assertIsNotNone(workspace_mount)
         assert workspace_mount is not None
-        self.assertEqual(workspace_mount.host_path, script.repo_root)
+        self.assertEqual(workspace_mount.host_path, paths.repo_root())
 
     def test_docker_config_no_buildroot_mount_when_absent(self) -> None:
         """No buildroot mount is added when the buildroot dir does not exist."""
@@ -834,7 +792,7 @@ class TestZScriptDockerConfig(unittest.TestCase):
     def test_docker_config_auto_mounts_buildroot_when_present(self) -> None:
         """Buildroot is auto-mounted when nanvix_dir/buildroot exists."""
         script = self._make_script()
-        buildroot_dir = script.nanvix_dir / "buildroot"
+        buildroot_dir = paths.buildroot()
         buildroot_dir.mkdir(parents=True, exist_ok=True)
         cfg = script.docker_config("test-image")
         buildroot_mount = next(
@@ -851,13 +809,9 @@ class TestZScriptAutoDocker(unittest.TestCase):
     """Docker is always enabled for setup/build/release/clean (hard fail)."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_build_auto_enables_docker_on_windows(self) -> None:
         """build on Windows uses the persisted Docker image."""
@@ -873,7 +827,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
             docker_configured = self_inner.docker is not None
 
         # Pre-persist Docker image so build can find it.
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         (nanvix_dir / "env.json").write_text(
             '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
         )
@@ -884,7 +838,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
-            BuildScript.main(repo_root=Path(self._tmpdir.name))
+            BuildScript.main()
 
         self.assertTrue(docker_configured)
 
@@ -902,7 +856,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
             docker_configured = self_inner.docker is not None
 
         # Pre-persist Docker image so build can find it.
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
+        nanvix_dir = paths.nanvix_root()
         (nanvix_dir / "env.json").write_text(
             '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
         )
@@ -918,7 +872,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
             patch.object(BuildScript, "build", _fake_build),
             patch("nanvix_zutil.script.log"),
         ):
-            BuildScript.main(repo_root=Path(self._tmpdir.name))
+            BuildScript.main()
 
         self.assertTrue(docker_configured)
 
@@ -927,17 +881,13 @@ class TestZScriptCleanWindows(unittest.TestCase):
     """ZScript.clean() Windows behavior."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_removes_configured_artifact(self, _mock: object) -> None:
         """clean() removes .nanvix-configured on Windows."""
-        script = ZScript(Path(self._tmpdir.name))
-        artifact = script.repo_root / ".nanvix-configured"
+        script = ZScript()
+        artifact = paths.repo_root() / ".nanvix-configured"
         artifact.write_text("marker")
         script.clean()
         self.assertFalse(artifact.exists())
@@ -945,13 +895,13 @@ class TestZScriptCleanWindows(unittest.TestCase):
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_noop_when_no_artifacts(self, _mock: object) -> None:
         """clean() does not raise when no artifacts exist on Windows."""
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         script.clean()  # Should not raise.
 
     @patch("nanvix_zutil.script.is_windows", return_value=False)
     def test_clean_noop_on_linux(self, _mock: object) -> None:
         """clean() is a no-op on Linux (base class)."""
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         script.clean()  # Should not raise.
 
 
@@ -959,13 +909,9 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
     """setup() reports fallback state correctly."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_setup_returns_false_when_no_fallback(self) -> None:
         """setup() returns False when all deps resolve exactly."""
@@ -983,7 +929,7 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
                 return_value=(fake_release, None),  # None = no fallback
             ),
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             result = script.setup()
 
         self.assertFalse(result)
@@ -1004,20 +950,20 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
                 return_value=(fake_release, "0.0.9"),  # non-None = fallback used
             ),
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             result = script.setup()
 
         self.assertTrue(result)
 
     def test_setup_no_deps_returns_false(self) -> None:
         """setup() returns False when there are no dependencies."""
-        write_manifest(Path(self._tmpdir.name))  # default manifest, no deps
+        write_manifest(Path.cwd())  # default manifest, no deps
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             result = script.setup()
 
         self.assertFalse(result)
@@ -1039,7 +985,7 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
             ),
             patch("nanvix_zutil.script.log") as mock_log,
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         # Verify warning was called (not info) for fallback message.
@@ -1063,8 +1009,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
     """main() exits with EXIT_DEGRADED_SETUP when setup uses fallback."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -1074,9 +1019,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         p = patch("nanvix_zutil.script.check_docker", return_value=None)
         p.start()
         self.addCleanup(p.stop)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_exit_degraded_setup_value(self) -> None:
         """EXIT_DEGRADED_SETUP has the expected value of 7."""
@@ -1097,7 +1039,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
             patch.object(ZScript, "setup", _setup_with_fallback),
             self.assertRaises(SystemExit) as ctx,
         ):
-            ZScript.main(repo_root=Path(self._tmpdir.name))
+            ZScript.main()
 
         self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
 
@@ -1110,7 +1052,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
             patch.object(ZScript, "setup", return_value=True),
             self.assertRaises(SystemExit) as ctx,
         ):
-            ZScript.main(repo_root=Path(self._tmpdir.name))
+            ZScript.main()
 
         self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
 
@@ -1122,7 +1064,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
             patch("nanvix_zutil.script.log") as mock_log,
         ):
             # Should not raise SystemExit.
-            ZScript.main(repo_root=Path(self._tmpdir.name))
+            ZScript.main()
 
         # Verify success log was emitted.
         success_calls = [
@@ -1149,7 +1091,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
                 patch.object(ZScript, "setup", return_value=True),
                 self.assertRaises(SystemExit) as ctx,
             ):
-                ZScript.main(repo_root=Path(self._tmpdir.name))
+                ZScript.main()
         finally:
             sys.stderr = original_stderr
             log_mod.set_json_mode(False)
@@ -1166,8 +1108,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
     """setup() with WITH_NANVIX overlays local artifacts."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1178,11 +1119,10 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
 
     def tearDown(self) -> None:
         os.environ.pop("WITH_NANVIX", None)
-        self._tmpdir.cleanup()
 
     def test_setup_calls_overlay_when_env_set(self) -> None:
         """setup() calls sysroot.overlay_local_nanvix when WITH_NANVIX is set."""
-        local_dir = Path(self._tmpdir.name) / "local-nanvix"
+        local_dir = Path.cwd() / "local-nanvix"
         local_dir.mkdir()
 
         fake_sysroot = MagicMock()
@@ -1191,7 +1131,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         os.environ["WITH_NANVIX"] = str(local_dir)
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         fake_sysroot.overlay_local_nanvix.assert_called_once_with(local_dir)
@@ -1203,16 +1143,16 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         fake_sysroot.overlay_local_nanvix.assert_not_called()
 
     def test_setup_local_deps_skips_github(self) -> None:
         """setup() skips GitHub download for deps found locally."""
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
 
-        local_dir = Path(self._tmpdir.name) / "local-nanvix"
+        local_dir = Path.cwd() / "local-nanvix"
         (local_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"local-zlib")
 
@@ -1226,7 +1166,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_resolve,
         ):
-            script = ZScript(Path(self._tmpdir.name))
+            script = ZScript()
             script.setup()
 
         # The dependency was satisfied locally so GitHub resolve should not
@@ -1238,17 +1178,15 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
     """setup() with RefKind.LOCAL sysroot uses from_local, no GitHub."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_local_sysroot_skips_github(self) -> None:
         """When sysroot ref is LOCAL, Sysroot.from_local is used."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         # Create a local sysroot directory.
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
@@ -1256,7 +1194,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         write_manifest(repo_root)
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
-            script = ZScript(repo_root)
+            script = ZScript()
 
         # Verify manifest parsed as LOCAL.
         self.assertEqual(script.manifest.sysroot_ref.kind, RefKind.LOCAL)
@@ -1274,14 +1212,14 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
 
     def test_local_sysroot_no_dep_suffix(self) -> None:
         """When sysroot is LOCAL, VERSION deps are not suffixed."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
         write_manifest(repo_root, MANIFEST_WITH_DEPS)
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
-            script = ZScript(repo_root)
+            script = ZScript()
 
         # VERSION dep should NOT be suffixed (sysroot is LOCAL).
         self.assertEqual(script.manifest.dependencies[0].ref.value, "1.0")
@@ -1291,17 +1229,15 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
     """setup() with RefKind.LOCAL dep installs from filesystem."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_local_dep_uses_install_local_nanvix(self) -> None:
         """LOCAL deps call install_local_nanvix instead of GitHub."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         local_dep_path = repo_root / "local-zlib"
         # Create the expected local layout.
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
@@ -1317,18 +1253,18 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
             patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": str(local_dep_path)}),
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
         ):
-            script = ZScript(repo_root)
+            script = ZScript()
             script.setup()
 
         # Dep was installed locally, buildroot should exist.
         self.assertIsNotNone(script.buildroot)
         # The local lib should have been copied into the buildroot.
-        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        buildroot_lib = paths.buildroot() / "lib" / "libz.a"  # type: ignore[union-attr]
         self.assertTrue(buildroot_lib.exists())
 
     def test_local_dep_no_github_call(self) -> None:
         """LOCAL deps do not call resolve_release or download_release_asset."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         local_dep_path = repo_root / "local-zlib"
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
@@ -1345,7 +1281,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
             patch("nanvix_zutil.script.resolve_release") as mock_resolve,
             patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_fallback,
         ):
-            script = ZScript(repo_root)
+            script = ZScript()
             script.setup()
 
         mock_resolve.assert_not_called()
@@ -1353,7 +1289,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
 
     def test_local_dep_missing_artifacts_exits(self) -> None:
         """LOCAL dep with no artifacts at the path exits with code 3."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         local_dep_path = repo_root / "empty-dir"
         local_dep_path.mkdir()
 
@@ -1369,7 +1305,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             self.assertRaises(SystemExit) as ctx,
         ):
-            script = ZScript(repo_root)
+            script = ZScript()
             script.setup()
 
         self.assertEqual(ctx.exception.code, 3)
@@ -1379,22 +1315,17 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     """helpers.make_initrd() builds the correct mkimage command."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        write_manifest(Path.cwd())
 
     def _make_script(self) -> ZScript:
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         # Set up a fake sysroot with a bin/ directory and mkimage stub.
-        sysroot_bin = repo_root / ".nanvix" / "sysroot" / "bin"
+        sysroot_bin = paths.sysroot() / "bin"
         sysroot_bin.mkdir(parents=True, exist_ok=True)
         (sysroot_bin / "mkimage.elf").touch()
         (sysroot_bin / "mkimage.exe").touch()
         fake_sysroot = MagicMock()
-        fake_sysroot.path = repo_root / ".nanvix" / "sysroot"
+        fake_sysroot.path = paths.sysroot()
         script.sysroot = fake_sysroot
         return script
 
@@ -1409,18 +1340,18 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            result = helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+            result = helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
 
-        self.assertEqual(result, script.repo_root / "my-app.img")
+        self.assertEqual(result, paths.test_out() / "my-app.img")
         cmd = captured[0]
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(cmd[0], str(bin_dir / "mkimage.elf"))
         self.assertEqual(cmd[1], "-o")
-        self.assertEqual(cmd[2], str(script.repo_root / "my-app.img"))
+        self.assertEqual(cmd[2], str(paths.test_out() / "my-app.img"))
         self.assertEqual(cmd[3], f"{bin_dir / 'procd.elf'};procd")
         self.assertEqual(cmd[4], f"{bin_dir / 'memd.elf'};memd")
         self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
-        self.assertEqual(cmd[6], f"{script.repo_root / 'my-app.elf'};my-app.elf")
+        self.assertEqual(cmd[6], f"{paths.repo_root() / 'my-app.elf'};my-app.elf")
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_basic_invocation_windows(self, _mock: object) -> None:
@@ -1433,7 +1364,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+            helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
@@ -1450,13 +1381,15 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", InitRdArgs(app_args=["--verbose", "--port=8080"])
+                script,
+                "my-app.elf",
+                args=InitRdArgs(app_args=["--verbose", "--port=8080"]),
             )
 
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose --port=8080",
+            f"{paths.repo_root() / 'my-app.elf'};my-app.elf --verbose --port=8080",
         )
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1473,7 +1406,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
-                InitRdArgs(
+                args=InitRdArgs(
                     procd_args=["--debug"],
                     memd_args=["--heap=64m"],
                     vfsd_args=["--cache=off"],
@@ -1497,7 +1430,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", InitRdArgs(kernel_args=["console=ttyS0", "debug"])
+                script,
+                "my-app.elf",
+                args=InitRdArgs(kernel_args=["console=ttyS0", "debug"]),
             )
 
         cmd = captured[0]
@@ -1516,11 +1451,13 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            helpers.make_initrd(script, "my-app.elf", InitRdArgs(app_args=["--sep=;"]))
+            helpers.make_initrd(
+                script, "my-app.elf", args=InitRdArgs(app_args=["--sep=;"])
+            )
 
         app_entry = captured[0][6]
         self.assertEqual(
-            app_entry, f"{script.repo_root / 'my-app.elf'};my-app.elf --sep=\\;"
+            app_entry, f"{paths.repo_root() / 'my-app.elf'};my-app.elf --sep=\\;"
         )
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1534,7 +1471,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            helpers.make_initrd(script, "my-app.elf", InitRdArgs(kernel_args=["a;b"]))
+            helpers.make_initrd(
+                script, "my-app.elf", args=InitRdArgs(kernel_args=["a;b"])
+            )
 
         cmd = captured[0]
         ka_idx = cmd.index("-kernel-args")
@@ -1544,7 +1483,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     def test_custom_bin_dir(self, _mock: object) -> None:
         """A custom bin_dir is used instead of the sysroot."""
         script = self._make_script()
-        custom_bin = Path(self._tmpdir.name) / "custom" / "bin"
+        custom_bin = Path.cwd() / "custom" / "bin"
         custom_bin.mkdir(parents=True)
         (custom_bin / "mkimage.elf").touch()
         captured: list[list[str]] = []
@@ -1554,19 +1493,21 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            helpers.make_initrd(script, "my-app.elf", InitRdArgs(bin_dir=custom_bin))
+            helpers.make_initrd(
+                script, "my-app.elf", args=InitRdArgs(bin_dir=custom_bin)
+            )
 
         self.assertEqual(captured[0][0], str(custom_bin / "mkimage.elf"))
         self.assertIn(str(custom_bin / "procd.elf"), captured[0][3])
 
     def test_no_sysroot_exits(self) -> None:
         """Exits with EXIT_MISSING_DEP when sysroot is None and config lacks one."""
-        script = ZScript(Path(self._tmpdir.name))
+        script = ZScript()
         script.sysroot = None
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+                helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1582,11 +1523,11 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            result = helpers.make_initrd(script, "hello-world.elf", InitRdArgs())
+            result = helpers.make_initrd(script, "hello-world.elf", args=InitRdArgs())
 
-        self.assertEqual(result, script.repo_root / "hello-world.img")
+        self.assertEqual(result, paths.test_out() / "hello-world.img")
         self.assertEqual(
-            captured[0][6], f"{script.repo_root / 'hello-world.elf'};hello-world.elf"
+            captured[0][6], f"{paths.repo_root() / 'hello-world.elf'};hello-world.elf"
         )
 
     def test_app_with_path_separator_exits(self) -> None:
@@ -1595,7 +1536,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "build/hello.elf", InitRdArgs())
+                helpers.make_initrd(script, "build/hello.elf", args=InitRdArgs())
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1603,18 +1544,17 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_mkimage_not_found_exits(self, _mock: object) -> None:
         """Exits with EXIT_MISSING_DEP when mkimage binary is missing."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         # Sysroot bin dir exists but mkimage.elf does not.
-        sysroot_bin = repo_root / ".nanvix" / "sysroot" / "bin"
+        sysroot_bin = paths.sysroot() / "bin"
         sysroot_bin.mkdir(parents=True, exist_ok=True)
         fake_sysroot = MagicMock()
-        fake_sysroot.path = repo_root / ".nanvix" / "sysroot"
+        fake_sysroot.path = paths.sysroot()
         script.sysroot = fake_sysroot
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", InitRdArgs())
+                helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1631,13 +1571,13 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"])
+                script, "my-app.elf", args=InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"])
             )
 
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app.elf;VAR1=foo VAR2=bar",
+            f"{paths.repo_root() / 'my-app.elf'};my-app.elf;VAR1=foo VAR2=bar",
         )
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1654,13 +1594,13 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
-                InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
+                args=InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
             )
 
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
+            f"{paths.repo_root() / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1677,7 +1617,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
-                InitRdArgs(
+                args=InitRdArgs(
                     procd_env=["LOG=debug"],
                     memd_env=["HEAP=64m"],
                     vfsd_env=["CACHE=off"],
@@ -1701,13 +1641,13 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", InitRdArgs(app_env=["PATH=/a;/b"])
+                script, "my-app.elf", args=InitRdArgs(app_env=["PATH=/a;/b"])
             )
 
         app_entry = captured[0][6]
         self.assertEqual(
             app_entry,
-            f"{script.repo_root / 'my-app.elf'};my-app.elf;PATH=/a\\;/b",
+            f"{paths.repo_root() / 'my-app.elf'};my-app.elf;PATH=/a\\;/b",
         )
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1724,7 +1664,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
-                InitRdArgs(
+                args=InitRdArgs(
                     procd_args=["--log-level", "trace"], procd_env=["LOG=debug"]
                 ),
             )
@@ -1749,7 +1689,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
-                InitRdArgs(
+                args=InitRdArgs(
                     app_args=["--verbose"], app_env=["DEBUG=1"], procd_env=["LOG=debug"]
                 ),
             )
@@ -1759,7 +1699,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
         self.assertEqual(
             captured[0][6],
-            f"{script.repo_root / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
+            f"{paths.repo_root() / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
 
 
@@ -1865,8 +1805,7 @@ class TestOfflineMode(unittest.TestCase):
     """Tests for offline mode (--offline flag)."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(Path.cwd(), MANIFEST_WITH_DEPS)
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1876,35 +1815,30 @@ class TestOfflineMode(unittest.TestCase):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_offline_default_false(self) -> None:
         """Offline mode defaults to False."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         self.assertFalse(script._offline)
 
     def test_with_nanvix_env_sets_path(self) -> None:
         """WITH_NANVIX env sets _with_nanvix_path."""
-        repo_root = Path(self._tmpdir.name)
         with patch.dict(os.environ, {"WITH_NANVIX": "/some/build"}):
-            script = ZScript(repo_root)
+            script = ZScript()
         self.assertEqual(script._with_nanvix_path, "/some/build")
 
     def test_cli_sysroot_path_initially_none(self) -> None:
         """_cli_sysroot_path starts as None."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         self.assertIsNone(script._cli_sysroot_path)
 
     def test_offline_with_sysroot_path_uses_from_local(self) -> None:
         """In offline mode with --sysroot-path, Sysroot.from_local is used."""
-        repo_root = Path(self._tmpdir.name)
-        sysroot_dir = repo_root / "my-sysroot"
+        sysroot_dir = paths.repo_root() / "my-sysroot"
         sysroot_dir.mkdir()
 
-        script = ZScript(repo_root)
+        script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
 
@@ -1918,7 +1852,7 @@ class TestOfflineMode(unittest.TestCase):
                 "nanvix_zutil.script.Sysroot.from_local",
                 return_value=fake_sysroot,
             ) as mock_from_local,
-            patch.dict(os.environ, {"WITH_NANVIX": str(repo_root)}),
+            patch.dict(os.environ, {"WITH_NANVIX": str(paths.repo_root())}),
         ):
             script.setup()
             mock_download.assert_not_called()
@@ -1926,8 +1860,7 @@ class TestOfflineMode(unittest.TestCase):
 
     def test_offline_without_sysroot_exits(self) -> None:
         """Offline mode without a local sysroot path exits fatally."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        script = ZScript()
         script._offline = True
 
         log_mod.set_json_mode(True)
@@ -1938,11 +1871,11 @@ class TestOfflineMode(unittest.TestCase):
 
     def test_offline_without_with_nanvix_exits(self) -> None:
         """Offline mode with sysroot but no --with-nanvix exits fatally."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         sysroot_dir = repo_root / "my-sysroot"
         sysroot_dir.mkdir()
 
-        script = ZScript(repo_root)
+        script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
 
@@ -1964,7 +1897,7 @@ class TestOfflineMode(unittest.TestCase):
 
     def test_offline_missing_dep_warns_not_fatal(self) -> None:
         """Offline mode warns (not fatal) when a dep has no local artifacts."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         sysroot_dir = repo_root / "my-sysroot"
         sysroot_dir.mkdir()
         # Create WITH_NANVIX dir without deps
@@ -1972,7 +1905,7 @@ class TestOfflineMode(unittest.TestCase):
         build_dir.mkdir()
 
         with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
-            script = ZScript(repo_root)
+            script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
 
@@ -1992,7 +1925,7 @@ class TestOfflineMode(unittest.TestCase):
 
     def test_offline_with_local_dep_installs(self) -> None:
         """Offline mode installs dep from local path when artifacts exist."""
-        repo_root = Path(self._tmpdir.name)
+        repo_root = paths.repo_root()
         sysroot_dir = repo_root / "my-sysroot"
         sysroot_dir.mkdir()
         build_dir = repo_root / "build"
@@ -2000,7 +1933,7 @@ class TestOfflineMode(unittest.TestCase):
         (build_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
         with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
-            script = ZScript(repo_root)
+            script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
 
@@ -2022,7 +1955,7 @@ class TestOfflineMode(unittest.TestCase):
         mock_resolve.assert_not_called()
         # Dep should be installed in buildroot
         self.assertIsNotNone(script.buildroot)
-        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        buildroot_lib = paths.buildroot() / "lib" / "libz.a"  # type: ignore[union-attr]
         self.assertTrue(buildroot_lib.exists())
 
 
@@ -2030,21 +1963,17 @@ class TestInstallArtifacts(unittest.TestCase):
     """Tests for ZScript.install_artifacts()."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        write_manifest(Path.cwd())
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
     def test_exports_from_output_dir(self) -> None:
         """install_artifacts copies from .nanvix/output/."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        repo_root = paths.repo_root()
+        script = ZScript()
 
         # Create .nanvix/output/{lib,include}/
-        output_src = script.nanvix_dir / "output"
+        output_src = paths.out_dir()
         (output_src / "lib").mkdir(parents=True)
         (output_src / "lib" / "libfoo.a").write_bytes(b"lib")
         (output_src / "include").mkdir(parents=True)
@@ -2058,10 +1987,10 @@ class TestInstallArtifacts(unittest.TestCase):
 
     def test_exports_nested_includes(self) -> None:
         """install_artifacts preserves nested include directory structure."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        repo_root = paths.repo_root()
+        script = ZScript()
 
-        output_src = script.nanvix_dir / "output"
+        output_src = paths.out_dir()
         (output_src / "include" / "sub").mkdir(parents=True)
         (output_src / "include" / "sub" / "bar.h").write_text("// bar")
 
@@ -2072,8 +2001,8 @@ class TestInstallArtifacts(unittest.TestCase):
 
     def test_no_output_dir_produces_empty_export(self) -> None:
         """install_artifacts with no .nanvix/output/ produces empty target."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        repo_root = paths.repo_root()
+        script = ZScript()
 
         target = repo_root / "export"
         script.install_artifacts(str(target))
@@ -2085,8 +2014,8 @@ class TestInstallArtifacts(unittest.TestCase):
 
     def test_creates_output_directory(self) -> None:
         """install_artifacts creates the target directory if missing."""
-        repo_root = Path(self._tmpdir.name)
-        script = ZScript(repo_root)
+        repo_root = paths.repo_root()
+        script = ZScript()
 
         target = repo_root / "nonexistent" / "path"
         script.install_artifacts(str(target))

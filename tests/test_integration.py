@@ -10,7 +10,6 @@ subclasses :class:`~nanvix_zutil.ZScript` and implements all lifecycle hooks.
 import json
 import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +17,8 @@ from unittest.mock import patch
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
 from nanvix_zutil.helpers import run
+from nanvix_zutil import paths
+from nanvix_zutil.paths import repo_root as paths_repo_root
 from tests.testutils import write_manifest
 
 # ---------------------------------------------------------------------------
@@ -28,8 +29,8 @@ from tests.testutils import write_manifest
 class _MockConsumer(ZScript):
     """Mock consumer that records which lifecycle hooks are called."""
 
-    def __init__(self, repo_root: Path) -> None:
-        super().__init__(repo_root)
+    def __init__(self) -> None:
+        super().__init__()
         self.called: list[str] = []
 
     def setup(self) -> bool:
@@ -62,8 +63,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
     """Full lifecycle dispatch through ZScript.main()."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._repo_root = Path(self._tmpdir.name)
+        # Autouse fixture supplies a tmp CWD with .nanvix/.
+        self._repo_root = paths.repo_root()
         write_manifest(self._repo_root)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
@@ -73,18 +74,12 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def _run_main(
         self, subcommand: str, extra_argv: list[str] | None = None
     ) -> _MockConsumer:
-        """Run _MockConsumer.main() with *subcommand* and return the instance.
-
-        Patches ``sys.argv`` and captures the created instance by
-        temporarily monkeypatching the class constructor.
-        """
-        # z.py lives at <repo>/.nanvix/z.py — script_path.parent.name == ".nanvix"
+        """Run _MockConsumer.main() with *subcommand* and return the instance."""
         fake_script = str(self._repo_root / ".nanvix" / "z.py")
         argv = [fake_script, subcommand] + (extra_argv or [])
 
@@ -103,8 +98,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         created: list[_MockConsumer] = []
         original_init = _MockConsumer.__init__
 
-        def capturing_init(self_: _MockConsumer, repo_root: Path) -> None:
-            original_init(self_, repo_root)
+        def capturing_init(self_: _MockConsumer) -> None:
+            original_init(self_)
             created.append(self_)
 
         with (
@@ -184,41 +179,35 @@ class TestIntegrationLifecycle(unittest.TestCase):
 
     def test_help_without_manifest_does_not_exit_with_missing_dep(self) -> None:
         """'help' works even when nanvix.toml is absent (no EXIT_MISSING_DEP)."""
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as empty_dir:
-            fake_script = str(Path(empty_dir) / ".nanvix" / "z.py")
-            with patch("sys.argv", [fake_script, "help"]):
-                # Must not raise SystemExit(3) or any other error.
-                _MockConsumer.main()
+        (self._repo_root / ".nanvix" / "nanvix.toml").unlink()
+        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        with patch("sys.argv", [fake_script, "help"]):
+            _MockConsumer.main()
 
     def test_no_subcommand_without_manifest_does_not_exit_with_missing_dep(
         self,
     ) -> None:
         """No-subcommand invocation works even when nanvix.toml is absent."""
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as empty_dir:
-            fake_script = str(Path(empty_dir) / ".nanvix" / "z.py")
-            with patch("sys.argv", [fake_script]):
-                _MockConsumer.main()
+        (self._repo_root / ".nanvix" / "nanvix.toml").unlink()
+        fake_script = str(self._repo_root / ".nanvix" / "z.py")
+        with patch("sys.argv", [fake_script]):
+            _MockConsumer.main()
 
     def test_repo_root_inferred_from_nanvix_dir(self) -> None:
-        """Repo root is the parent of the .nanvix/ directory."""
-        fake_script = str(self._repo_root / ".nanvix" / "z.py")
-
+        """paths.repo_root() resolves to the parent of the .nanvix/ directory."""
         # build needs a persisted Docker image.
         nanvix_dir = self._repo_root / ".nanvix"
         (nanvix_dir / "env.json").write_text(
             '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
         )
 
+        fake_script = str(self._repo_root / ".nanvix" / "z.py")
         captured: list[Path] = []
         original_init = _MockConsumer.__init__
 
-        def capturing_init(self_: _MockConsumer, repo_root: Path) -> None:
-            original_init(self_, repo_root)
-            captured.append(repo_root)
+        def capturing_init(self_: _MockConsumer) -> None:
+            original_init(self_)
+            captured.append(paths_repo_root())
 
         with (
             patch.object(_MockConsumer, "__init__", capturing_init),
@@ -255,24 +244,22 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
     """Config.save() / load() round-trip via ZScript."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._repo_root = Path(self._tmpdir.name)
+        self._repo_root = paths.repo_root()
         write_manifest(self._repo_root)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_config_save_and_reload(self) -> None:
-        script = _MockConsumer(self._repo_root)
+        script = _MockConsumer()
         script.config.set("NANVIX_SYSROOT", "/tmp/sysroot")
         script.config.save()
 
         # A fresh instance should see the persisted value.
-        script2 = _MockConsumer(self._repo_root)
+        script2 = _MockConsumer()
         self.assertEqual(script2.config.get("NANVIX_SYSROOT"), "/tmp/sysroot")
 
 
@@ -280,13 +267,11 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
     """The ``run`` helper executes subprocesses and propagates errors."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._repo_root = Path(self._tmpdir.name)
+        self._repo_root = paths.repo_root()
         write_manifest(self._repo_root)
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_run_echo_succeeds(self) -> None:
