@@ -31,8 +31,9 @@ from typing import cast
 
 from nanvix_zutil import log
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
-from nanvix_zutil.constants import MANIFEST_PATH, SEMVER_RE
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
+from nanvix_zutil.paths import manifest_path
+from nanvix_zutil.utils import SEMVER_RE
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -105,7 +106,7 @@ def _validate_version_string(raw: str, context: str) -> str:
     """
     if not raw or any(ch.isspace() for ch in raw):
         log.fatal(
-            f"{MANIFEST_PATH}: invalid version for '{context}': '{raw}'",
+            f"{manifest_path()}: invalid version for '{context}': '{raw}'",
             code=EXIT_INVALID_ARGS,
             hint=f"Version for {context} must be a non-empty string"
             " without whitespace.",
@@ -113,14 +114,14 @@ def _validate_version_string(raw: str, context: str) -> str:
 
     if any(ch in _URL_UNSAFE for ch in raw):
         log.fatal(
-            f"{MANIFEST_PATH}: version for '{context}' contains URL-unsafe characters: '{raw}'",
+            f"{manifest_path()}: version for '{context}' contains URL-unsafe characters: '{raw}'",
             code=EXIT_INVALID_ARGS,
             hint="Version strings must not contain '/', '\\\\', '#', '?', or '%'.",
         )
 
     if raw == "latest":
         log.warning(
-            f"{MANIFEST_PATH}: '{context}' is set to 'latest' — this is"
+            f"{manifest_path()}: '{context}' is set to 'latest' — this is"
             " unlikely to match an actual release"
         )
 
@@ -138,7 +139,7 @@ def _parse_nanvix_version(raw: object) -> Ref:
     """
     if not isinstance(raw, str):
         log.fatal(
-            f"{MANIFEST_PATH}: 'nanvix-version' must be a plain string"
+            f"{manifest_path()}: 'nanvix-version' must be a plain string"
             f" (got {type(raw).__name__})",
             code=EXIT_INVALID_ARGS,
             hint="Use 'nanvix-version = \"X.Y.Z\"' (semver) or"
@@ -149,7 +150,7 @@ def _parse_nanvix_version(raw: object) -> Ref:
         return Ref(kind=RefKind.TAG, value="latest")
     if not SEMVER_RE.match(raw):
         log.fatal(
-            f"{MANIFEST_PATH}: 'nanvix-version' must be semver X.Y.Z or 'latest' (got '{raw}')",
+            f"{manifest_path()}: 'nanvix-version' must be semver X.Y.Z or 'latest' (got '{raw}')",
             code=EXIT_INVALID_ARGS,
             hint="Use a version like 'nanvix-version = \"0.12.257\"'"
             " or 'nanvix-version = \"latest\"'.",
@@ -181,7 +182,7 @@ def _parse_version_field(raw: object, context: str) -> Ref:
         found = _SPECIFIER_KEYS & raw_dict.keys()
         if len(found) > 1:
             log.fatal(
-                f"{MANIFEST_PATH}: table for '{context}' has conflicting keys:"
+                f"{manifest_path()}: table for '{context}' has conflicting keys:"
                 f" {', '.join(sorted(found))}",
                 code=EXIT_INVALID_ARGS,
                 hint="Use exactly one of 'version', 'tag', 'commitish', or 'id'.",
@@ -191,7 +192,7 @@ def _parse_version_field(raw: object, context: str) -> Ref:
             ver_val: object = raw_dict["version"]
             if not isinstance(ver_val, str):
                 log.fatal(
-                    f"{MANIFEST_PATH}: 'version' value for '{context}' must be a string",
+                    f"{manifest_path()}: 'version' value for '{context}' must be a string",
                     code=EXIT_INVALID_ARGS,
                 )
             value = _validate_version_string(ver_val, f"{context}.version")
@@ -201,7 +202,7 @@ def _parse_version_field(raw: object, context: str) -> Ref:
             tag_val: object = raw_dict["tag"]
             if not isinstance(tag_val, str):
                 log.fatal(
-                    f"{MANIFEST_PATH}: 'tag' value for '{context}' must be a string",
+                    f"{manifest_path()}: 'tag' value for '{context}' must be a string",
                     code=EXIT_INVALID_ARGS,
                 )
             value = _validate_version_string(tag_val, f"{context}.tag")
@@ -211,7 +212,7 @@ def _parse_version_field(raw: object, context: str) -> Ref:
             com_val: object = raw_dict["commitish"]
             if not isinstance(com_val, str):
                 log.fatal(
-                    f"{MANIFEST_PATH}: 'commitish' value for '{context}' must be a string",
+                    f"{manifest_path()}: 'commitish' value for '{context}' must be a string",
                     code=EXIT_INVALID_ARGS,
                 )
             value = _validate_version_string(com_val, f"{context}.commitish")
@@ -221,13 +222,13 @@ def _parse_version_field(raw: object, context: str) -> Ref:
             id_val: object = raw_dict["id"]
             if not isinstance(id_val, int):
                 log.fatal(
-                    f"{MANIFEST_PATH}: 'id' value for '{context}' must be an integer",
+                    f"{manifest_path()}: 'id' value for '{context}' must be an integer",
                     code=EXIT_INVALID_ARGS,
                 )
             return Ref(kind=RefKind.ID, value=id_val)
 
         log.fatal(
-            f"{MANIFEST_PATH}: table for '{context}' must contain one of"
+            f"{manifest_path()}: table for '{context}' must contain one of"
             " 'version', 'tag', 'commitish', or 'id'",
             code=EXIT_INVALID_ARGS,
             hint=f"Use '{context} = {{ version = \"1.2.3\" }}',"
@@ -237,7 +238,7 @@ def _parse_version_field(raw: object, context: str) -> Ref:
         )
 
     log.fatal(
-        f"{MANIFEST_PATH}: value for '{context}' must be a string or a table",
+        f"{manifest_path()}: value for '{context}' must be a string or a table",
         code=EXIT_INVALID_ARGS,
         hint=f"Use '{context} = \"1.2.3\"' or '{context} = {{ version = \"1.2.3\" }}'.",
     )
@@ -264,7 +265,7 @@ def _parse_dependencies(
             and "-nanvix-" in ref.value
         ):
             log.fatal(
-                f"{MANIFEST_PATH}: dependency '{name}' must not include the nanvix"
+                f"{manifest_path()}: dependency '{name}' must not include the nanvix"
                 f" version in its ref (got '{ref.value}')",
                 code=EXIT_INVALID_ARGS,
                 hint=f"Use '{name} = \"{ref.value.split('-nanvix-')[0]}\"'"
@@ -309,19 +310,19 @@ def load_manifest() -> Manifest:
         SystemExit: With exit code ``3`` if the file does not exist, or
             exit code ``2`` if the manifest is malformed.
     """
-    if not MANIFEST_PATH.is_file():
+    if not manifest_path().is_file():
         log.fatal(
-            f"Required file not found: {MANIFEST_PATH}",
+            f"Required file not found: {manifest_path()}",
             code=EXIT_MISSING_DEP,
             hint="Create a nanvix.toml in the .nanvix/ directory.",
         )
 
-    raw_bytes = MANIFEST_PATH.read_bytes()
+    raw_bytes = manifest_path().read_bytes()
     try:
         data: dict[str, object] = tomllib.loads(raw_bytes.decode("utf-8"))
     except tomllib.TOMLDecodeError as exc:
         log.fatal(
-            f"{MANIFEST_PATH}: invalid TOML syntax: {exc}",
+            f"{manifest_path()}: invalid TOML syntax: {exc}",
             code=EXIT_INVALID_ARGS,
         )
 
@@ -329,7 +330,7 @@ def load_manifest() -> Manifest:
     package: object = data.get("package")
     if not isinstance(package, dict):
         log.fatal(
-            f"{MANIFEST_PATH}: missing required [package] section",
+            f"{manifest_path()}: missing required [package] section",
             code=EXIT_INVALID_ARGS,
             hint="Add a [package] section with 'name', 'version',"
             " and 'nanvix-version'.",
@@ -340,7 +341,7 @@ def load_manifest() -> Manifest:
     pkg_name: object = pkg.get("name")
     if not isinstance(pkg_name, str) or not pkg_name:
         log.fatal(
-            f"{MANIFEST_PATH}: missing or invalid [package] key 'name'",
+            f"{manifest_path()}: missing or invalid [package] key 'name'",
             code=EXIT_INVALID_ARGS,
             hint="Add 'name = \"...\"' under [package].",
         )
@@ -348,7 +349,7 @@ def load_manifest() -> Manifest:
     pkg_version: object = pkg.get("version")
     if not isinstance(pkg_version, str) or not pkg_version:
         log.fatal(
-            f"{MANIFEST_PATH}: missing or invalid [package] key 'version'",
+            f"{manifest_path()}: missing or invalid [package] key 'version'",
             code=EXIT_INVALID_ARGS,
             hint="Add 'version = \"...\"' under [package].",
         )
@@ -356,7 +357,7 @@ def load_manifest() -> Manifest:
     raw_nanvix_version: object = pkg.get("nanvix-version")
     if raw_nanvix_version is None:
         log.fatal(
-            f"{MANIFEST_PATH}: missing or invalid [package] key 'nanvix-version'",
+            f"{manifest_path()}: missing or invalid [package] key 'nanvix-version'",
             code=EXIT_INVALID_ARGS,
             hint="Add 'nanvix-version = \"...\"' under [package].",
         )
@@ -376,7 +377,7 @@ def load_manifest() -> Manifest:
     deps_raw: object = data.get("dependencies", {})
     if not isinstance(deps_raw, dict):
         log.fatal(
-            f"{MANIFEST_PATH}: [dependencies] must be a TOML table",
+            f"{manifest_path()}: [dependencies] must be a TOML table",
             code=EXIT_INVALID_ARGS,
         )
     dependencies = _parse_dependencies(
@@ -387,7 +388,7 @@ def load_manifest() -> Manifest:
     sys_deps_raw: object = data.get("system-dependencies", {})
     if not isinstance(sys_deps_raw, dict):
         log.fatal(
-            f"{MANIFEST_PATH}: [system-dependencies] must be a TOML table",
+            f"{manifest_path()}: [system-dependencies] must be a TOML table",
             code=EXIT_INVALID_ARGS,
         )
     system_dependencies = _parse_dependencies(

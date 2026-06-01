@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 from nanvix_zutil import log
-from nanvix_zutil.constants import BUILD_OUT, DIST_DIR
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
+from nanvix_zutil.paths import build_out, dist_dir
 
 # ---------------------------------------------------------------------------
 # Archive format enum
@@ -85,17 +85,19 @@ def _build_tarball(artifact_name: str, compression: Literal["gz", "bz2"]):
     """
     mode: Literal["w:gz", "w:bz2"] = "w:gz" if compression == "gz" else "w:bz2"
 
-    DIST_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = DIST_DIR / artifact_name
+    dist = dist_dir()
+    src = build_out()
+    dist.mkdir(parents=True, exist_ok=True)
+    out_path = dist / artifact_name
     with tarfile.open(out_path, mode) as tf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
-        for root, dirs, files in os.walk(BUILD_OUT, followlinks=False):
+        for root, dirs, files in os.walk(src, followlinks=False):
             root_path = Path(root)
 
             # Security check: ensure we haven't escaped the source directory
             try:
                 root_resolved = root_path.resolve()
-                root_resolved.relative_to(BUILD_OUT)
+                root_resolved.relative_to(src)
             except ValueError:
                 # Path has escaped source directory, skip it
                 continue
@@ -106,7 +108,7 @@ def _build_tarball(artifact_name: str, compression: Literal["gz", "bz2"]):
                 if not file_path.is_symlink() and file_path.is_file():
                     tf.add(
                         file_path,
-                        arcname=file_path.relative_to(BUILD_OUT).as_posix(),
+                        arcname=file_path.relative_to(src).as_posix(),
                         recursive=False,
                     )
 
@@ -116,7 +118,7 @@ def _build_tarball(artifact_name: str, compression: Literal["gz", "bz2"]):
                 if not dir_path.is_symlink() and dir_path.is_dir():
                     tf.add(
                         dir_path,
-                        arcname=dir_path.relative_to(BUILD_OUT).as_posix(),
+                        arcname=dir_path.relative_to(src).as_posix(),
                         recursive=False,
                     )
 
@@ -138,16 +140,17 @@ def _build_zip(artifact_name: str):
         Symlinks are excluded from the archive. Symlinked directories are not
         traversed.
     """
-    out_path = DIST_DIR / artifact_name
+    src = build_out()
+    out_path = dist_dir() / artifact_name
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         # Use os.walk with followlinks=False to prevent symlink directory traversal
-        for root, _dirs, files in os.walk(BUILD_OUT, followlinks=False):
+        for root, _dirs, files in os.walk(src, followlinks=False):
             root_path = Path(root)
 
             # Security check: ensure we haven't escaped the source directory
             try:
                 root_resolved = root_path.resolve()
-                root_resolved.relative_to(BUILD_OUT)
+                root_resolved.relative_to(src)
             except ValueError:
                 # Path has escaped source directory, skip it
                 continue
@@ -156,9 +159,7 @@ def _build_zip(artifact_name: str):
             for file_name in files:
                 file_path = root_path / file_name
                 if not file_path.is_symlink() and file_path.is_file():
-                    zf.write(
-                        file_path, arcname=file_path.relative_to(BUILD_OUT).as_posix()
-                    )
+                    zf.write(file_path, arcname=file_path.relative_to(src).as_posix())
 
 
 # ---------------------------------------------------------------------------
@@ -244,18 +245,19 @@ def package(
         )
 
     # Create destination directory with proper error handling
+    dist = dist_dir()
     try:
-        DIST_DIR.mkdir(parents=True, exist_ok=True)
+        dist.mkdir(parents=True, exist_ok=True)
         # Verify it's actually a directory (not a file with the same name)
-        if not DIST_DIR.is_dir():
+        if not dist.is_dir():
             log.fatal(
-                f"Destination path exists but is not a directory: {DIST_DIR}",
+                f"Destination path exists but is not a directory: {dist}",
                 code=EXIT_GENERAL_ERROR,
                 hint="Choose a different destination path or remove the conflicting file.",
             )
     except (OSError, PermissionError) as e:
         log.fatal(
-            f"Cannot create destination directory '{DIST_DIR}': {e}",
+            f"Cannot create destination directory '{dist}': {e}",
             code=EXIT_GENERAL_ERROR,
             hint="Check parent directory permissions and available disk space.",
         )
@@ -295,7 +297,7 @@ def package(
                 )
 
             # Verify the archive was actually created before logging success
-            if not (DIST_DIR / artifact_name).exists():
+            if not (dist / artifact_name).exists():
                 log.fatal(
                     f"Failed to create archive: {artifact_name}",
                     code=EXIT_GENERAL_ERROR,
@@ -303,9 +305,9 @@ def package(
                 )
 
             log.info(f"Created {artifact_name}")
-            created.append(DIST_DIR / artifact_name)
+            created.append(dist / artifact_name)
 
-        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {DIST_DIR}")
+        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {dist}")
         return created
 
     return package_sources()

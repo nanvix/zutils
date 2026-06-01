@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 
 from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
-from nanvix_zutil.constants import BIN_OUT, NANVIX_ROOT, REPO_ROOT, TEST_OUT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
+from nanvix_zutil.paths import bin_out, nanvix_root, repo_root, test_out
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -128,7 +128,7 @@ def sync_configs() -> None:
     configs = importlib.resources.files("nanvix_zutil.configs")
     for src_name, dst_rel in _CONFIG_FILES.items():
         src = configs / src_name
-        dst = NANVIX_ROOT / dst_rel
+        dst = nanvix_root() / dst_rel
         content = src.read_bytes()
         if dst.exists() and dst.read_bytes() == content:
             continue
@@ -182,7 +182,7 @@ def make_initrd(
         app: A bare application binary filename (e.g. ``"my-app.elf"``).
             Must include the extension and must not contain path
             separators (``/`` or ``\\``).
-        test: Is this running test mode? If so, build to {TEST_OUT}, else build to {BIN_OUT}.
+        test: Is this running test mode? If so, build to <test_out>, else build to <bin_out>.
             Defaults to True.
         args: Additional arguments controlling the image generation.
 
@@ -226,7 +226,7 @@ def make_initrd(
             hint="Ensure the sysroot contains mkimage by running ./z setup.",
         )
 
-    out_dir = TEST_OUT if test else BIN_OUT
+    out_dir = test_out() if test else bin_out()
     app_stem = Path(app).stem
     output = out_dir / f"{app_stem}.img"
 
@@ -263,7 +263,7 @@ def make_initrd(
             ),
             _entry(args.bin_dir / "memd.elf", "memd", args.memd_args, args.memd_env),
             _entry(args.bin_dir / "vfsd.elf", "vfsd", args.vfsd_args, args.vfsd_env),
-            _entry(REPO_ROOT / app, app, args.app_args, args.app_env),
+            _entry(repo_root() / app, app, args.app_args, args.app_env),
         ]
     )
 

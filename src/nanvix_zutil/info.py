@@ -33,7 +33,6 @@ from nanvix_zutil.config import (
     DEFAULT_MEMORY_SIZE,
     DEFAULT_TARGET,
 )
-from nanvix_zutil.constants import SEMVER_RE
 from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
@@ -41,6 +40,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
 )
 from nanvix_zutil.github import resolve_release
+from nanvix_zutil.utils import SEMVER_RE
 
 # ---------------------------------------------------------------------------
 # Constants

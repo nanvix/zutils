@@ -15,9 +15,9 @@ import argparse
 import sys
 
 from nanvix_zutil import log
-from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
 from nanvix_zutil.helpers import ensure_tool_installed, run
+from nanvix_zutil.paths import nanvix_root
 
 HELP: str = "Format <nanvix-dir>/*.py with black"
 """One-line description surfaced in ``nanvix-zutil --help``."""
@@ -46,13 +46,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def format(check: bool = False) -> None:
-    py_files = sorted(NANVIX_ROOT.glob("*.py"))
+    py_files = sorted(nanvix_root().glob("*.py"))
     if not py_files:
-        log.warning(f"No .py files found in {NANVIX_ROOT} — nothing to format")
+        log.warning(f"No .py files found in {nanvix_root()} — nothing to format")
         return
     ensure_tool_installed("black")
     str_files = [str(f) for f in py_files]
-    black_cfg = str(NANVIX_ROOT / "black.toml")
+    black_cfg = str(nanvix_root() / "black.toml")
     cmd = [sys.executable, "-m", "black", "--config", black_cfg]
     if check:
         cmd.append("--check")

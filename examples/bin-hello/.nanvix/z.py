@@ -25,10 +25,10 @@ from nanvix_zutil import (
     ZScript,
     log,
 )
-from nanvix_zutil.constants import REPO_ROOT, SYSROOT
 from nanvix_zutil.docker import SYSROOT_CONTAINER_PATH
 from nanvix_zutil.exitcodes import EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
+from nanvix_zutil.paths import repo_root, sysroot
 
 
 class BinHello(ZScript):
@@ -64,15 +64,15 @@ class BinHello(ZScript):
     def build(self) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
         tc = TOOLCHAIN_CONTAINER_PATH
-        sysroot = SYSROOT_CONTAINER_PATH
+        _sysroot = SYSROOT_CONTAINER_PATH
         buildroot = BUILDROOT_CONTAINER_PATH
         cc = str(tc / "bin" / "i686-nanvix-gcc")
         cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{buildroot}/include"
-        ldflags = f"-T{sysroot}/lib/user.ld -static -Wl,-z,noexecstack"
+        ldflags = f"-T{_sysroot}/lib/user.ld -static -Wl,-z,noexecstack"
         libs = (
             f"-Wl,--start-group"
             f" {buildroot}/lib/libhello.a"
-            f" {sysroot}/lib/libposix.a"
+            f" {_sysroot}/lib/libposix.a"
             f" {tc}/i686-nanvix/lib/libc.a"
             f" {tc}/i686-nanvix/lib/libm.a"
             f" -Wl,--end-group"
@@ -85,7 +85,7 @@ class BinHello(ZScript):
             "-c",
             f"{cc} {cflags} -c -o main.o src/main.c"
             f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
-            cwd=REPO_ROOT,
+            cwd=repo_root(),
             docker=self.docker,
         )
 
@@ -103,7 +103,7 @@ class BinHello(ZScript):
         not configured (the ``test`` subcommand does not enable Docker
         automatically).
         """
-        binary = REPO_ROOT / "hello.elf"
+        binary = repo_root() / "hello.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
         log.info("=== bin-hello smoke tests ===")
@@ -146,19 +146,24 @@ class BinHello(ZScript):
         """Run functional tests inside a Docker container (Linux)."""
         log.info("=== bin-hello functional tests (Docker) ===")
         workspace_binary = self.translate_path(binary)
-        sysroot = self.translate_path(SYSROOT)
+        _sysroot = self.translate_path(sysroot())
         self.run(
             "timeout",
             "--foreground",
             "60",
-            f"{sysroot}/bin/nanvixd.elf",
+            f"{_sysroot}/bin/nanvixd.elf",
             "-bin-dir",
-            f"{sysroot}/bin",
+            f"{_sysroot}/bin",
             "--",
             str(workspace_binary),
         )
         log.success("PASS: bin-hello functional tests")
 
+    # TODO: There are currently two paths to resolve sysroot.
+    # The first is hardcoded at .nanvix/sysroot. This is the canonical version.
+    # The second is via CFG_SYSROOT, for global sysroot installs.
+    # Instead of using CFG_SYSROOT, we should place a symlink
+    # at .nanvix/sysroot.
     def _test_functional_windows(self, binary: Path) -> None:
         """Run functional tests natively on Windows using nanvixd.exe."""
         log.info("=== bin-hello functional tests (Windows) ===")
@@ -181,7 +186,7 @@ class BinHello(ZScript):
             str(sysroot / "bin"),
             "--",
             str(binary),
-            cwd=REPO_ROOT,
+            cwd=repo_root(),
             timeout=60,
         )
         log.success("PASS: bin-hello functional tests")
@@ -189,7 +194,7 @@ class BinHello(ZScript):
     def clean(self) -> None:
         """Remove build artifacts."""
         for name in ("main.o", "hello.elf", "hello.img"):
-            artifact = REPO_ROOT / name
+            artifact = repo_root() / name
             if artifact.exists():
                 artifact.unlink()
 

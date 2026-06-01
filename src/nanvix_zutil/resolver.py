@@ -29,7 +29,6 @@ from nanvix_zutil.buildroot import (
     parse_semver_tuple,
     suffix_dep,
 )
-from nanvix_zutil.constants import MANIFEST_PATH
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_NETWORK_ERROR
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -41,6 +40,7 @@ from nanvix_zutil.lockfile import (
     get_zutil_version,
 )
 from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.paths import manifest_path
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -527,7 +527,7 @@ def _resolve_inner(
         pkg.assets = _collect_assets(releases[name])
 
     # 6. Assemble lockfile
-    manifest_hash = compute_manifest_hash(MANIFEST_PATH)
+    manifest_hash = compute_manifest_hash(manifest_path())
 
     metadata = LockfileMetadata(
         manifest_hash=manifest_hash,
@@ -554,5 +554,5 @@ def is_stale(lockfile: Lockfile) -> bool:
     Returns:
         ``True`` if the lockfile is stale (hashes differ).
     """
-    current_hash = compute_manifest_hash(MANIFEST_PATH)
+    current_hash = compute_manifest_hash(manifest_path())
     return lockfile.metadata.manifest_hash != current_hash

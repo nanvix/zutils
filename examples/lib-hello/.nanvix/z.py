@@ -23,9 +23,9 @@ from nanvix_zutil import (
     ZScript,
     log,
 )
-from nanvix_zutil.constants import REPO_ROOT
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import run
+from nanvix_zutil.paths import repo_root
 
 
 class LibHello(ZScript):
@@ -72,7 +72,7 @@ class LibHello(ZScript):
             "sh",
             "-c",
             f"{cc} {cflags} -c -o hello.o src/hello.c && {ar} rcs libhello.a hello.o",
-            cwd=REPO_ROOT,
+            cwd=repo_root(),
             docker=self.docker,
         )
 
@@ -82,7 +82,7 @@ class LibHello(ZScript):
         Smoke: libhello.a must exist and be non-trivially sized.
         Integration: verify archive magic (``!<arch>``).
         """
-        archive = REPO_ROOT / "libhello.a"
+        archive = repo_root() / "libhello.a"
 
         # Smoke: archive must exist and be non-trivially sized.
         log.info("=== lib-hello smoke tests ===")
@@ -107,7 +107,7 @@ class LibHello(ZScript):
     def clean(self) -> None:
         """Remove build artifacts."""
         for name in ("hello.o", "libhello.a"):
-            artifact = REPO_ROOT / name
+            artifact = repo_root() / name
             if artifact.exists():
                 artifact.unlink()
 

@@ -15,9 +15,9 @@ import argparse
 import sys
 
 from nanvix_zutil import log
-from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
 from nanvix_zutil.helpers import ensure_tool_installed, run
+from nanvix_zutil.paths import nanvix_root
 
 HELP: str = "Run linters (black --check + pyright) on <nanvix-dir>/*.py"
 """One-line description surfaced in ``nanvix-zutil --help``."""
@@ -42,16 +42,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def lint() -> None:
     # venv root is always bootstrapped at .nanvix/venv
-    py_files = sorted(NANVIX_ROOT.glob("*.py"))
+    py_files = sorted(nanvix_root().glob("*.py"))
     if not py_files:
-        log.warning(f"No .py files found in {NANVIX_ROOT} — nothing to lint")
+        log.warning(f"No .py files found in {nanvix_root()} — nothing to lint")
         return
     for tool in ("black", "pyright"):
         ensure_tool_installed(tool)
 
     str_files = [str(f) for f in py_files]
-    black_cfg = str(NANVIX_ROOT / "black.toml")
-    pyright_cfg = str(NANVIX_ROOT / "pyrightconfig.json")
+    black_cfg = str(nanvix_root() / "black.toml")
+    pyright_cfg = str(nanvix_root() / "pyrightconfig.json")
     run(
         sys.executable,
         "-m",

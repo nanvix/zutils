@@ -10,8 +10,8 @@ import shutil
 import sys
 
 from nanvix_zutil import log
-from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
+from nanvix_zutil.paths import nanvix_root
 
 HELP: str = "Remove all transient .nanvix/ artifacts"
 """One-line description surfaced in ``nanvix-zutil --help``."""
@@ -55,7 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def distclean() -> None:
     for artifact in _ARTIFACTS:
-        path = NANVIX_ROOT / artifact
+        path = nanvix_root() / artifact
         if not path.exists() and not path.is_symlink():
             continue
         try:
@@ -71,7 +71,7 @@ def distclean() -> None:
 
 
 def _run_consumer_clean() -> None:
-    z_py = NANVIX_ROOT / "z.py"
+    z_py = nanvix_root() / "z.py"
     if not z_py.exists():
         return
 

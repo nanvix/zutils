@@ -11,9 +11,9 @@ import os
 import sys
 
 from nanvix_zutil import log
-from nanvix_zutil.constants import MANIFEST_PATH
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
+from nanvix_zutil.paths import manifest_path
 from nanvix_zutil.resolver import resolve
 
 HELP: str = "Resolve manifest and emit CI-ready metadata"
@@ -61,9 +61,9 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if not MANIFEST_PATH.exists():
+    if not manifest_path().exists():
         log.fatal(
-            f"Manifest not found: {MANIFEST_PATH}",
+            f"Manifest not found: {manifest_path()}",
             code=EXIT_MISSING_DEP,
             hint="Run from a Nanvix consumer repo root.",
         )

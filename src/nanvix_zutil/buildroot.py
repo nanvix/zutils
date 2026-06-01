@@ -24,8 +24,9 @@ from nanvix_zutil.config import (
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
 )
-from nanvix_zutil.constants import BUILDROOT, NANVIX_ROOT
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+from nanvix_zutil.paths import buildroot as _buildroot_dir
+from nanvix_zutil.paths import nanvix_root
 
 # ---------------------------------------------------------------------------
 # Tarball path helpers
@@ -105,9 +106,9 @@ class Dependency:
             name.  Interpolated keys: ``{{name}}``, ``{{machine}}``,
             ``{{mode}}``, ``{{mem}}``.
         install_libs: List of ``.a`` file names to copy into
-            ``{BUILDROOT}/lib/``.  ``None`` copies all ``.a`` files found.
+            ``<buildroot>/lib/``.  ``None`` copies all ``.a`` files found.
         install_headers: List of header file names to copy into
-            ``{BUILDROOT}/include/``.  ``None`` copies all ``.h`` files found.
+            ``<buildroot>/include/``.  ``None`` copies all ``.h`` files found.
     """
 
     name: str
@@ -218,11 +219,12 @@ class Buildroot:
         :class:`Buildroot` instance.
 
         Returns:
-            A :class:`Buildroot` pointing at {BUILDROOT}.
+            A :class:`Buildroot` pointing at <buildroot>.
         """
-        (BUILDROOT / "lib").mkdir(parents=True, exist_ok=True)
-        (BUILDROOT / "include").mkdir(parents=True, exist_ok=True)
-        log.info(f"Buildroot at {BUILDROOT}")
+        br = _buildroot_dir()
+        (br / "lib").mkdir(parents=True, exist_ok=True)
+        (br / "include").mkdir(parents=True, exist_ok=True)
+        log.info(f"Buildroot at {br}")
         return Buildroot()
 
     # ------------------------------------------------------------------
@@ -243,7 +245,7 @@ class Buildroot:
 
         The release asset is downloaded into ``.nanvix/cache/`` and then
         extracted.  Selected ``.a`` and ``.h`` files are copied into
-        ``{BUILDROOT}/lib/`` and ``{BUILDROOT}/include/`` respectively.
+        ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
         Args:
             dep: The :class:`Dependency` descriptor.
@@ -263,7 +265,7 @@ class Buildroot:
             mem=memory_size,
         )
 
-        cache_dir = NANVIX_ROOT / "cache"
+        cache_dir = nanvix_root() / "cache"
 
         asset_path = github.download_release_asset(
             repo=dep.repo,
@@ -298,14 +300,18 @@ class Buildroot:
                             dep.install_libs
                         ):
                             member.name = _relative_to_segment(member_path, "lib")
-                            tf.extract(member, path=BUILDROOT / "lib", filter="data")
+                            tf.extract(
+                                member, path=_buildroot_dir() / "lib", filter="data"
+                            )
                     elif member_path.suffix == ".h":
                         if dep.install_headers is None or member_path.name in (
                             dep.install_headers
                         ):
                             member.name = _relative_to_segment(member_path, "include")
                             tf.extract(
-                                member, path=BUILDROOT / "include", filter="data"
+                                member,
+                                path=_buildroot_dir() / "include",
+                                filter="data",
                             )
 
     def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
@@ -323,7 +329,7 @@ class Buildroot:
                         dep.install_libs
                     ):
                         rel = _relative_to_segment(member_path, "lib")
-                        dest = BUILDROOT / "lib" / rel
+                        dest = _buildroot_dir() / "lib" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -332,7 +338,7 @@ class Buildroot:
                         dep.install_headers
                     ):
                         rel = _relative_to_segment(member_path, "include")
-                        dest = BUILDROOT / "include" / rel
+                        dest = _buildroot_dir() / "include" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -365,7 +371,7 @@ class Buildroot:
         installed = False
         lib_dir = dep_dir / "lib"
         if lib_dir.is_dir():
-            dst_lib = BUILDROOT / "lib"
+            dst_lib = _buildroot_dir() / "lib"
             dst_lib.mkdir(parents=True, exist_ok=True)
             for src_file in lib_dir.iterdir():
                 if src_file.is_file() and src_file.suffix == ".a":
@@ -375,7 +381,7 @@ class Buildroot:
 
         include_dir = dep_dir / "include"
         if include_dir.is_dir():
-            dst_inc = BUILDROOT / "include"
+            dst_inc = _buildroot_dir() / "include"
             dst_inc.mkdir(parents=True, exist_ok=True)
             for src_file in include_dir.rglob("*"):
                 if src_file.is_file() and src_file.suffix == ".h":
@@ -402,16 +408,17 @@ class Buildroot:
 
         Args:
             required_libs: List of ``.a`` file names that must exist under
-                ``{BUILDROOT}/lib/``.
+                ``<buildroot>/lib/``.
 
         Raises:
             SystemExit: With exit code ``3`` if any required file is missing.
         """
         for lib in required_libs:
-            lib_path = BUILDROOT / "lib" / lib
+            br = _buildroot_dir()
+            lib_path = br / "lib" / lib
             if not lib_path.exists():
                 log.fatal(
-                    f"Required library '{lib}' not found in buildroot at {BUILDROOT}",
+                    f"Required library '{lib}' not found in buildroot at {br}",
                     code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download build-time dependencies.",
                 )

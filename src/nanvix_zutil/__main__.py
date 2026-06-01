@@ -13,7 +13,6 @@ from pathlib import Path
 from nanvix_zutil import log
 from nanvix_zutil.cli import SUBCOMMAND_HELP, build_parser
 from nanvix_zutil.config import ENV_VARS
-from nanvix_zutil.constants import NANVIX_ROOT
 from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.exitcodes import (
     EXIT_GENERAL_ERROR,
@@ -24,6 +23,7 @@ from nanvix_zutil.format_cmd import HELP as _FORMAT_HELP
 from nanvix_zutil.info import HELP as _INFO_HELP
 from nanvix_zutil.lint_cmd import HELP as _LINT_HELP
 from nanvix_zutil.lockfile import get_zutil_version
+from nanvix_zutil.paths import nanvix_root
 from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
 from nanvix_zutil.script import ZScript
 
@@ -178,7 +178,7 @@ def main() -> None:
         build_parser().parse_args([subcmd, "--help"])
         return
 
-    z_py = NANVIX_ROOT / "z.py"
+    z_py = nanvix_root() / "z.py"
 
     if not z_py.exists():
         log.fatal(
