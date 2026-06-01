@@ -227,6 +227,7 @@ def make_initrd(
         )
 
     out_dir = test_out() if test else bin_out()
+    Path.mkdir(out_dir, parents=True, exist_ok=True)
     app_stem = Path(app).stem
     output = out_dir / f"{app_stem}.img"
 
