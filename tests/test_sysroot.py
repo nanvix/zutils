@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
-from nanvix_zutil.config import Config, DEFAULT_TARGET
+from nanvix_zutil.config import DEFAULT_TARGET, Config
 from nanvix_zutil.sysroot import WINDOWS_HOST_BINARIES, Sysroot
 
 
@@ -62,12 +62,10 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
         log_mod.set_json_mode(False)
 
     def test_skips_download_when_dest_exists(self) -> None:
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
 
@@ -105,14 +103,12 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_redownloads_when_tag_mismatches(self) -> None:
         """If sysroot exists but cached tag != requested tag, re-download."""
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
         (dest / "lib").mkdir()
         (dest / "lib" / "old.a").write_bytes(b"old")
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
 
@@ -145,12 +141,10 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_download_when_tag_matches(self) -> None:
         """If sysroot exists and cached tag == requested tag, skip download."""
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
 
@@ -175,12 +169,10 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_when_bare_semver_resolves_to_cached_v_tag(self) -> None:
         """Requesting '1.0.0' that resolves to 'v1.0.0' should cache-hit."""
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
 
@@ -205,12 +197,10 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_when_latest_resolves_to_cached_tag(self) -> None:
         """Requesting 'latest' that resolves to the cached tag should cache-hit."""
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         dest = Path(self._tmpdir.name) / "sysroot"
         dest.mkdir()
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("sysroot_tag", "v0.12.410")
         config.save()
 
@@ -249,15 +239,13 @@ class TestWindowsBinariesStaleDetection(unittest.TestCase):
         """If Windows binaries exist but persisted tag differs, re-download."""
         import zipfile
 
-        nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
-        nanvix_dir.mkdir()
         sysroot_dir = Path(self._tmpdir.name) / "sysroot"
         bin_dir = sysroot_dir / "bin"
         bin_dir.mkdir(parents=True)
         for b in WINDOWS_HOST_BINARIES:
             (bin_dir / b).write_bytes(b"old-binary")
 
-        config = Config(nanvix_dir)
+        config = Config()
         config.set("windows_binaries_tag", "v1.0.0")
         config.save()
 
