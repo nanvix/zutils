@@ -505,7 +505,7 @@ class ZScript:
                     raise
 
         self.config.save()
-        sync_configs(self.nanvix_dir)
+        sync_configs()
         return self._used_fallback
 
     def install_artifacts(self, output: str) -> None:

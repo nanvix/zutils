@@ -15,6 +15,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
+from nanvix_zutil.paths import nanvix_root
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -115,7 +116,7 @@ _CONFIG_FILES: dict[str, str] = {
 }
 
 
-def sync_configs(nanvix_dir: Path) -> None:
+def sync_configs() -> None:
     """Sync canonical tool configuration files into ``.nanvix/``.
 
     Copies config files shipped inside ``nanvix_zutil.configs`` to the
@@ -127,7 +128,7 @@ def sync_configs(nanvix_dir: Path) -> None:
     configs = importlib.resources.files("nanvix_zutil.configs")
     for src_name, dst_rel in _CONFIG_FILES.items():
         src = configs / src_name
-        dst = nanvix_dir / dst_rel
+        dst = nanvix_root() / dst_rel
         content = src.read_bytes()
         if dst.exists() and dst.read_bytes() == content:
             continue
