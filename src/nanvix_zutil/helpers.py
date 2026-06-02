@@ -15,7 +15,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
-from nanvix_zutil.paths import nanvix_root
+from nanvix_zutil.paths import nanvix_root, repo_root
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -223,7 +223,7 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
         )
 
     app_stem = Path(app).stem
-    output = instance.repo_root / f"{app_stem}.img"
+    output = repo_root() / f"{app_stem}.img"
 
     def _escape(arg: str) -> str:
         return arg.replace(";", "\\;")
@@ -258,7 +258,7 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
             ),
             _entry(args.bin_dir / "memd.elf", "memd", args.memd_args, args.memd_env),
             _entry(args.bin_dir / "vfsd.elf", "vfsd", args.vfsd_args, args.vfsd_env),
-            _entry(instance.repo_root / app, app, args.app_args, args.app_env),
+            _entry(repo_root() / app, app, args.app_args, args.app_env),
         ]
     )
 

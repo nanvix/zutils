@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 from nanvix_zutil.__main__ import main
 from nanvix_zutil.lockfile import get_zutil_version
+from nanvix_zutil.paths import manifest_path, z_py_path
 
 
 class TestVersionFlag(unittest.TestCase):
@@ -159,42 +160,33 @@ class TestConsumerCommandWithZPy(unittest.TestCase):
             discover_script_class,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo_root = Path(tmpdir)
-            nanvix_dir = repo_root / ".nanvix"
-            nanvix_dir.mkdir()
-            (nanvix_dir / "nanvix.toml").write_text(
-                '[package]\nname = "test"\nversion = "0.1.0"\n'
-                'nanvix-version = "0.1.0"\n'
-            )
-            (nanvix_dir / "z.py").write_text(textwrap.dedent("""\
-                from nanvix_zutil.script import ZScript
+        manifest_path().write_text(
+            '[package]\nname = "test"\nversion = "0.1.0"\n' 'nanvix-version = "0.1.0"\n'
+        )
+        z_py_path().write_text(textwrap.dedent("""\
+            from nanvix_zutil.script import ZScript
 
-                class TestScript(ZScript):
-                    def build(self):
-                        pass
+            class TestScript(ZScript):
+                def build(self):
+                    pass
 
-                if __name__ == "__main__":
-                    TestScript.main()
-                """))
+            if __name__ == "__main__":
+                TestScript.main()
+            """))
 
-            cls = discover_script_class(nanvix_dir / "z.py")
-            self.assertEqual(cls.__name__, "TestScript")
+        cls = discover_script_class()
+        self.assertEqual(cls.__name__, "TestScript")
 
-            # Verify main() dispatches correctly by mocking the
-            # discovered class's main().
-            with (
-                patch("sys.argv", ["nanvix-zutil", "build"]),
-                patch(
-                    "nanvix_zutil.__main__.Path.cwd",
-                    return_value=repo_root,
-                ),
-                patch("nanvix_zutil.__main__.discover_script_class") as mock_discover,
-            ):
-                mock_cls = MagicMock()
-                mock_discover.return_value = mock_cls
-                main()
-                mock_cls.main.assert_called_once_with(repo_root=repo_root)
+        # Verify main() dispatches correctly by mocking the
+        # discovered class's main().
+        with (
+            patch("sys.argv", ["nanvix-zutil", "build"]),
+            patch("nanvix_zutil.__main__.discover_script_class") as mock_discover,
+        ):
+            mock_cls = MagicMock()
+            mock_discover.return_value = mock_cls
+            main()
+            mock_cls.main.assert_called_once_with()
 
     def test_discover_subclass(self) -> None:
         """discover_script_class finds the ZScript subclass in z.py."""
@@ -202,23 +194,21 @@ class TestConsumerCommandWithZPy(unittest.TestCase):
             discover_script_class,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            z_py = Path(tmpdir) / "z.py"
-            z_py.write_text(textwrap.dedent("""\
-                from nanvix_zutil.script import ZScript
+        z_py_path().write_text(textwrap.dedent("""\
+            from nanvix_zutil.script import ZScript
 
-                class MyBuild(ZScript):
-                    def build(self):
-                        pass
+            class MyBuild(ZScript):
+                def build(self):
+                    pass
 
-                if __name__ == "__main__":
-                    MyBuild.main()
-                """))
-            cls = discover_script_class(z_py)
-            self.assertIsNot(
-                cls, __import__("nanvix_zutil.script", fromlist=["ZScript"]).ZScript
-            )
-            self.assertEqual(cls.__name__, "MyBuild")
+            if __name__ == "__main__":
+                MyBuild.main()
+            """))
+        cls = discover_script_class()
+        self.assertIsNot(
+            cls, __import__("nanvix_zutil.script", fromlist=["ZScript"]).ZScript
+        )
+        self.assertEqual(cls.__name__, "MyBuild")
 
     def test_no_subclass_exits(self) -> None:
         """discover_script_class exits with error if no subclass found."""
@@ -226,23 +216,19 @@ class TestConsumerCommandWithZPy(unittest.TestCase):
             discover_script_class,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            z_py = Path(tmpdir) / "z.py"
-            z_py.write_text("x = 42\n")
-            with self.assertRaises(SystemExit) as ctx:
-                discover_script_class(z_py)
-            self.assertEqual(ctx.exception.code, 1)
+        z_py_path().write_text("x = 42\n")
+        with self.assertRaises(SystemExit) as ctx:
+            discover_script_class()
+        self.assertEqual(ctx.exception.code, 1)
 
     def test_import_error_cleans_up_sys_modules(self) -> None:
         """discover_script_class cleans up sys.modules on import failure."""
         from nanvix_zutil.__main__ import discover_script_class
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            z_py = Path(tmpdir) / "z.py"
-            z_py.write_text("raise RuntimeError('boom')\n")
-            with self.assertRaises(SystemExit):
-                discover_script_class(z_py)
-            self.assertNotIn("_z_consumer", sys.modules)
+        z_py_path().write_text("raise RuntimeError('boom')\n")
+        with self.assertRaises(SystemExit):
+            discover_script_class()
+        self.assertNotIn("_z_consumer", sys.modules)
 
 
 class TestUnknownCommand(unittest.TestCase):

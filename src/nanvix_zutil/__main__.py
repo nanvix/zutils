@@ -23,6 +23,7 @@ from nanvix_zutil.format_cmd import HELP as _FORMAT_HELP
 from nanvix_zutil.info import HELP as _INFO_HELP
 from nanvix_zutil.lint_cmd import HELP as _LINT_HELP
 from nanvix_zutil.lockfile import get_zutil_version
+from nanvix_zutil.paths import z_py_path
 from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
 from nanvix_zutil.script import ZScript
 
@@ -36,7 +37,7 @@ _STANDALONE_HELP: dict[str, str] = {
 }
 
 
-def discover_script_class(z_py: Path) -> type[ZScript]:
+def discover_script_class() -> type[ZScript]:
     """Import ``.nanvix/z.py`` and return the first ``ZScript`` subclass found.
 
     Args:
@@ -45,6 +46,13 @@ def discover_script_class(z_py: Path) -> type[ZScript]:
     Returns:
         The ``ZScript`` subclass defined in the consumer script.
     """
+    z_py = z_py_path()
+    if not z_py_path().exists():
+        log.fatal(
+            f".nanvix/z.py not found in {Path.cwd()}",
+            code=EXIT_MISSING_DEP,
+            hint="Run this command from a Nanvix consumer repo root.",
+        )
     spec = importlib.util.spec_from_file_location("_z_consumer", z_py)
     if spec is None or spec.loader is None:
         log.fatal(f"Cannot load {z_py}", code=EXIT_GENERAL_ERROR)
@@ -177,16 +185,8 @@ def main() -> None:
         build_parser().parse_args([subcmd, "--help"])
         return
 
-    z_py = Path.cwd() / ".nanvix" / "z.py"
-
-    if not z_py.exists():
-        log.fatal(
-            f".nanvix/z.py not found in {Path.cwd()}",
-            code=EXIT_MISSING_DEP,
-            hint="Run this command from a Nanvix consumer repo root.",
-        )
-    script_cls = discover_script_class(z_py)
-    script_cls.main(repo_root=Path.cwd())
+    script_cls = discover_script_class()
+    script_cls.main()
 
 
 if __name__ == "__main__":
