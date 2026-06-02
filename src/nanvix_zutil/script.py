@@ -198,7 +198,7 @@ class ZScript:
         self.config = Config()
         self.log = log
         self.targets: list[str] = []
-        self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
+        self.manifest: Manifest = load_manifest()
         self.sysroot: Sysroot | None = None
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
@@ -552,7 +552,6 @@ class ZScript:
             self.manifest,
             gh_token=self.config.get(CFG_GH_TOKEN),
             shallow=shallow,
-            manifest_path=self.nanvix_dir / "nanvix.toml",
         )
         lock_path = self.nanvix_dir / "nanvix.lock"
         write_lockfile(lockfile, lock_path)
@@ -565,7 +564,6 @@ class ZScript:
         ``EXIT_INVALID_ARGS`` if it is stale relative to ``nanvix.toml``.
         """
         lock_path = self.nanvix_dir / "nanvix.lock"
-        manifest_path = self.nanvix_dir / "nanvix.toml"
         lockfile = read_lockfile(lock_path)
 
         # Warn when "latest" lockfile may silently be stale.
@@ -577,7 +575,7 @@ class ZScript:
                 " releases."
             )
 
-        if is_stale(lockfile, manifest_path):
+        if is_stale(lockfile):
             log.fatal(
                 "Lockfile is stale — nanvix.toml has changed since it was generated.",
                 code=EXIT_INVALID_ARGS,
