@@ -65,6 +65,13 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
         write_manifest(self._repo_root)
+        # Config and other path-based helpers resolve .nanvix/ from cwd.
+        # Override the autouse fixture's tmp_path so they find this test's repo.
+        self._orig_cwd = os.getcwd()
+        os.chdir(self._repo_root)
+        from nanvix_zutil.paths import nanvix_root
+
+        nanvix_root.cache_clear()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -73,6 +80,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def tearDown(self) -> None:
+        # Restore cwd before tmpdir cleanup so Windows can delete it.
+        os.chdir(self._orig_cwd)
         self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 

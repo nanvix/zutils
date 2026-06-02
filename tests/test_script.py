@@ -99,10 +99,18 @@ class TestZScriptAutoSetup(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         write_manifest(Path(self._tmpdir.name))
+        # Config resolves .nanvix/ from cwd; override the autouse fixture.
+        self._orig_cwd = os.getcwd()
+        os.chdir(self._tmpdir.name)
+        from nanvix_zutil.paths import nanvix_root
+
+        nanvix_root.cache_clear()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
+        # Restore cwd before tmpdir cleanup so Windows can delete it.
+        os.chdir(self._orig_cwd)
         self._tmpdir.cleanup()
 
     def test_setup_downloads_sysroot(self) -> None:
