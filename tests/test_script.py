@@ -29,6 +29,7 @@ from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_LATEST_WITH_DEPS,
     MANIFEST_WITH_DEPS,
+    chdir_to,
     write_manifest,
 )
 
@@ -38,12 +39,10 @@ class TestZScriptInit(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_repo_root_resolved(self) -> None:
         repo_root = Path(self._tmpdir.name)
@@ -82,8 +81,8 @@ class TestZScriptInit(unittest.TestCase):
 
     def test_missing_manifest_exits_3(self) -> None:
         tmpdir = tempfile.TemporaryDirectory()
-        self.addCleanup(tmpdir.cleanup)
         repo_root = Path(tmpdir.name)
+        chdir_to(self, tmpdir)
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
@@ -98,20 +97,10 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-        # Config resolves .nanvix/ from cwd; override the autouse fixture.
-        self._orig_cwd = os.getcwd()
-        os.chdir(self._tmpdir.name)
-        from nanvix_zutil.paths import nanvix_root
-
-        nanvix_root.cache_clear()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        # Restore cwd before tmpdir cleanup so Windows can delete it.
-        os.chdir(self._orig_cwd)
-        self._tmpdir.cleanup()
 
     def test_setup_downloads_sysroot(self) -> None:
         """setup() calls Sysroot.download with config values."""
@@ -139,7 +128,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
     def test_setup_with_deps_creates_buildroot(self) -> None:
         """setup() with manifest dependencies creates Buildroot and installs all deps."""
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -201,12 +190,10 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_LATEST_WITH_DEPS)
+        chdir_to(self, self._tmpdir)
+        write_manifest(MANIFEST_LATEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_setup_latest_sysroot_suffixes_deps(self) -> None:
         """setup() suffixes VERSION deps with the resolved sysroot tag."""
@@ -261,12 +248,10 @@ class TestZScriptSyncConfigs(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def _run_setup(self) -> ZScript:
         fake_sysroot = MagicMock()
@@ -356,10 +341,8 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         return ZScript(Path(self._tmpdir.name))
@@ -385,10 +368,8 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     def test_base_class_exposes_only_auto_hooks(self) -> None:
         script = ZScript(Path(self._tmpdir.name))
@@ -451,10 +432,8 @@ class TestHelpersRun(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     def test_run_success(self) -> None:
         result = helpers.run(sys.executable, "-c", "print('ok')")
@@ -741,12 +720,11 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -800,10 +778,8 @@ class TestZScriptDockerConfig(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         return ZScript(Path(self._tmpdir.name))
@@ -860,12 +836,10 @@ class TestZScriptAutoDocker(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_build_auto_enables_docker_on_windows(self) -> None:
         """build on Windows uses the persisted Docker image."""
@@ -936,10 +910,8 @@ class TestZScriptCleanWindows(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     @patch("nanvix_zutil.script.is_windows", return_value=True)
     def test_clean_removes_configured_artifact(self, _mock: object) -> None:
@@ -968,12 +940,10 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        chdir_to(self, self._tmpdir)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_setup_returns_false_when_no_fallback(self) -> None:
         """setup() returns False when all deps resolve exactly."""
@@ -1019,7 +989,7 @@ class TestZScriptSetupFallbackReporting(unittest.TestCase):
 
     def test_setup_no_deps_returns_false(self) -> None:
         """setup() returns False when there are no dependencies."""
-        write_manifest(Path(self._tmpdir.name))  # default manifest, no deps
+        write_manifest()  # default manifest, no deps
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1072,7 +1042,8 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        chdir_to(self, self._tmpdir)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
@@ -1082,9 +1053,6 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         p = patch("nanvix_zutil.script.check_docker", return_value=None)
         p.start()
         self.addCleanup(p.stop)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_exit_degraded_setup_value(self) -> None:
         """EXIT_DEGRADED_SETUP has the expected value of 7."""
@@ -1175,7 +1143,8 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1186,7 +1155,6 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
 
     def tearDown(self) -> None:
         os.environ.pop("WITH_NANVIX", None)
-        self._tmpdir.cleanup()
 
     def test_setup_calls_overlay_when_env_set(self) -> None:
         """setup() calls sysroot.overlay_local_nanvix when WITH_NANVIX is set."""
@@ -1218,7 +1186,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
 
     def test_setup_local_deps_skips_github(self) -> None:
         """setup() skips GitHub download for deps found locally."""
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         local_dir = Path(self._tmpdir.name) / "local-nanvix"
         (local_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
@@ -1247,11 +1215,11 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        chdir_to(self, self._tmpdir)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_local_sysroot_skips_github(self) -> None:
@@ -1261,7 +1229,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
-        write_manifest(repo_root)
+        write_manifest()
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
             script = ZScript(repo_root)
@@ -1286,7 +1254,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
             script = ZScript(repo_root)
@@ -1300,11 +1268,11 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
+        chdir_to(self, self._tmpdir)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_local_dep_uses_install_local_nanvix(self) -> None:
@@ -1315,7 +1283,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1341,7 +1309,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         (local_dep_path / "deps" / "zlib" / "lib").mkdir(parents=True)
         (local_dep_path / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1365,7 +1333,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         local_dep_path = repo_root / "empty-dir"
         local_dep_path.mkdir()
 
-        write_manifest(repo_root, MANIFEST_WITH_DEPS)
+        write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1388,10 +1356,8 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
 
     def _make_script(self) -> ZScript:
         repo_root = Path(self._tmpdir.name)
@@ -1874,7 +1840,8 @@ class TestOfflineMode(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name), MANIFEST_WITH_DEPS)
+        chdir_to(self, self._tmpdir)
+        write_manifest(MANIFEST_WITH_DEPS)
         for key in (
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
@@ -1884,7 +1851,6 @@ class TestOfflineMode(unittest.TestCase):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_offline_default_false(self) -> None:
@@ -2039,12 +2005,10 @@ class TestInstallArtifacts(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_exports_from_output_dir(self) -> None:
         """install_artifacts copies from .nanvix/output/."""

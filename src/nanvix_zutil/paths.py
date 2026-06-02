@@ -16,6 +16,7 @@ import functools
 from pathlib import Path
 
 import nanvix_zutil.log as log
+from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 
 
 # -------------------------------
@@ -33,7 +34,11 @@ def nanvix_root() -> Path:
         candidate = p / ".nanvix"
         if candidate.is_dir():
             return candidate
-    log.fatal("Could not find .nanvix directory.")
+    log.fatal(
+        "Could not find .nanvix directory.",
+        code=EXIT_MISSING_DEP,
+        hint="Run this command from a Nanvix consumer repo root.",
+    )
 
 
 def manifest_path() -> Path:

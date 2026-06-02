@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from nanvix_zutil.distclean_cmd import _run_consumer_clean, distclean, main
 
-from tests.testutils import write_manifest
+from tests.testutils import chdir_to, write_manifest
 
 
 def _patch_prefix(nanvix_dir: Path):
@@ -34,9 +34,6 @@ class TestDistcleanFunction(unittest.TestCase):
         self.nanvix_dir = Path(self._tmpdir.name) / ".nanvix"
         self.nanvix_dir.mkdir()
         (self.nanvix_dir / "nanvix.toml").write_text("")
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def test_removes_sysroot(self) -> None:
         sysroot = self.nanvix_dir / "sysroot"
@@ -210,12 +207,10 @@ class TestRunConsumerClean(unittest.TestCase):
         self.repo_root = Path(self._tmpdir.name)
         self.nanvix_dir = self.repo_root / ".nanvix"
         self.nanvix_dir.mkdir()
-        write_manifest(self.repo_root)
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         # Stamp file the consumer clean() can touch so we can assert it ran.
         self.stamp = self.repo_root / "clean.stamp"
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
 
     def _write_z_py(self, body: str) -> None:
         """Write a .nanvix/z.py whose ZScript subclass body is *body*."""
@@ -299,31 +294,31 @@ class TestMainIntegration(unittest.TestCase):
     """main() runs consumer clean() then removes artifacts in one call."""
 
     def test_main_calls_clean_then_distcleans(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo_root = Path(tmpdir)
-            nanvix_dir = repo_root / ".nanvix"
-            nanvix_dir.mkdir()
-            write_manifest(repo_root)
-            stamp = repo_root / "clean.stamp"
-            sysroot = nanvix_dir / "sysroot"
-            sysroot.mkdir()
-            (nanvix_dir / "z.py").write_text(
-                "from nanvix_zutil.script import ZScript\n"
-                "\n"
-                "class MyZ(ZScript):\n"
-                "    def clean(self) -> None:\n"
-                f"        open(r'{stamp}', 'w').close()\n"
-            )
+        tmpdir = tempfile.TemporaryDirectory()
+        chdir_to(self, tmpdir)
+        repo_root = Path(tmpdir.name)
+        nanvix_dir = repo_root / ".nanvix"
+        write_manifest()
+        stamp = repo_root / "clean.stamp"
+        sysroot = nanvix_dir / "sysroot"
+        sysroot.mkdir()
+        (nanvix_dir / "z.py").write_text(
+            "from nanvix_zutil.script import ZScript\n"
+            "\n"
+            "class MyZ(ZScript):\n"
+            "    def clean(self) -> None:\n"
+            f"        open(r'{stamp}', 'w').close()\n"
+        )
 
-            with (
-                _patch_prefix(nanvix_dir),
-                patch("sys.argv", ["nanvix-zutil distclean"]),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                main()
-            self.assertEqual(ctx.exception.code, 0)
-            self.assertTrue(stamp.exists(), "consumer clean() was not invoked")
-            self.assertFalse(sysroot.exists(), "sysroot was not removed")
+        with (
+            _patch_prefix(nanvix_dir),
+            patch("sys.argv", ["nanvix-zutil distclean"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            main()
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertTrue(stamp.exists(), "consumer clean() was not invoked")
+        self.assertFalse(sysroot.exists(), "sysroot was not removed")
 
 
 if __name__ == "__main__":
