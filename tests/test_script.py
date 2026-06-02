@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import helpers
+from nanvix_zutil import paths
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
@@ -149,10 +150,8 @@ class TestZScriptAutoSetup(unittest.TestCase):
             script = ZScript(Path(self._tmpdir.name))
             script.setup()
 
-        # Buildroot.create called once with the nanvix_dir/buildroot path.
-        mock_create.assert_called_once()
-        (create_path,), _ = mock_create.call_args
-        self.assertEqual(create_path, script.nanvix_dir / "buildroot")
+        # Buildroot.create called once (now takes no arguments).
+        mock_create.assert_called_once_with()
 
         # install_dep called once per dependency in the manifest.
         dep_count = len(script.manifest.dependencies)
@@ -1299,7 +1298,7 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         # Dep was installed locally, buildroot should exist.
         self.assertIsNotNone(script.buildroot)
         # The local lib should have been copied into the buildroot.
-        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        buildroot_lib = paths.buildroot() / "lib" / "libz.a"  # type: ignore[union-attr]
         self.assertTrue(buildroot_lib.exists())
 
     def test_local_dep_no_github_call(self) -> None:
@@ -1996,7 +1995,7 @@ class TestOfflineMode(unittest.TestCase):
         mock_resolve.assert_not_called()
         # Dep should be installed in buildroot
         self.assertIsNotNone(script.buildroot)
-        buildroot_lib = script.buildroot.path / "lib" / "libz.a"  # type: ignore[union-attr]
+        buildroot_lib = paths.buildroot() / "lib" / "libz.a"  # type: ignore[union-attr]
         self.assertTrue(buildroot_lib.exists())
 
 

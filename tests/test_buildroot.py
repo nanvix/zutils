@@ -5,7 +5,6 @@
 
 import io
 import tarfile
-import tempfile
 import unittest
 import zipfile
 from pathlib import Path
@@ -22,6 +21,7 @@ from nanvix_zutil.buildroot import (
     parse_semver_tuple,
     suffix_dep,
 )
+from nanvix_zutil.paths import buildroot as _buildroot
 
 
 def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
@@ -102,63 +102,52 @@ class TestBuildrootCreate(unittest.TestCase):
     """Buildroot.create() sets up the expected directory layout."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_creates_lib_dir(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
-        self.assertTrue((br.path / "lib").is_dir())
+        Buildroot.create()
+        self.assertTrue((_buildroot() / "lib").is_dir())
 
     def test_creates_include_dir(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
-        self.assertTrue((br.path / "include").is_dir())
+        Buildroot.create()
+        self.assertTrue((_buildroot() / "include").is_dir())
 
     def test_path_is_absolute(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
-        self.assertTrue(br.path.is_absolute())
+        Buildroot.create()
+        self.assertTrue(_buildroot().is_absolute())
 
     def test_idempotent(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br1 = Buildroot.create(dest=dest)
-        br2 = Buildroot.create(dest=dest)
-        self.assertEqual(br1.path, br2.path)
+        Buildroot.create()
+        Buildroot.create()
+        self.assertTrue((_buildroot() / "lib").is_dir())
 
 
 class TestBuildrootVerify(unittest.TestCase):
     """Buildroot.verify() checks that required libraries exist."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_verify_passes_when_libs_present(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
-        (br.path / "lib" / "libz.a").write_bytes(b"")
+        br = Buildroot.create()
+        (_buildroot() / "lib" / "libz.a").write_bytes(b"")
         # Should not raise.
         br.verify(required_libs=["libz.a"])
 
     def test_verify_exits_3_when_lib_missing(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
+        br = Buildroot.create()
         with self.assertRaises(SystemExit) as ctx:
             br.verify(required_libs=["libposix.a"])
         self.assertEqual(ctx.exception.code, 3)
 
     def test_verify_empty_list_passes(self) -> None:
-        dest = Path(self._tmpdir.name) / "br"
-        br = Buildroot.create(dest=dest)
+        br = Buildroot.create()
         br.verify(required_libs=[])
 
 
@@ -166,16 +155,13 @@ class TestBuildrootInstallDep(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers correctly."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def _setup_buildroot(self) -> Buildroot:
-        dest = Path(self._tmpdir.name) / "br"
-        return Buildroot.create(dest=dest)
+        return Buildroot.create()
 
     def test_install_dep_extracts_lib(self) -> None:
         br = self._setup_buildroot()
@@ -188,19 +174,16 @@ class TestBuildrootInstallDep(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
+        archive_path = Path.cwd() / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
 
         with patch(
             "nanvix_zutil.github.download_release_asset",
-            return_value=Path(self._tmpdir.name) / "zlib.tar.bz2",
-        ) as mock_dl:
-            # Write the fake archive so tarfile.open can read it.
-            archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
-            archive_path.write_bytes(archive)
-            mock_dl.return_value = archive_path
-
+            return_value=archive_path,
+        ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "libz.a").exists())
+        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
 
     def test_install_dep_extracts_header(self) -> None:
         br = self._setup_buildroot()
@@ -213,7 +196,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -222,7 +205,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "include" / "zlib.h").exists())
+        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
 
     def test_install_dep_selective_libs(self) -> None:
         br = self._setup_buildroot()
@@ -238,7 +221,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
             install_libs=["libz.a"],
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -247,8 +230,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "libz.a").exists())
-        self.assertFalse((br.path / "lib" / "libextra.a").exists())
+        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
+        self.assertFalse((_buildroot() / "lib" / "libextra.a").exists())
 
     def test_install_dep_selective_headers(self) -> None:
         br = self._setup_buildroot()
@@ -264,7 +247,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
             install_headers=["zlib.h"],
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -273,13 +256,13 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "include" / "zlib.h").exists())
-        self.assertFalse((br.path / "include" / "internal.h").exists())
+        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
+        self.assertFalse((_buildroot() / "include" / "internal.h").exists())
 
     def test_install_dep_artifact_name_interpolated(self) -> None:
         br = self._setup_buildroot()
         archive = _make_tar_bz2({"sysroot/lib/libz.a": b""})
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         dep = Dependency(
@@ -331,7 +314,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             repo="nanvix/openssl",
             ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
         )
-        archive_path = Path(self._tmpdir.name) / "openssl.tar.bz2"
+        archive_path = Path.cwd() / "openssl.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -340,11 +323,11 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "include" / "openssl" / "ssl.h").exists())
-        self.assertTrue((br.path / "include" / "openssl" / "crypto.h").exists())
-        self.assertTrue((br.path / "lib" / "libssl.a").exists())
+        self.assertTrue((_buildroot() / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((_buildroot() / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
         # Verify headers are NOT flattened to include/ssl.h
-        self.assertFalse((br.path / "include" / "ssl.h").exists())
+        self.assertFalse((_buildroot() / "include" / "ssl.h").exists())
 
     def test_install_dep_preserves_lib_subdirectory(self) -> None:
         """Libraries in subdirectories are extracted with directory structure preserved."""
@@ -360,7 +343,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             repo="nanvix/openssl",
             ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
         )
-        archive_path = Path(self._tmpdir.name) / "openssl.tar.bz2"
+        archive_path = Path.cwd() / "openssl.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -369,8 +352,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "engines" / "libcapi.a").exists())
-        self.assertTrue((br.path / "lib" / "libssl.a").exists())
+        self.assertTrue((_buildroot() / "lib" / "engines" / "libcapi.a").exists())
+        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
 
     def test_install_dep_flat_tarball_without_segments(self) -> None:
         """Tarballs with bare filenames (no include/ or lib/ segment) still work."""
@@ -386,7 +369,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             repo="nanvix/zlib",
             ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -395,8 +378,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "libz.a").exists())
-        self.assertTrue((br.path / "include" / "zlib.h").exists())
+        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
+        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
 
 
 class TestSuffixDep(unittest.TestCase):
@@ -468,16 +451,13 @@ class TestInstallDepPreResolvedRelease(unittest.TestCase):
     """Buildroot.install_dep with _release pre-resolved."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def _setup_buildroot(self) -> Buildroot:
-        dest = Path(self._tmpdir.name) / "br"
-        return Buildroot.create(dest=dest)
+        return Buildroot.create()
 
     def _make_archive(self) -> bytes:
         return _make_tar_bz2(
@@ -491,7 +471,7 @@ class TestInstallDepPreResolvedRelease(unittest.TestCase):
         """When _release is provided, it's forwarded to download_release_asset."""
         br = self._setup_buildroot()
         archive = self._make_archive()
-        archive_path = Path(self._tmpdir.name) / "zlib.tar.bz2"
+        archive_path = Path.cwd() / "zlib.tar.bz2"
         archive_path.write_bytes(archive)
 
         dep = Dependency(
@@ -559,16 +539,13 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers from .zip archives."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def _setup_buildroot(self) -> Buildroot:
-        dest = Path(self._tmpdir.name) / "br"
-        return Buildroot.create(dest=dest)
+        return Buildroot.create()
 
     def test_install_dep_zip_extracts_lib(self) -> None:
         br = self._setup_buildroot()
@@ -581,7 +558,7 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path = Path.cwd() / "zlib.zip"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -590,8 +567,8 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "libz.a").exists())
-        self.assertEqual((br.path / "lib" / "libz.a").read_bytes(), b"lib-content")
+        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
+        self.assertEqual((_buildroot() / "lib" / "libz.a").read_bytes(), b"lib-content")
 
     def test_install_dep_zip_extracts_header(self) -> None:
         br = self._setup_buildroot()
@@ -604,7 +581,7 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path = Path.cwd() / "zlib.zip"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -613,9 +590,9 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "include" / "zlib.h").exists())
+        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
         self.assertEqual(
-            (br.path / "include" / "zlib.h").read_bytes(), b"header-content"
+            (_buildroot() / "include" / "zlib.h").read_bytes(), b"header-content"
         )
 
     def test_install_dep_zip_selective_libs(self) -> None:
@@ -632,7 +609,7 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
             ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
             install_libs=["libz.a"],
         )
-        archive_path = Path(self._tmpdir.name) / "zlib.zip"
+        archive_path = Path.cwd() / "zlib.zip"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -641,8 +618,8 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "lib" / "libz.a").exists())
-        self.assertFalse((br.path / "lib" / "libextra.a").exists())
+        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
+        self.assertFalse((_buildroot() / "lib" / "libextra.a").exists())
 
     def test_install_dep_zip_preserves_header_subdirectory(self) -> None:
         br = self._setup_buildroot()
@@ -658,7 +635,7 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
             repo="nanvix/openssl",
             ref=Ref(kind=RefKind.TAG, value="v3.5.0"),
         )
-        archive_path = Path(self._tmpdir.name) / "openssl.zip"
+        archive_path = Path.cwd() / "openssl.zip"
         archive_path.write_bytes(archive)
 
         with patch(
@@ -667,9 +644,9 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((br.path / "include" / "openssl" / "ssl.h").exists())
-        self.assertTrue((br.path / "include" / "openssl" / "crypto.h").exists())
-        self.assertTrue((br.path / "lib" / "libssl.a").exists())
+        self.assertTrue((_buildroot() / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((_buildroot() / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
 
 
 if __name__ == "__main__":

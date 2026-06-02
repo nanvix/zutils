@@ -64,6 +64,7 @@ from nanvix_zutil.helpers import (
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -268,11 +269,10 @@ class ZScript:
                 )
             )
 
-        buildroot_dir = self.nanvix_dir / "buildroot"
-        if buildroot_dir.is_dir():
+        if _buildroot_dir().is_dir():
             mounts.append(
                 Mount(
-                    host_path=buildroot_dir,
+                    host_path=_buildroot_dir(),
                     container_path=BUILDROOT_CONTAINER_PATH,
                     readonly=False,
                 )
@@ -424,7 +424,7 @@ class ZScript:
             # paths (deps/<name>/) which are version-agnostic.
 
         if deps:
-            self.buildroot = Buildroot.create(self.nanvix_dir / "buildroot")
+            self.buildroot = Buildroot.create()
             for dep in deps:
                 # LOCAL deps: install from the filesystem path directly.
                 if dep.ref.kind == RefKind.LOCAL:
@@ -505,7 +505,7 @@ class ZScript:
                     raise
 
         self.config.save()
-        sync_configs(self.nanvix_dir)
+        sync_configs()
         return self._used_fallback
 
     def install_artifacts(self, output: str) -> None:
