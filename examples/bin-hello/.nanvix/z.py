@@ -26,6 +26,7 @@ from nanvix_zutil import (
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
+from nanvix_zutil.paths import nanvix_root, repo_root
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 
 
@@ -60,7 +61,7 @@ class BinHello(ZScript):
         """Return the effective buildroot path (translated for Docker if active)."""
         if self.docker:
             return BUILDROOT_CONTAINER_PATH
-        return self.nanvix_dir / "buildroot"
+        return nanvix_root() / "buildroot"
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -104,7 +105,7 @@ class BinHello(ZScript):
             "-c",
             f"{cc} {cflags} -c -o main.o src/main.c"
             f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
-            cwd=self.repo_root,
+            cwd=repo_root(),
             docker=self.docker,
         )
 
@@ -122,7 +123,7 @@ class BinHello(ZScript):
         not configured (the ``test`` subcommand does not enable Docker
         automatically).
         """
-        binary = self.repo_root / "hello.elf"
+        binary = repo_root() / "hello.elf"
 
         # Smoke: binary must exist and be non-trivially sized.
         log.info("=== bin-hello smoke tests ===")
@@ -199,7 +200,7 @@ class BinHello(ZScript):
             str(sysroot / "bin"),
             "--",
             str(binary),
-            cwd=self.repo_root,
+            cwd=repo_root(),
             timeout=60,
         )
         log.success("PASS: bin-hello functional tests")
@@ -207,7 +208,7 @@ class BinHello(ZScript):
     def clean(self) -> None:
         """Remove build artifacts."""
         for name in ("main.o", "hello.elf", "hello.img"):
-            artifact = self.repo_root / name
+            artifact = repo_root() / name
             if artifact.exists():
                 artifact.unlink()
 

@@ -8,10 +8,10 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
-from pathlib import Path
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
+from nanvix_zutil.paths import nanvix_root
 
 HELP: str = "Remove all transient .nanvix/ artifacts"
 """One-line description surfaced in ``nanvix-zutil --help``."""
@@ -54,9 +54,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def distclean() -> None:
-    nanvix_dir = Path(sys.prefix).parent
     for artifact in _ARTIFACTS:
-        path = nanvix_dir / artifact
+        path = nanvix_root() / artifact
         if not path.exists() and not path.is_symlink():
             continue
         try:
@@ -72,19 +71,16 @@ def distclean() -> None:
 
 
 def _run_consumer_clean() -> None:
-    nanvix_dir = Path(sys.prefix).parent
-    z_py = nanvix_dir / "z.py"
+    z_py = nanvix_root() / "z.py"
     if not z_py.exists():
         return
-
-    repo_root = nanvix_dir.parent.resolve()
 
     # Lazy import: ``__main__`` imports this module at top level for HELP.
     from nanvix_zutil.__main__ import discover_script_class
 
     try:
-        script_cls = discover_script_class(z_py)
-        instance = script_cls(repo_root)
+        script_cls = discover_script_class()
+        instance = script_cls()
         instance.clean()
     except (Exception, SystemExit) as exc:
         log.warning(f"Consumer clean() failed: {exc}; continuing with distclean")

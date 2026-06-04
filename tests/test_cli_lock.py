@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import os
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.lockfile import (
@@ -22,7 +22,7 @@ from nanvix_zutil.lockfile import (
     write_lockfile,
 )
 from nanvix_zutil.script import ZScript
-from tests.testutils import chdir_to, write_manifest
+from tests.testutils import write_manifest
 
 
 def _make_mock_lockfile(manifest_path: Path) -> Lockfile:
@@ -88,8 +88,6 @@ class TestLockMethod(unittest.TestCase):
     """ZScript.lock() resolves deps and writes a lockfile."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        chdir_to(self, self._tmpdir)
         write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
@@ -100,24 +98,22 @@ class TestLockMethod(unittest.TestCase):
 
     @patch("nanvix_zutil.script.resolve")
     def test_lock_writes_lockfile(self, mock_resolve: MagicMock) -> None:
-        repo_root = Path(self._tmpdir.name)
-        manifest_path = repo_root / ".nanvix" / "nanvix.toml"
+        manifest_path = paths.manifest_path()
         mock_resolve.return_value = _make_mock_lockfile(manifest_path)
 
-        script = ZScript(repo_root)
+        script = ZScript()
         script.lock()
 
-        lock_path = repo_root / ".nanvix" / "nanvix.lock"
+        lock_path = paths.nanvix_root() / "nanvix.lock"
         self.assertTrue(lock_path.is_file())
         mock_resolve.assert_called_once()
 
     @patch("nanvix_zutil.script.resolve")
     def test_lock_shallow(self, mock_resolve: MagicMock) -> None:
-        repo_root = Path(self._tmpdir.name)
-        manifest_path = repo_root / ".nanvix" / "nanvix.toml"
+        manifest_path = paths.manifest_path()
         mock_resolve.return_value = _make_mock_lockfile(manifest_path)
 
-        script = ZScript(repo_root)
+        script = ZScript()
         script.lock(shallow=True)
 
         _, kwargs = mock_resolve.call_args
@@ -128,8 +124,6 @@ class TestLockCheck(unittest.TestCase):
     """ZScript.lock_check() verifies lockfile freshness."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        chdir_to(self, self._tmpdir)
         write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
@@ -139,21 +133,19 @@ class TestLockCheck(unittest.TestCase):
         log_mod.set_json_mode(False)
 
     def test_lock_check_exits_0_when_fresh(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        manifest_path = repo_root / ".nanvix" / "nanvix.toml"
-        lock_path = repo_root / ".nanvix" / "nanvix.lock"
+        manifest_path = paths.manifest_path()
+        lock_path = paths.nanvix_root() / "nanvix.lock"
 
         lockfile = _make_mock_lockfile(manifest_path)
         write_lockfile(lockfile, lock_path)
 
-        script = ZScript(repo_root)
+        script = ZScript()
         # Should not raise
         script.lock_check()
 
     def test_lock_check_exits_2_when_stale(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-        manifest_path = repo_root / ".nanvix" / "nanvix.toml"
-        lock_path = repo_root / ".nanvix" / "nanvix.lock"
+        manifest_path = paths.manifest_path()
+        lock_path = paths.nanvix_root() / "nanvix.lock"
 
         lockfile = _make_mock_lockfile(manifest_path)
         write_lockfile(lockfile, lock_path)
@@ -166,15 +158,13 @@ class TestLockCheck(unittest.TestCase):
             'nanvix-version = "0.2.0"\n'
         )
 
-        script = ZScript(repo_root)
+        script = ZScript()
         with self.assertRaises(SystemExit) as ctx:
             script.lock_check()
         self.assertEqual(ctx.exception.code, 2)
 
     def test_lock_check_exits_3_when_missing(self) -> None:
-        repo_root = Path(self._tmpdir.name)
-
-        script = ZScript(repo_root)
+        script = ZScript()
         with self.assertRaises(SystemExit) as ctx:
             script.lock_check()
         self.assertEqual(ctx.exception.code, 3)
