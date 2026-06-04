@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 from typing import cast, overload
+
+from nanvix_zutil.paths import nanvix_root
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -99,15 +100,13 @@ class Config:
             (e.g. ``"256mb"``).
     """
 
-    def __init__(self, nanvix_dir: Path) -> None:
+    def __init__(self) -> None:
         """Initialise configuration from environment and persisted state.
 
-        Args:
-            nanvix_dir: Path to the ``.nanvix/`` directory of the consumer
-                repository.
+        The ``.nanvix/`` directory is resolved lazily via
+        :func:`nanvix_zutil.paths.nanvix_root`.
         """
-        self._nanvix_dir = nanvix_dir
-        self._config_path = nanvix_dir / "env.json"
+        self._config_path = nanvix_root() / "env.json"
         self._data: dict[str, str] = {}
 
         # Seed with defaults.
@@ -205,7 +204,6 @@ class Config:
 
     def save(self) -> None:
         """Persist the current in-memory configuration to ``.nanvix/env.json``."""
-        self._nanvix_dir.mkdir(parents=True, exist_ok=True)
         with self._config_path.open("w", encoding="utf-8") as fh:
             json.dump(self._data, fh, indent=2)
 

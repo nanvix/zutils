@@ -195,7 +195,7 @@ class ZScript:
         """
         self.repo_root = repo_root.resolve()
         self.nanvix_dir = self.repo_root / ".nanvix"
-        self.config = Config(self.nanvix_dir)
+        self.config = Config()
         self.log = log
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest(self.nanvix_dir / "nanvix.toml")
