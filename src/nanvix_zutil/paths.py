@@ -27,13 +27,16 @@ def nanvix_root() -> Path:
     """Path to the ``.nanvix`` directory.
 
     Resolved by walking up the file tree from the current working
-    directory.  Result is cached; call ``nanvix_root.cache_clear()`` to
-    re-resolve (primarily for tests).
+    directory.  The returned path is canonicalised via ``Path.resolve``
+    so that downstream comparisons are insensitive to platform path
+    aliasing (notably Windows 8.3 short names such as ``RUNNER~1``
+    versus their long-form equivalents).  Result is cached; call
+    ``nanvix_root.cache_clear()`` to re-resolve (primarily for tests).
     """
     for p in (Path.cwd(), *Path.cwd().parents):
         candidate = p / ".nanvix"
         if candidate.is_dir():
-            return candidate
+            return candidate.resolve()
     log.fatal(
         "Could not find .nanvix directory.",
         code=EXIT_MISSING_DEP,
