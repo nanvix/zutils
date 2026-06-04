@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Tests for nanvix_zutil.resolve_cmd."""
+"""Tests for nanvix_zutil.commands.resolve."""
 
 import json
 import os
@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Ref, RefKind
+from nanvix_zutil.commands.resolve import main
 from nanvix_zutil.lockfile import Lockfile, LockfileMetadata, ResolvedPackage
 from nanvix_zutil.manifest import Manifest
-from nanvix_zutil.resolve_cmd import main
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,8 +80,8 @@ def _write_manifest() -> None:
 class TestDefaultOutput(unittest.TestCase):
     """Default output emits key=value lines."""
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_key_value_output(
         self, mock_load: MagicMock, mock_resolve: MagicMock
     ) -> None:
@@ -113,8 +113,8 @@ class TestDefaultOutput(unittest.TestCase):
 class TestJsonOutput(unittest.TestCase):
     """``--json`` emits a JSON object."""
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_json_output(self, mock_load: MagicMock, mock_resolve: MagicMock) -> None:
         mock_load.return_value = _make_manifest()
         mock_resolve.return_value = _make_lockfile()
@@ -144,8 +144,8 @@ class TestJsonOutput(unittest.TestCase):
 class TestShallowFlag(unittest.TestCase):
     """``--shallow`` is passed through to resolve()."""
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_shallow_passed(
         self, mock_load: MagicMock, mock_resolve: MagicMock
     ) -> None:
@@ -173,8 +173,8 @@ class TestShallowFlag(unittest.TestCase):
 class TestGhToken(unittest.TestCase):
     """``--gh-token`` and ``GH_TOKEN`` env var handling."""
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_gh_token_from_env(
         self, mock_load: MagicMock, mock_resolve: MagicMock
     ) -> None:
@@ -199,8 +199,8 @@ class TestGhToken(unittest.TestCase):
         call_kwargs = mock_resolve.call_args
         self.assertEqual(call_kwargs.kwargs.get("gh_token"), "env-token")
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_gh_token_cli_overrides_env(
         self, mock_load: MagicMock, mock_resolve: MagicMock
     ) -> None:
@@ -245,8 +245,8 @@ class TestMissingManifest(unittest.TestCase):
 class TestNoSysroot(unittest.TestCase):
     """No sysroot in lockfile exits with code 3."""
 
-    @patch("nanvix_zutil.resolve_cmd.resolve")
-    @patch("nanvix_zutil.resolve_cmd.load_manifest")
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
     def test_no_sysroot_exits_3(
         self, mock_load: MagicMock, mock_resolve: MagicMock
     ) -> None:

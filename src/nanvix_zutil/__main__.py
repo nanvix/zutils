@@ -12,28 +12,30 @@ from pathlib import Path
 
 from nanvix_zutil import log
 from nanvix_zutil.cli import SUBCOMMAND_HELP, build_parser
+from nanvix_zutil.commands import (
+    distclean,
+    format,
+    info,
+    lint,
+    resolve,
+)
 from nanvix_zutil.config import ENV_VARS
-from nanvix_zutil.distclean_cmd import HELP as _DISTCLEAN_HELP
 from nanvix_zutil.exitcodes import (
     EXIT_GENERAL_ERROR,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
-from nanvix_zutil.format_cmd import HELP as _FORMAT_HELP
-from nanvix_zutil.info import HELP as _INFO_HELP
-from nanvix_zutil.lint_cmd import HELP as _LINT_HELP
 from nanvix_zutil.lockfile import get_zutil_version
 from nanvix_zutil.paths import z_py_path
-from nanvix_zutil.resolve_cmd import HELP as _RESOLVE_HELP
 from nanvix_zutil.script import ZScript
 
 # Standalone command help text, keyed by subcommand name.
 _STANDALONE_HELP: dict[str, str] = {
-    "distclean": _DISTCLEAN_HELP,
-    "format": _FORMAT_HELP,
-    "info": _INFO_HELP,
-    "lint": _LINT_HELP,
-    "resolve": _RESOLVE_HELP,
+    "distclean": distclean.HELP,
+    "format": format.HELP,
+    "info": info.HELP,
+    "lint": lint.HELP,
+    "resolve": resolve.HELP,
 }
 
 
@@ -142,34 +144,35 @@ def main() -> None:
 
     # --- Standalone commands ---
     if subcmd == "distclean":
-        from nanvix_zutil.distclean_cmd import main as distclean_main
+        from nanvix_zutil.commands.distclean import main as distclean_main
 
         sys.argv = ["nanvix-zutil distclean", *remaining]
         distclean_main()
         return
 
     if subcmd == "info":
-        from nanvix_zutil.info import main as info_main
+        from nanvix_zutil.commands.info import main as info_main
 
         sys.argv = ["nanvix-zutil info", *remaining]
         info_main()
         return
 
     if subcmd == "resolve":
-        from nanvix_zutil.resolve_cmd import main as resolve_main
+        from nanvix_zutil.commands.resolve import main as resolve_main
 
         sys.argv = ["nanvix-zutil resolve", *remaining]
         resolve_main()
         return
 
     if subcmd == "lint":
-        from nanvix_zutil.lint_cmd import main as lint_main
+        from nanvix_zutil.commands.lint import main as lint_main
 
         sys.argv = ["nanvix-zutil lint", *remaining]
         lint_main()
+        return
 
     if subcmd == "format":
-        from nanvix_zutil.format_cmd import main as format_main
+        from nanvix_zutil.commands.format import main as format_main
 
         sys.argv = ["nanvix-zutil format", *remaining]
         format_main()

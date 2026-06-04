@@ -2,14 +2,14 @@
 # Licensed under the MIT License.
 
 # pyright: reportPrivateUsage=false
-"""Tests for nanvix_zutil.distclean_cmd."""
+"""Tests for nanvix_zutil.commands.distclean."""
 
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from nanvix_zutil import paths
-from nanvix_zutil.distclean_cmd import _run_consumer_clean, distclean, main
+from nanvix_zutil.commands.distclean import _run_consumer_clean, distclean, main
 from tests.testutils import write_manifest
 
 
@@ -181,7 +181,7 @@ class TestRunConsumerClean(unittest.TestCase):
 
     def test_no_z_py_is_silent_noop(self) -> None:
         """When .nanvix/z.py is absent, the helper returns silently."""
-        with patch("nanvix_zutil.distclean_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.distclean.log") as mock_log:
             _run_consumer_clean()
         mock_log.warning.assert_not_called()
         mock_log.info.assert_not_called()
@@ -200,7 +200,7 @@ class TestRunConsumerClean(unittest.TestCase):
         self._write_z_py(
             "    def clean(self) -> None:\n" "        raise RuntimeError('boom')\n"
         )
-        with patch("nanvix_zutil.distclean_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.distclean.log") as mock_log:
             _run_consumer_clean()
         mock_log.warning.assert_called_once()
         self.assertIn("boom", mock_log.warning.call_args[0][0])
@@ -208,7 +208,7 @@ class TestRunConsumerClean(unittest.TestCase):
     def test_import_failure_is_swallowed(self) -> None:
         """A malformed z.py is logged and does not propagate."""
         (self.nanvix_dir / "z.py").write_text("this is not valid python(\n")
-        with patch("nanvix_zutil.distclean_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.distclean.log") as mock_log:
             _run_consumer_clean()
         mock_log.warning.assert_called_once()
         self.assertIn("Consumer clean() failed", mock_log.warning.call_args[0][0])
@@ -216,7 +216,7 @@ class TestRunConsumerClean(unittest.TestCase):
     def test_missing_subclass_is_swallowed(self) -> None:
         """A z.py with no ZScript subclass is logged and skipped."""
         (self.nanvix_dir / "z.py").write_text("x = 1\n")
-        with patch("nanvix_zutil.distclean_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.distclean.log") as mock_log:
             _run_consumer_clean()
         mock_log.warning.assert_called_once()
         self.assertIn("Consumer clean() failed", mock_log.warning.call_args[0][0])
@@ -225,7 +225,7 @@ class TestRunConsumerClean(unittest.TestCase):
         """ZScript.__init__ failing (no manifest) is logged and skipped."""
         (paths.manifest_path()).unlink()
         self._write_z_py("    def clean(self) -> None:\n" "        pass\n")
-        with patch("nanvix_zutil.distclean_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.distclean.log") as mock_log:
             _run_consumer_clean()
         mock_log.warning.assert_called_once()
         self.assertIn("clean() failed", mock_log.warning.call_args[0][0])

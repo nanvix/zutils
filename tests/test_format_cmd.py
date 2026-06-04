@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Tests for nanvix_zutil.format_cmd."""
+"""Tests for nanvix_zutil.commands.format."""
 
 import subprocess as sp
 import unittest
@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
+from nanvix_zutil.commands.format import format, main
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-from nanvix_zutil.format_cmd import format, main
 
 
 class TestFormatCmd(unittest.TestCase):
@@ -72,7 +72,7 @@ class TestFormatCmd(unittest.TestCase):
 
     def test_no_py_files_warns(self) -> None:
         """Warns and returns when no .py files exist."""
-        with patch("nanvix_zutil.format_cmd.log") as mock_log:
+        with patch("nanvix_zutil.commands.format.log") as mock_log:
             format()
 
         mock_log.warning.assert_called_once()

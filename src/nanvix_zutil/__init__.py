@@ -22,8 +22,8 @@ Public re-exports:
 - :func:`~nanvix_zutil.resolver.is_stale` — check lockfile staleness
 - :class:`~nanvix_zutil.docker.DockerConfig` — Docker run configuration
 - :class:`~nanvix_zutil.docker.Mount` — Docker volume mount descriptor
-- :class:`~nanvix_zutil.info.NanvixInfo` — resolved Nanvix release information
-- :func:`~nanvix_zutil.info.get_nanvix_info` — query Nanvix release info
+- :class:`~nanvix_zutil.commands.info.NanvixInfo` — resolved Nanvix release information
+- :func:`~nanvix_zutil.commands.info.get_nanvix_info` — query Nanvix release info
 - :func:`~nanvix_zutil.github.resolve_release` — resolve a release by version specifier
 - :func:`~nanvix_zutil.github.resolve_release_with_fallback` — resolve a release with fallback to best available
 - :func:`~nanvix_zutil.buildroot.suffix_dep` — suffix a dep's VERSION ref with a nanvix version
@@ -51,6 +51,7 @@ from nanvix_zutil.buildroot import (
     parse_semver_tuple,
     suffix_dep,
 )
+from nanvix_zutil.commands.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.config import (
     CFG_DOCKER_IMAGE,
     CFG_GH_TOKEN,
@@ -88,7 +89,6 @@ from nanvix_zutil.helpers import (
     run,
     sync_configs,
 )
-from nanvix_zutil.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.lockfile import (
     Lockfile,
     LockfileMetadata,
