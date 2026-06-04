@@ -339,11 +339,110 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
     def test_benchmark_noop(self) -> None:
         self._make_script().benchmark()
 
-    def test_release_noop(self) -> None:
-        self._make_script().release()
-
     def test_clean_noop(self) -> None:
         self._make_script().clean()
+
+
+class TestZScriptReleaseDefault(unittest.TestCase):
+    """Default ``ZScript.release()`` packages ``.nanvix/out/release``.
+
+    The hook is a thin wrapper around :func:`nanvix_zutil.release.package`;
+    exhaustive coverage of archive contents, format handling, and input
+    validation lives in ``tests/test_release.py``. These tests only verify
+    the wiring: the release directory is picked up, archives land in the
+    dist directory under the manifest name, and a missing release directory
+    fails cleanly.
+    """
+
+    def setUp(self) -> None:
+        write_manifest()  # manifest name = "test"
+
+    def _populate_release_dir(self) -> Path:
+        rel = paths.release_dir()
+        rel.mkdir(parents=True, exist_ok=True)
+        (rel / "artifact.bin").write_bytes(b"payload")
+        return rel
+
+    def test_packages_when_release_dir_exists(self) -> None:
+        """With a populated release dir, archives appear in dist_dir()."""
+        self._populate_release_dir()
+
+        ZScript().release()
+
+        dist = paths.dist_dir()
+        produced = {p.name for p in dist.iterdir()}
+        # Manifest name is "test"; DEFAULT_FORMATS = tar.gz + zip.
+        self.assertEqual(produced, {"test.tar.gz", "test.zip"})
+        for p in dist.iterdir():
+            self.assertGreater(p.stat().st_size, 0, f"empty archive: {p}")
+
+    def test_emits_success_message(self) -> None:
+        """A human-readable success line is written to stderr."""
+        self._populate_release_dir()
+
+        buf = StringIO()
+        original_stderr = sys.stderr
+        sys.stderr = buf
+        try:
+            ZScript().release()
+        finally:
+            sys.stderr = original_stderr
+
+        output = buf.getvalue()
+        self.assertIn("success:", output)
+        self.assertIn("Packaged 2 archive(s) for 'test'", output)
+        self.assertIn(str(paths.dist_dir()), output)
+
+    def test_emits_success_message_json(self) -> None:
+        """In JSON mode, success is emitted as a structured record."""
+        self._populate_release_dir()
+
+        buf = StringIO()
+        original_stderr = sys.stderr
+        log_mod.set_json_mode(True)
+        sys.stderr = buf
+        try:
+            ZScript().release()
+        finally:
+            sys.stderr = original_stderr
+            log_mod.set_json_mode(False)
+
+        records = [json.loads(line) for line in buf.getvalue().splitlines() if line]
+        success_records = [r for r in records if r.get("level") == "success"]
+        self.assertEqual(len(success_records), 1)
+        self.assertIn("Packaged 2 archive(s) for 'test'", success_records[0]["message"])
+
+    def test_fails_when_release_dir_missing(self) -> None:
+        """Missing ``.nanvix/out/release`` aborts with EXIT_GENERAL_ERROR."""
+        from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
+
+        self.assertFalse(paths.release_dir().exists())
+
+        with self.assertRaises(SystemExit) as ctx:
+            ZScript().release()
+        self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
+        # Nothing should have been produced in dist/.
+        dist = paths.dist_dir()
+        if dist.exists():
+            self.assertEqual(list(dist.iterdir()), [])
+
+    def test_failure_emits_error_with_hint(self) -> None:
+        """The failure path surfaces a recognizable error + hint on stderr."""
+        buf = StringIO()
+        original_stderr = sys.stderr
+        sys.stderr = buf
+        try:
+            with self.assertRaises(SystemExit):
+                ZScript().release()
+        finally:
+            sys.stderr = original_stderr
+
+        output = buf.getvalue()
+        self.assertIn("error:", output)
+        self.assertIn(str(paths.release_dir()), output)
+        self.assertIn("hint:", output)
+        self.assertIn("release", output)
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
