@@ -258,7 +258,9 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         self._run_setup()
         nanvix_dir = paths.nanvix_root()
         content = (nanvix_dir / ".gitignore").read_text()
-        for pattern in ("venv/", "cache/", "sysroot/", "__pycache__/"):
+        # Patterns are intentionally written without trailing slashes so they
+        # also match symlinks pointing at directories (e.g. sysroot -> ...).
+        for pattern in ("venv", "cache", "sysroot", "__pycache__"):
             self.assertIn(pattern, content)
 
     def test_gitignore_does_not_ignore_lockfile(self) -> None:
