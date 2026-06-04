@@ -35,8 +35,17 @@ htmlcov/
 .basedpyright/
 .pyright/
 !pyrightconfig.json
-examples/lib-hello/.nanvix/pyrightconfig.json
-examples/bin-hello/.nanvix/pyrightconfig.json
+
+# Files synced into consumer .nanvix/ dirs by `nanvix-zutil setup` /
+# release tooling. The canonical copies live in
+# src/nanvix_zutil/configs/ and templates/; the in-tree copies under
+# .nanvix/ are regenerated on every run and would otherwise show up as
+# spurious diffs (especially in examples/, which are exercised by the
+# test suite).
+**/.nanvix/.gitignore
+**/.nanvix/.yamllint.yml
+**/.nanvix/black.toml
+**/.nanvix/pyrightconfig.json
 
 # Editor
 /.vscode
