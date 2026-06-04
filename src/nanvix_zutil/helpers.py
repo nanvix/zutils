@@ -15,7 +15,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
-from nanvix_zutil.paths import nanvix_root, repo_root
+from nanvix_zutil.paths import bin_out, nanvix_root, repo_root, test_out
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -164,7 +164,9 @@ class InitRdArgs:
     """ Directory containing the ELF binaries and ``mkimage``.  Defaults to the sysroot ``bin/`` directory. """
 
 
-def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) -> Path:
+def make_initrd(
+    instance: "ZScript", app: str, *, test: bool, args: InitRdArgs | None = None
+) -> Path:
     """Build a standalone initrd image for *app*.
 
     Invokes ``mkimage`` from the sysroot ``bin/`` directory to produce
@@ -180,6 +182,8 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
         app: A bare application binary filename (e.g. ``"my-app.elf"``).
             Must include the extension and must not contain path
             separators (``/`` or ``\\``).
+        test: Controls the output directory. Is this for test, or release?
+            If true, outputs to ``test_out()``, else ``bin_out()``
         args: Additional arguments controlling the image generation.
 
     Returns:
@@ -195,6 +199,9 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
             f"app must be a bare filename without path separators, got: {app!r}",
             code=EXIT_MISSING_DEP,
         )
+
+    if args is None:
+        args = InitRdArgs()
 
     if args.bin_dir is None:
         if instance.sysroot is not None:
@@ -223,7 +230,9 @@ def make_initrd(instance: "ZScript", app: str, args: InitRdArgs = InitRdArgs()) 
         )
 
     app_stem = Path(app).stem
-    output = repo_root() / f"{app_stem}.img"
+    out_dir = test_out() if test else bin_out()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output = out_dir / f"{app_stem}.img"
 
     def _escape(arg: str) -> str:
         return arg.replace(";", "\\;")
