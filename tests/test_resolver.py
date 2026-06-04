@@ -5,12 +5,12 @@
 
 """Tests for nanvix_zutil.resolver."""
 
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.log as log_mod
+from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -75,17 +75,13 @@ class TestResolveSysrootOnly(unittest.TestCase):
     """Resolver with no dependencies (sysroot only)."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_sysroot_only(
@@ -107,11 +103,7 @@ class TestResolveSysrootOnly(unittest.TestCase):
         mock_download.return_value = None
 
         manifest = _make_manifest()
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         self.assertEqual(len(lockfile.packages), 1)
         self.assertEqual(lockfile.packages[0].name, "nanvix")
@@ -126,10 +118,7 @@ class TestResolveDirectDep(unittest.TestCase):
     """Resolver with one direct dependency."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.1.0"\n'
@@ -139,7 +128,6 @@ class TestResolveDirectDep(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_one_direct_dep(
@@ -166,11 +154,7 @@ class TestResolveDirectDep(unittest.TestCase):
                 )
             ]
         )
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         self.assertEqual(len(lockfile.packages), 2)
         names = [p.name for p in lockfile.packages]
@@ -189,10 +173,7 @@ class TestResolveTransitive(unittest.TestCase):
     """Resolver discovers transitive deps from a dep's lockfile asset."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.1.0"\n'
@@ -202,7 +183,6 @@ class TestResolveTransitive(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_transitive_discovery(
@@ -260,11 +240,7 @@ class TestResolveTransitive(unittest.TestCase):
                 )
             ]
         )
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         self.assertEqual(len(lockfile.packages), 3)
         names = [p.name for p in lockfile.packages]
@@ -284,10 +260,7 @@ class TestResolveShallow(unittest.TestCase):
     """shallow=True does not download lockfile assets."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.1.0"\n'
@@ -297,7 +270,6 @@ class TestResolveShallow(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_shallow_skips_transitive(
@@ -318,12 +290,7 @@ class TestResolveShallow(unittest.TestCase):
                 )
             ]
         )
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            shallow=True,
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache", shallow=True)
 
         # download_lockfile_asset should NOT be called
         mock_download.assert_not_called()
@@ -337,10 +304,7 @@ class TestCycleDetection(unittest.TestCase):
     """Resolver detects and rejects dependency cycles."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.1.0"\n'
@@ -350,7 +314,6 @@ class TestCycleDetection(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_cycle_detected(
@@ -411,11 +374,7 @@ class TestCycleDetection(unittest.TestCase):
         )
 
         with self.assertRaises(SystemExit) as ctx:
-            resolve(
-                manifest,
-                cache_dir=Path(self._tmpdir.name) / "cache",
-                manifest_path=self._manifest_path,
-            )
+            resolve(manifest, cache_dir=Path.cwd() / "cache")
         self.assertEqual(ctx.exception.code, 2)
 
 
@@ -425,10 +384,7 @@ class TestVersionConflict(unittest.TestCase):
     """Resolver detects version conflicts."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.1.0"\n'
@@ -439,7 +395,6 @@ class TestVersionConflict(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_conflict_exits_2(
@@ -492,25 +447,15 @@ class TestVersionConflict(unittest.TestCase):
         )
 
         with self.assertRaises(SystemExit) as ctx:
-            resolve(
-                manifest,
-                cache_dir=Path(self._tmpdir.name) / "cache",
-                manifest_path=self._manifest_path,
-            )
+            resolve(manifest, cache_dir=Path.cwd() / "cache")
         self.assertEqual(ctx.exception.code, 2)
 
 
 class TestIsStale(unittest.TestCase):
     """is_stale() returns correct results."""
 
-    def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
-
     def test_not_stale(self) -> None:
-        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path = paths.manifest_path()
         path.write_text('[package]\nname = "test"\n')
 
         from nanvix_zutil.lockfile import compute_manifest_hash
@@ -519,10 +464,10 @@ class TestIsStale(unittest.TestCase):
         lockfile = Lockfile(
             metadata=LockfileMetadata(manifest_hash=h, nanvix_zutil_version="0.2.2"),
         )
-        self.assertFalse(is_stale(lockfile, path))
+        self.assertFalse(is_stale(lockfile))
 
     def test_stale(self) -> None:
-        path = Path(self._tmpdir.name) / "nanvix.toml"
+        path = paths.manifest_path()
         path.write_text('[package]\nname = "test"\n')
 
         lockfile = Lockfile(
@@ -530,7 +475,7 @@ class TestIsStale(unittest.TestCase):
                 manifest_hash="sha256:old", nanvix_zutil_version="0.2.2"
             ),
         )
-        self.assertTrue(is_stale(lockfile, path))
+        self.assertTrue(is_stale(lockfile))
 
 
 @patch("nanvix_zutil.resolver.download_lockfile_asset")
@@ -540,10 +485,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
     """Resolver with 'latest' sysroot and a VERSION dep."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "latest"\n'
@@ -553,7 +495,6 @@ class TestResolveLatestSysroot(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_latest_sysroot_deferred_suffix(
@@ -589,11 +530,7 @@ class TestResolveLatestSysroot(unittest.TestCase):
             sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
         )
 
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         self.assertEqual(len(lockfile.packages), 2)
         # Verify sysroot resolved correctly
@@ -621,17 +558,13 @@ class TestAssetFiltering(unittest.TestCase):
     """Resolver filters out non-archive assets and nanvix.lock."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_filters_non_tar_bz2(
@@ -657,11 +590,7 @@ class TestAssetFiltering(unittest.TestCase):
         mock_download.return_value = None
 
         manifest = _make_manifest()
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         sysroot_pkg = lockfile.packages[0]
         # .tar.bz2, .tar.gz, and .zip are collected; .txt and nanvix.lock are not.
@@ -711,10 +640,7 @@ class TestResolveVersionFallback(unittest.TestCase):
     """Tests for fallback version downgrade in the resolver."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "latest"\n'
@@ -724,7 +650,6 @@ class TestResolveVersionFallback(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_fallback_downgrades_sysroot(
@@ -763,11 +688,7 @@ class TestResolveVersionFallback(unittest.TestCase):
             sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
         )
 
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         # Sysroot should be downgraded to 0.12.291
         sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
@@ -837,11 +758,7 @@ class TestResolveVersionFallback(unittest.TestCase):
             sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
         )
 
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         # Sysroot should use the minimum: 0.12.291
         sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
@@ -881,11 +798,7 @@ class TestResolveVersionFallback(unittest.TestCase):
             sysroot_ref=Ref(kind=RefKind.TAG, value="latest"),
         )
 
-        lockfile = resolve(
-            manifest,
-            cache_dir=Path(self._tmpdir.name) / "cache",
-            manifest_path=self._manifest_path,
-        )
+        lockfile = resolve(manifest, cache_dir=Path.cwd() / "cache")
 
         sysroot_pkg = next(p for p in lockfile.packages if p.name == "nanvix")
         self.assertEqual(sysroot_pkg.resolved_tag, "v0.12.337")
@@ -897,10 +810,7 @@ class TestNoFallbackWhenPinned(unittest.TestCase):
     """Pinned sysroot preserves hard-fail behavior."""
 
     def setUp(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._manifest_dir = Path(self._tmpdir.name) / ".nanvix"
-        self._manifest_dir.mkdir(parents=True)
-        self._manifest_path = self._manifest_dir / "nanvix.toml"
+        self._manifest_path = paths.manifest_path()
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             'nanvix-version = "0.12.337"\n'
@@ -910,7 +820,6 @@ class TestNoFallbackWhenPinned(unittest.TestCase):
         log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_no_fallback_when_pinned(
@@ -940,11 +849,7 @@ class TestNoFallbackWhenPinned(unittest.TestCase):
         )
 
         with self.assertRaises(SystemExit) as ctx:
-            resolve(
-                manifest,
-                cache_dir=Path(self._tmpdir.name) / "cache",
-                manifest_path=self._manifest_path,
-            )
+            resolve(manifest, cache_dir=Path.cwd() / "cache")
         self.assertEqual(ctx.exception.code, 3)
 
 

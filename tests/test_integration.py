@@ -18,7 +18,7 @@ from unittest.mock import patch
 import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
 from nanvix_zutil.helpers import run
-from tests.testutils import write_manifest
+from tests.testutils import chdir_to, write_manifest
 
 # ---------------------------------------------------------------------------
 # Mock consumer
@@ -64,14 +64,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
-        write_manifest(self._repo_root)
-        # Config and other path-based helpers resolve .nanvix/ from cwd.
-        # Override the autouse fixture's tmp_path so they find this test's repo.
-        self._orig_cwd = os.getcwd()
-        os.chdir(self._repo_root)
-        from nanvix_zutil.paths import nanvix_root
-
-        nanvix_root.cache_clear()
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
@@ -80,9 +74,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def tearDown(self) -> None:
-        # Restore cwd before tmpdir cleanup so Windows can delete it.
-        os.chdir(self._orig_cwd)
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def _run_main(
@@ -266,13 +257,13 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
-        write_manifest(self._repo_root)
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_config_save_and_reload(self) -> None:
@@ -291,11 +282,11 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._repo_root = Path(self._tmpdir.name)
-        write_manifest(self._repo_root)
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_run_echo_succeeds(self) -> None:

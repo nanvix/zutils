@@ -22,7 +22,7 @@ from nanvix_zutil.lockfile import (
     write_lockfile,
 )
 from nanvix_zutil.script import ZScript
-from tests.testutils import write_manifest
+from tests.testutils import chdir_to, write_manifest
 
 
 def _make_mock_lockfile(manifest_path: Path) -> Lockfile:
@@ -89,13 +89,13 @@ class TestLockMethod(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     @patch("nanvix_zutil.script.resolve")
@@ -129,13 +129,13 @@ class TestLockCheck(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        write_manifest(Path(self._tmpdir.name))
+        chdir_to(self, self._tmpdir)
+        write_manifest()
         log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
     def tearDown(self) -> None:
-        self._tmpdir.cleanup()
         log_mod.set_json_mode(False)
 
     def test_lock_check_exits_0_when_fresh(self) -> None:
