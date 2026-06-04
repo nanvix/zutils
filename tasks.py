@@ -531,34 +531,27 @@ def shell_lint() -> int:
     # so we capture findings into a variable and exit 1 when any are found.
     if ps1_files:
         print(f"> PSScriptAnalyzer {' '.join(ps1_files)}")
-        for ps1 in ps1_files:
-            try:
-                ps1_escaped = ps1.replace("'", "''")
-                command = (
-                    "if (Get-Module -ListAvailable PSScriptAnalyzer) {"
-                    f" $findings = Invoke-ScriptAnalyzer -Path '{ps1_escaped}' -Severity Warning;"
-                    " if ($findings) { $findings | Format-List; exit 1 }"
-                    f"}} else {{ Write-Host 'PSScriptAnalyzer not installed — skipping {ps1_escaped}' }}"
-                )
-                result = subprocess.run(
-                    [
-                        "pwsh",
-                        "-NoProfile",
-                        "-Command",
-                        command,
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-                if result.stdout.strip():
-                    print(result.stdout)
-                if result.stderr.strip():
-                    print(result.stderr, file=sys.stderr)
-                if result.returncode != 0:
-                    rc = 1
-            except FileNotFoundError:
-                print("pwsh not found — skipping PSScriptAnalyzer checks")
-                break
+        ps1_list = ", ".join(f"'{ps1}'" for ps1 in ps1_files)
+        script = (
+            "if (Get-Module -ListAvailable PSScriptAnalyzer) {"
+            f" $findings = @({ps1_list}) | ForEach-Object {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning }};"
+            " if ($findings) { $findings | Format-List; exit 1 }"
+            "} else { Write-Host 'PSScriptAnalyzer not installed — skipping' }"
+        )
+        try:
+            result = subprocess.run(
+                ["pwsh", "-NoProfile", "-Command", script],
+                capture_output=True,
+                text=True,
+            )
+            if result.stdout.strip():
+                print(result.stdout)
+            if result.stderr.strip():
+                print(result.stderr, file=sys.stderr)
+            if result.returncode != 0:
+                rc = 1
+        except FileNotFoundError:
+            print("pwsh not found — skipping PSScriptAnalyzer checks")
 
     return rc
 
