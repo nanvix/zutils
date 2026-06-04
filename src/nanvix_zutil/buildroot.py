@@ -24,12 +24,11 @@ from nanvix_zutil.config import (
     DEFAULT_MEMORY_SIZE,
 )
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+from nanvix_zutil.paths import buildroot as _default_buildroot_dir
 
 # ---------------------------------------------------------------------------
 # Default locations
 # ---------------------------------------------------------------------------
-
-_DEFAULT_BUILDROOT_DIR = Path(".nanvix") / "buildroot"
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +241,7 @@ class Buildroot:
         Returns:
             A :class:`Buildroot` pointing at *dest*.
         """
-        path = dest if dest is not None else _DEFAULT_BUILDROOT_DIR
+        path = dest if dest is not None else _default_buildroot_dir()
         (path / "lib").mkdir(parents=True, exist_ok=True)
         (path / "include").mkdir(parents=True, exist_ok=True)
         log.info(f"Buildroot at {path}")
