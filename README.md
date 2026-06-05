@@ -13,13 +13,14 @@ Consumer repositories subclass `ZScript` in `.nanvix/z.py`:
 
 ```python
 from nanvix_zutil import ZScript
+from nanvix_zutil.helpers import run
 
 class MyBuild(ZScript):
     def build(self) -> None:
-        self.run("make", "-f", "Makefile.nanvix", "all")
+        run("make", "-f", "Makefile.nanvix", "all", docker=self.docker)
 
     def test(self) -> None:
-        self.run("make", "-f", "Makefile.nanvix", "test")
+        run("make", "-f", "Makefile.nanvix", "test", docker=self.docker)
 
 if __name__ == "__main__":
     MyBuild.main()

@@ -26,8 +26,8 @@ from nanvix_zutil import (
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
-from nanvix_zutil.paths import nanvix_root, repo_root
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
+from nanvix_zutil.paths import nanvix_root, repo_root
 
 
 class BinHello(ZScript):
@@ -165,8 +165,8 @@ class BinHello(ZScript):
         """Run functional tests inside a Docker container (Linux)."""
         log.info("=== bin-hello functional tests (Docker) ===")
         sysroot = self._sysroot()
-        workspace_binary = self.translate_path(binary)
-        self.run(
+        workspace_binary = self.docker.translate_path(binary) if self.docker else binary
+        run(
             "timeout",
             "--foreground",
             "60",
@@ -175,6 +175,7 @@ class BinHello(ZScript):
             f"{sysroot}/bin",
             "--",
             str(workspace_binary),
+            docker=self.docker,
         )
         log.success("PASS: bin-hello functional tests")
 

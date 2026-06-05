@@ -7,10 +7,11 @@ Consumer repositories subclass :class:`ZScript`, implement the lifecycle
 hooks they need, and call ``ZScript.main()`` as the entry point::
 
     from nanvix_zutil import ZScript
+    from nanvix_zutil.helpers import run
 
     class MyBuild(ZScript):
         def build(self) -> None:
-            self.run("make", "-f", "Makefile.nanvix", "all")
+            run("make", "-f", "Makefile.nanvix", "all", docker=self.docker)
 
     if __name__ == "__main__":
         MyBuild.main()
@@ -25,14 +26,12 @@ Invoke via the ``nanvix-zutil`` CLI::
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import os
 import shutil
-import subprocess
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from nanvix_zutil import EXIT_BUILD_FAILURE, log
+from nanvix_zutil import log
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
@@ -59,7 +58,6 @@ from nanvix_zutil.exitcodes import (
 from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
 from nanvix_zutil.helpers import (
     check_docker,
-    filter_container_env,
     sync_configs,
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
@@ -276,29 +274,6 @@ class ZScript:
             mounts=mounts,
             workdir=WORKSPACE_CONTAINER_PATH,
         )
-
-    # ------------------------------------------------------------------
-    # Path translation helper
-    # ------------------------------------------------------------------
-
-    def translate_path(self, host_path: Path) -> PurePosixPath | Path:
-        """Translate *host_path* to its container equivalent if Docker is active.
-
-        When Docker mode is not active, returns *host_path* unchanged.
-
-        Args:
-            host_path: An absolute host-side path.
-
-        Returns:
-            Container-side :class:`~pathlib.PurePosixPath` when Docker is active,
-            otherwise *host_path*.
-        """
-        log.warning(
-            "DEPRECATED: Use self.docker.translate_path instead of self.translate_path."
-        )
-        if self.docker is not None:
-            return self.docker.translate_path(host_path)
-        return host_path
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — auto-implemented
@@ -619,93 +594,6 @@ class ZScript:
                 if p.is_file():
                     p.unlink()
                     log.info(f"Removed {name}")
-
-    # ------------------------------------------------------------------
-    # Subprocess helper
-    # ------------------------------------------------------------------
-
-    def run(
-        self,
-        *args: str,
-        cwd: Path | None = None,
-        env: dict[str, str] | None = None,
-        docker: bool = True,
-        timeout: int | None = None,
-    ) -> "subprocess.CompletedProcess[str]":
-        """Run a subprocess, logging the command before execution.
-
-        When Docker mode is active (i.e. ``--with-docker`` was passed
-        during ``setup`` and the current subcommand auto-loads it),
-        the command is transparently wrapped in ``docker run``.
-
-        Args:
-            *args: Command and arguments to execute.
-            cwd: Working directory for the subprocess.  Defaults to
-                :func:`repo_root()`.  Ignored when Docker wrapping is active
-                (the container workdir is controlled by
-                :class:`~nanvix_zutil.DockerConfig`).
-            env: Environment variables for the subprocess.  ``None`` inherits
-                the current process environment.  When Docker mode is active,
-                these variables are forwarded into the container via ``-e``
-                flags rather than being applied to the Docker client process.
-            docker: When ``False``, always runs on the host even if Docker
-                mode is active.  Use this for commands that must run locally
-                (e.g. ``clean``).
-            timeout: Maximum seconds to wait for the process to finish.
-                ``None`` means wait indefinitely.  When the timeout expires
-                the process tree is killed and a fatal error is raised.
-
-        Returns:
-            The completed process result.
-
-        Raises:
-            SystemExit: With exit code ``5`` if the process exits with a
-                non-zero status or the timeout expires.
-        """
-        log.warning("DEPRECATED: Use helpers.run instead of self.run.")
-        if self.docker is not None and docker:
-            cfg = self.docker
-            if env:
-                # Strip host-only / shell-managed keys (e.g. Windows' ``PATH``)
-                # before forwarding into the container.  See
-                # :func:`helpers.filter_container_env` for the rationale.
-                merged = {**cfg.extra_env, **filter_container_env(env)}
-                cfg = dataclasses.replace(cfg, extra_env=merged)
-            if is_windows():
-                cmd = cfg.build_windows_run_cmd(*args)
-            else:
-                cmd = cfg.build_run_cmd(*args)
-            working_dir = repo_root()
-            subprocess_env: dict[str, str] | None = None
-        else:
-            cmd = list(args)
-            working_dir = cwd if cwd is not None else repo_root()
-            if env is not None:
-                subprocess_env = env
-            else:
-                subprocess_env = None
-
-        log.info(f"$ {' '.join(cmd)}")
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=working_dir,
-                env=subprocess_env,
-                text=True,
-                check=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            log.fatal(
-                f"Command timed out after {timeout}s: {' '.join(args)}",
-                code=EXIT_BUILD_FAILURE,
-            )
-        except subprocess.CalledProcessError as exc:
-            log.fatal(
-                f"Command failed with exit code {exc.returncode}: {' '.join(args)}",
-                code=EXIT_BUILD_FAILURE,
-            )
-        return result
 
     # ------------------------------------------------------------------
     # CLI entry point
