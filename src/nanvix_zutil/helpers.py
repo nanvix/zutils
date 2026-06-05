@@ -28,8 +28,7 @@ if TYPE_CHECKING:
 # which overrides the image's Linux ``PATH`` and makes runc fail to resolve the
 # container's entrypoint (``exec: "sh": executable file not found in $PATH``).
 # ``HOME`` is always set explicitly by ``DockerConfig`` (currently to ``/tmp``);
-# ``USER`` is set explicitly on the standard (non-Windows) path.  In both cases
-# the caller must not override them.  ``LD_LIBRARY_PATH`` and ``PYTHONPATH``
+# the caller must not override it.  ``LD_LIBRARY_PATH`` and ``PYTHONPATH``
 # similarly refer to host filesystem locations that do not exist inside the
 # container.
 _CONTAINER_ENV_BLOCKLIST: frozenset[str] = frozenset(

@@ -285,9 +285,6 @@ class DockerConfig:
         docker_cmd += ["-w", str(self.workdir)]
         docker_cmd += ["-e", "HOME=/tmp"]
 
-        user = os.environ.get("USER") or os.environ.get("USERNAME") or "nanvix"
-        docker_cmd += ["-e", f"USER={user}"]
-
         for key, val in self.extra_env.items():
             docker_cmd += ["-e", f"{key}={val}"]
 

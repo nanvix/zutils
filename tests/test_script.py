@@ -755,8 +755,8 @@ class TestHelpersRun(unittest.TestCase):
                 forwarded.append((key, val))
 
         # The caller's host-only values must never reach the container.
-        # ``DockerConfig`` legitimately sets ``HOME``/``USER`` itself, so we
-        # check VALUES rather than keys for those cases.
+        # ``DockerConfig`` legitimately sets ``HOME`` itself, so we
+        # check VALUES rather than keys for that case.
         host_values = {
             "PATH": "C:\\Windows\\System32",
             "HOME": "/home/host",
