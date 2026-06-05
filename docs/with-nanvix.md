@@ -21,8 +21,8 @@ etc.) without publishing a release.
 The `--offline` flag skips the dependency resolver entirely and requires
 all artifacts to be available locally via `--with-nanvix`.  In offline mode:
 
-- `--with-nanvix` (or `WITH_NANVIX`) is **required** — a fatal error is
-  raised if neither is provided.
+- `--with-nanvix PATH` is **required** — a fatal error is raised if it
+  is not provided.
 - **All** dependencies (not just `nanvix/`-owned) are resolved from
   `PATH/deps/<name>/`.
 - Missing individual dependencies produce a warning rather than a fatal
@@ -74,8 +74,9 @@ cd /path/to/consumer   # e.g. usr/lib/zlib
 
 # Clean sysroot and re-run with local override
 rm -rf .nanvix/sysroot .nanvix/env.json
-WITH_NANVIX=~/src/nanvix/nanvix .nanvix/venv/bin/nanvix-zutil setup \
-    --with-docker nanvix/toolchain:latest-minimal
+.nanvix/venv/bin/nanvix-zutil setup \
+    --with-docker nanvix/toolchain:latest-minimal \
+    --with-nanvix ~/src/nanvix/nanvix
 
 # Verify
 cmp .nanvix/sysroot/bin/nanvixd.elf ~/src/nanvix/nanvix/bin/nanvixd.elf
@@ -92,8 +93,6 @@ When building ports in a dependency chain without network access:
 cd /path/to/consumer
 
 # All deps pre-built, sysroot at build/sysroot/, deps at build/deps/
-NANVIX_VERSION=~/nanvix/build/sysroot \
-WITH_NANVIX=~/nanvix/build \
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
   python3 -m nanvix_zutil setup \
     --offline \
@@ -102,15 +101,14 @@ PYTHONPATH=~/nanvix/usr/lib/zutils/src \
     --sysroot-path ~/nanvix/build/sysroot
 
 # Then build
-WITH_NANVIX=~/nanvix/build \
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
   python3 -m nanvix_zutil build
 ```
 
 ## Using the Shell Wrapper
 
-The `z.sh` and `z.ps1` wrappers support `--with-nanvix` natively. Pass
-the flag directly:
+The `z.sh` and `z.ps1` wrappers forward `--with-nanvix` directly to
+`nanvix-zutil`. Pass the flag to any subcommand that accepts it:
 
 ```bash
 ./z setup --with-docker nanvix/toolchain:latest-minimal \
@@ -118,8 +116,8 @@ the flag directly:
 ./z build
 ```
 
-The wrapper resolves the path to an absolute directory and exports it as
-`WITH_NANVIX` before invoking `nanvix-zutil`.
+The CLI canonicalises the path to an absolute directory. Relative paths
+and `~` are accepted; the path must exist and be a directory.
 
 ## Local Dependency Override
 
@@ -136,14 +134,14 @@ under `PATH/deps/<name>/`:
             └── zlib.h
 ```
 
-When `WITH_NANVIX` is set and `deps/<name>/` exists, the dependency
+When `--with-nanvix` is set and `deps/<name>/` exists, the dependency
 is installed from the local directory and the GitHub download is skipped.
 
 ## Notes
 
 - The overlay copies **all** files from `bin/` and `lib/` — not only the
   ones required by the sysroot verification.  Extra files are harmless.
-- `WITH_NANVIX` has no effect on `build`, `test`, or other
+- `--with-nanvix` has no effect on `build`, `test`, or other
   subcommands — it only modifies behavior during `setup`.
 - To return to the normal (release-based) workflow, simply omit
   `--with-nanvix` and delete `.nanvix/sysroot` before re-running setup.
@@ -167,5 +165,4 @@ artifacts from `.nanvix/output/`.
 
 | Variable | Purpose |
 | --- | --- |
-| `WITH_NANVIX` | Path to local build dir (same as `--with-nanvix`) |
 | `NANVIX_VERSION` | When set to a directory path, used as local sysroot |

@@ -1154,7 +1154,7 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
 
 
 class TestZScriptSetupWithNanvix(unittest.TestCase):
-    """setup() with WITH_NANVIX overlays local artifacts."""
+    """setup() with --with-nanvix overlays local artifacts."""
 
     def setUp(self) -> None:
         write_manifest()
@@ -1162,32 +1162,27 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
             "NANVIX_MEMORY_SIZE",
-            "WITH_NANVIX",
         ):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        os.environ.pop("WITH_NANVIX", None)
-
-    def test_setup_calls_overlay_when_env_set(self) -> None:
-        """setup() calls sysroot.overlay_local_nanvix when WITH_NANVIX is set."""
+    def test_setup_calls_overlay_when_path_set(self) -> None:
+        """setup() calls sysroot.overlay_local_nanvix when --with-nanvix is set."""
         local_dir = Path.cwd() / "local-nanvix"
         local_dir.mkdir()
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
-        os.environ["WITH_NANVIX"] = str(local_dir)
-
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
             script = ZScript()
+            script._with_nanvix_path = str(local_dir)
             script.setup()
 
         fake_sysroot.overlay_local_nanvix.assert_called_once_with(local_dir)
         fake_sysroot.verify.assert_called_once()
 
-    def test_setup_no_overlay_without_env(self) -> None:
-        """setup() does not call overlay_local_nanvix when WITH_NANVIX is unset."""
+    def test_setup_no_overlay_without_path(self) -> None:
+        """setup() does not call overlay_local_nanvix when --with-nanvix is unset."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
@@ -1209,13 +1204,12 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
         fake_sysroot.tag = "v0.1.0"
 
-        os.environ["WITH_NANVIX"] = str(local_dir)
-
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_resolve,
         ):
             script = ZScript()
+            script._with_nanvix_path = str(local_dir)
             script.setup()
 
         # The dependency was satisfied locally so GitHub resolve should not
@@ -1884,7 +1878,6 @@ class TestOfflineMode(unittest.TestCase):
             "NANVIX_MACHINE",
             "NANVIX_DEPLOYMENT_MODE",
             "NANVIX_MEMORY_SIZE",
-            "WITH_NANVIX",
         ):
             os.environ.pop(key, None)
 
@@ -1893,11 +1886,10 @@ class TestOfflineMode(unittest.TestCase):
         script = ZScript()
         self.assertFalse(script._offline)
 
-    def test_with_nanvix_env_sets_path(self) -> None:
-        """WITH_NANVIX env sets _with_nanvix_path."""
-        with patch.dict(os.environ, {"WITH_NANVIX": "/some/build"}):
-            script = ZScript()
-        self.assertEqual(script._with_nanvix_path, "/some/build")
+    def test_with_nanvix_path_initially_none(self) -> None:
+        """_with_nanvix_path starts as None."""
+        script = ZScript()
+        self.assertIsNone(script._with_nanvix_path)
 
     def test_cli_sysroot_path_initially_none(self) -> None:
         """_cli_sysroot_path starts as None."""
@@ -1912,6 +1904,7 @@ class TestOfflineMode(unittest.TestCase):
         script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
+        script._with_nanvix_path = str(paths.repo_root())
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = sysroot_dir
@@ -1923,7 +1916,6 @@ class TestOfflineMode(unittest.TestCase):
                 "nanvix_zutil.script.Sysroot.from_local",
                 return_value=fake_sysroot,
             ) as mock_from_local,
-            patch.dict(os.environ, {"WITH_NANVIX": str(paths.repo_root())}),
         ):
             script.setup()
             mock_download.assert_not_called()
@@ -1969,25 +1961,22 @@ class TestOfflineMode(unittest.TestCase):
         repo_root = paths.repo_root()
         sysroot_dir = repo_root / "my-sysroot"
         sysroot_dir.mkdir()
-        # Create WITH_NANVIX dir without deps
+        # Create --with-nanvix dir without deps
         build_dir = repo_root / "build"
         build_dir.mkdir()
 
-        with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
-            script = ZScript()
+        script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
+        script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = sysroot_dir
         fake_sysroot.tag = ""
 
-        with (
-            patch(
-                "nanvix_zutil.script.Sysroot.from_local",
-                return_value=fake_sysroot,
-            ),
-            patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}),
+        with patch(
+            "nanvix_zutil.script.Sysroot.from_local",
+            return_value=fake_sysroot,
         ):
             # Should NOT raise SystemExit — just warn
             script.setup()
@@ -2001,10 +1990,10 @@ class TestOfflineMode(unittest.TestCase):
         (build_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
         (build_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
-        with patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}):
-            script = ZScript()
+        script = ZScript()
         script._offline = True
         script._cli_sysroot_path = str(sysroot_dir)
+        script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = sysroot_dir
@@ -2016,7 +2005,6 @@ class TestOfflineMode(unittest.TestCase):
                 return_value=fake_sysroot,
             ),
             patch("nanvix_zutil.script.resolve_release") as mock_resolve,
-            patch.dict(os.environ, {"WITH_NANVIX": str(build_dir)}),
         ):
             script.setup()
 
