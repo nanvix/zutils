@@ -7,7 +7,6 @@ import subprocess as sp
 import unittest
 from unittest.mock import patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
 from nanvix_zutil.commands.lint import lint, main
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
@@ -65,32 +64,24 @@ class TestLintCmd(unittest.TestCase):
             cmd = list(args)
             raise sp.CalledProcessError(returncode=1, cmd=cmd)
 
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-                patch("importlib.util.find_spec", return_value=True),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                lint()
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
+        with (
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
+            patch("importlib.util.find_spec", return_value=True),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            lint()
+        self.assertEqual(ctx.exception.code, 5)
 
     def test_exits_when_tool_missing(self) -> None:
         """Exits with EXIT_MISSING_DEP when black is not installed."""
         (self.nanvix_dir / "z.py").write_text("x = 1\n")
 
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("importlib.util.find_spec", return_value=None),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                lint()
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
+        with (
+            patch("importlib.util.find_spec", return_value=None),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            lint()
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
 
 class TestLintCmdMain(unittest.TestCase):

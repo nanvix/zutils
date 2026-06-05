@@ -79,12 +79,6 @@ def build_parser(
     )
 
     parser.add_argument(
-        "--json",
-        action="store_true",
-        default=False,
-        help="Emit machine-parseable JSON output",
-    )
-    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",

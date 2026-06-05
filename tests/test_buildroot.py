@@ -10,7 +10,6 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
@@ -101,12 +100,6 @@ class TestDependency(unittest.TestCase):
 class TestBuildrootCreate(unittest.TestCase):
     """Buildroot.create() sets up the expected directory layout."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_creates_lib_dir(self) -> None:
         Buildroot.create()
         self.assertTrue((_buildroot() / "lib").is_dir())
@@ -128,12 +121,6 @@ class TestBuildrootCreate(unittest.TestCase):
 class TestBuildrootVerify(unittest.TestCase):
     """Buildroot.verify() checks that required libraries exist."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_verify_passes_when_libs_present(self) -> None:
         br = Buildroot.create()
         (_buildroot() / "lib" / "libz.a").write_bytes(b"")
@@ -153,12 +140,6 @@ class TestBuildrootVerify(unittest.TestCase):
 
 class TestBuildrootInstallDep(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers correctly."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def _setup_buildroot(self) -> Buildroot:
         return Buildroot.create()
@@ -450,12 +431,6 @@ class TestParseSemverTuple(unittest.TestCase):
 class TestInstallDepPreResolvedRelease(unittest.TestCase):
     """Buildroot.install_dep with _release pre-resolved."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def _setup_buildroot(self) -> Buildroot:
         return Buildroot.create()
 
@@ -537,12 +512,6 @@ class TestRefKindLocal(unittest.TestCase):
 
 class TestBuildrootInstallDepZip(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers from .zip archives."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def _setup_buildroot(self) -> Buildroot:
         return Buildroot.create()

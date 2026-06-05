@@ -3,7 +3,6 @@
 
 """Tests for nanvix_zutil.commands.resolve."""
 
-import json
 import os
 import sys
 import unittest
@@ -108,37 +107,6 @@ class TestDefaultOutput(unittest.TestCase):
         self.assertIn(f"nanvix_version={_TAG.lstrip('v')}", output)
         self.assertIn(f"package_name={_NAME}", output)
         self.assertIn(f"package_version={_VERSION}", output)
-
-
-class TestJsonOutput(unittest.TestCase):
-    """``--json`` emits a JSON object."""
-
-    @patch("nanvix_zutil.commands.resolve.resolve")
-    @patch("nanvix_zutil.commands.resolve.load_manifest")
-    def test_json_output(self, mock_load: MagicMock, mock_resolve: MagicMock) -> None:
-        mock_load.return_value = _make_manifest()
-        mock_resolve.return_value = _make_lockfile()
-
-        _write_manifest()
-
-        buf = StringIO()
-        sys.stdout = buf
-        try:
-            with (
-                patch("sys.argv", ["nanvix-zutil resolve", "--json"]),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                main()
-        finally:
-            sys.stdout = sys.__stdout__
-
-        self.assertEqual(ctx.exception.code, 0)
-        obj = json.loads(buf.getvalue().strip())
-        self.assertEqual(obj["nanvix_tag"], _TAG)
-        self.assertEqual(obj["nanvix_sha"], _SHA[:7])
-        self.assertEqual(obj["nanvix_version"], _TAG.lstrip("v"))
-        self.assertEqual(obj["package_name"], _NAME)
-        self.assertEqual(obj["package_version"], _VERSION)
 
 
 class TestShallowFlag(unittest.TestCase):

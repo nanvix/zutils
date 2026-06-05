@@ -9,7 +9,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.lockfile import (
@@ -79,10 +78,6 @@ class TestResolveSysrootOnly(unittest.TestCase):
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_sysroot_only(
         self,
@@ -125,10 +120,6 @@ class TestResolveDirectDep(unittest.TestCase):
             "[dependencies]\n"
             'zlib = { tag = "v1.0.0" }\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_one_direct_dep(
         self,
@@ -180,10 +171,6 @@ class TestResolveTransitive(unittest.TestCase):
             "[dependencies]\n"
             'libfoo = { tag = "v1.0.0" }\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_transitive_discovery(
         self,
@@ -267,10 +254,6 @@ class TestResolveShallow(unittest.TestCase):
             "[dependencies]\n"
             'libfoo = { tag = "v1.0.0" }\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_shallow_skips_transitive(
         self,
@@ -311,10 +294,6 @@ class TestCycleDetection(unittest.TestCase):
             "[dependencies]\n"
             'liba = { tag = "v1.0.0" }\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_cycle_detected(
         self,
@@ -392,10 +371,6 @@ class TestVersionConflict(unittest.TestCase):
             'libfoo = { tag = "v1.0.0" }\n'
             'zlib = { tag = "v1.0.0" }\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_conflict_exits_2(
         self,
@@ -492,10 +467,6 @@ class TestResolveLatestSysroot(unittest.TestCase):
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_latest_sysroot_deferred_suffix(
         self,
@@ -562,10 +533,6 @@ class TestAssetFiltering(unittest.TestCase):
         self._manifest_path.write_text(
             '[package]\nname = "test"\nversion = "0.1.0"\nnanvix-version = "0.1.0"\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_filters_non_tar_bz2(
         self,
@@ -647,10 +614,6 @@ class TestResolveVersionFallback(unittest.TestCase):
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_fallback_downgrades_sysroot(
         self,
@@ -817,10 +780,6 @@ class TestNoFallbackWhenPinned(unittest.TestCase):
             "[dependencies]\n"
             'zlib = "1.3.1"\n'
         )
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_no_fallback_when_pinned(
         self,

@@ -10,7 +10,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.cli import build_parser
@@ -89,12 +88,8 @@ class TestLockMethod(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()
-        log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     @patch("nanvix_zutil.script.resolve")
     def test_lock_writes_lockfile(self, mock_resolve: MagicMock) -> None:
@@ -125,12 +120,8 @@ class TestLockCheck(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()
-        log_mod.set_json_mode(True)
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_lock_check_exits_0_when_fresh(self) -> None:
         manifest_path = paths.manifest_path()

@@ -8,7 +8,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -73,11 +72,9 @@ class TestLockfileRoundTrip(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_round_trip(self) -> None:
         lockfile = _make_sample_lockfile()
@@ -216,11 +213,9 @@ class TestReadLockfileMalformed(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_missing_file_exits_3(self) -> None:
         path = Path(self._tmpdir.name) / "nanvix.lock"
@@ -248,11 +243,9 @@ class TestDownloadLockfileAsset(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_returns_none_when_no_lockfile_asset(self) -> None:
         release: dict[str, object] = {

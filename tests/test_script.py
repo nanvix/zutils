@@ -4,7 +4,6 @@
 # pyright: reportPrivateUsage=false
 """Tests for nanvix_zutil.script (ZScript)."""
 
-import json
 import os
 import subprocess as sp
 import sys
@@ -13,7 +12,6 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import helpers, paths
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.docker import (
@@ -74,13 +72,9 @@ class TestZScriptInit(unittest.TestCase):
     def test_missing_manifest_exits_3(self) -> None:
         # Autouse fixture wrote a manifest in setUp; remove it.
         (paths.manifest_path()).unlink()
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                ZScript()
-            self.assertEqual(ctx.exception.code, 3)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            ZScript()
+        self.assertEqual(ctx.exception.code, 3)
 
 
 class TestZScriptAutoSetup(unittest.TestCase):
@@ -211,21 +205,17 @@ class TestZScriptSetupLatestSysroot(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
         fake_sysroot.tag = ""
 
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch(
-                    "nanvix_zutil.script.Sysroot.download",
-                    return_value=fake_sysroot,
-                ),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                script = ZScript()
-                script.setup()
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.download",
+                return_value=fake_sysroot,
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            script = ZScript()
+            script.setup()
 
-            self.assertEqual(ctx.exception.code, 3)
-        finally:
-            log_mod.set_json_mode(False)
+        self.assertEqual(ctx.exception.code, 3)
 
 
 class TestZScriptSyncConfigs(unittest.TestCase):
@@ -393,25 +383,6 @@ class TestZScriptReleaseDefault(unittest.TestCase):
         self.assertIn("Packaged 2 archive(s) for 'test'", output)
         self.assertIn(str(paths.dist_dir()), output)
 
-    def test_emits_success_message_json(self) -> None:
-        """In JSON mode, success is emitted as a structured record."""
-        self._populate_release_dir()
-
-        buf = StringIO()
-        original_stderr = sys.stderr
-        log_mod.set_json_mode(True)
-        sys.stderr = buf
-        try:
-            ZScript().release()
-        finally:
-            sys.stderr = original_stderr
-            log_mod.set_json_mode(False)
-
-        records = [json.loads(line) for line in buf.getvalue().splitlines() if line]
-        success_records = [r for r in records if r.get("level") == "success"]
-        self.assertEqual(len(success_records), 1)
-        self.assertIn("Packaged 2 archive(s) for 'test'", success_records[0]["message"])
-
     def test_fails_when_release_dir_missing(self) -> None:
         """Missing ``.nanvix/out/release`` aborts with EXIT_GENERAL_ERROR."""
         from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
@@ -518,24 +489,14 @@ class TestHelpersRun(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
     def test_run_failure_exits(self) -> None:
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                helpers.run(sys.executable, "-c", "raise SystemExit(1)")
-            self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            helpers.run(sys.executable, "-c", "raise SystemExit(1)")
+        self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
 
     def test_run_timeout_exits(self) -> None:
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                helpers.run(
-                    sys.executable, "-c", "import time; time.sleep(10)", timeout=1
-                )
-            self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            helpers.run(sys.executable, "-c", "import time; time.sleep(10)", timeout=1)
+        self.assertEqual(ctx.exception.code, EXIT_BUILD_FAILURE)
 
     def test_run_without_docker_uses_args_directly(self) -> None:
         """Without a docker config, run() executes the command as-is."""
@@ -1175,34 +1136,21 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         ]
         self.assertTrue(success_calls, "Expected a success log on clean setup")
 
-    def test_main_json_fatal_includes_degraded_code(self) -> None:
-        """main() emits a fatal JSON object with code on degraded setup."""
+    def test_main_fatal_exits_with_degraded_code(self) -> None:
+        """main() exits with EXIT_DEGRADED_SETUP when setup() returns True."""
         from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
 
-        buf = StringIO()
-        original_stderr = sys.stderr
-        log_mod.set_json_mode(True)
-        sys.stderr = buf
-        try:
-            with (
-                patch(
-                    "sys.argv",
-                    ["z.py", "--json", "setup", "--with-docker", "test/image:tag"],
-                ),
-                patch.object(ZScript, "setup", return_value=True),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                ZScript.main()
-        finally:
-            sys.stderr = original_stderr
-            log_mod.set_json_mode(False)
+        with (
+            patch(
+                "sys.argv",
+                ["z.py", "setup", "--with-docker", "test/image:tag"],
+            ),
+            patch.object(ZScript, "setup", return_value=True),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main()
 
         self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
-        json_lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith("{")]
-        self.assertTrue(json_lines, "Expected JSON output on stderr")
-        obj = json.loads(json_lines[-1])
-        self.assertEqual(obj["level"], "error")
-        self.assertEqual(obj["code"], EXIT_DEGRADED_SETUP)
 
 
 class TestZScriptSetupWithNanvix(unittest.TestCase):
@@ -1282,9 +1230,6 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_local_sysroot_skips_github(self) -> None:
         """When sysroot ref is LOCAL, Sysroot.from_local is used."""
         repo_root = paths.repo_root()
@@ -1332,9 +1277,6 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
     def setUp(self) -> None:
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_local_dep_uses_install_local_nanvix(self) -> None:
         """LOCAL deps call install_local_nanvix instead of GitHub."""
@@ -1400,7 +1342,6 @@ class TestZScriptSetupLocalDep(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
         fake_sysroot.tag = "v0.1.0"
 
-        log_mod.set_json_mode(True)
         with (
             patch.dict(os.environ, {"NANVIX_VERSION_ZLIB": str(local_dep_path)}),
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
@@ -1610,13 +1551,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         """Exits with EXIT_MISSING_DEP when sysroot is None and config lacks one."""
         script = ZScript()
         script.sysroot = None
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_stem_derived_from_filename(self, _mock: object) -> None:
@@ -1641,15 +1578,11 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     def test_app_with_path_separator_exits(self) -> None:
         """Exits with EXIT_MISSING_DEP when app contains path separators."""
         script = self._make_script()
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(
-                    script, "build/hello.elf", test=False, args=InitRdArgs()
-                )
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            helpers.make_initrd(
+                script, "build/hello.elf", test=False, args=InitRdArgs()
+            )
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_mkimage_not_found_exits(self, _mock: object) -> None:
@@ -1661,13 +1594,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         fake_sysroot = MagicMock()
         fake_sysroot.path = paths.sysroot()
         script.sysroot = fake_sysroot
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_env(self, _mock: object) -> None:
@@ -1867,17 +1796,13 @@ class TestHelpersCheckDocker(unittest.TestCase):
     def test_missing_docker_binary_exits_fatal(self) -> None:
         """No `docker` on PATH -> fatal EXIT_MISSING_DEP, no subprocess calls."""
         mock_run = MagicMock()
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch("nanvix_zutil.helpers.shutil.which", return_value=None),
-                patch("nanvix_zutil.helpers.subprocess.run", mock_run),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                helpers.check_docker("test/image:tag")
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
+        with (
+            patch("nanvix_zutil.helpers.shutil.which", return_value=None),
+            patch("nanvix_zutil.helpers.subprocess.run", mock_run),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            helpers.check_docker("test/image:tag")
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         mock_run.assert_not_called()
 
     def test_image_present_skips_pull(self) -> None:
@@ -1935,21 +1860,16 @@ class TestHelpersCheckDocker(unittest.TestCase):
                 args=cmd, returncode=next(returncodes), stdout="", stderr=""
             )
 
-        log_mod.set_json_mode(True)
-        try:
-            with (
-                patch(
-                    "nanvix_zutil.helpers.shutil.which",
-                    return_value="/usr/bin/docker",
-                ),
-                patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                helpers.check_docker(image)
-            self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-        finally:
-            log_mod.set_json_mode(False)
-
+        with (
+            patch(
+                "nanvix_zutil.helpers.shutil.which",
+                return_value="/usr/bin/docker",
+            ),
+            patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            helpers.check_docker(image)
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0], ["docker", "image", "inspect", image])
         self.assertEqual(calls[1], ["docker", "pull", image])
@@ -1967,9 +1887,6 @@ class TestOfflineMode(unittest.TestCase):
             "WITH_NANVIX",
         ):
             os.environ.pop(key, None)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_offline_default_false(self) -> None:
         """Offline mode defaults to False."""
@@ -2017,7 +1934,6 @@ class TestOfflineMode(unittest.TestCase):
         script = ZScript()
         script._offline = True
 
-        log_mod.set_json_mode(True)
         with self.assertRaises(SystemExit) as ctx:
             script.setup()
 
@@ -2037,7 +1953,6 @@ class TestOfflineMode(unittest.TestCase):
         fake_sysroot.path = sysroot_dir
         fake_sysroot.tag = ""
 
-        log_mod.set_json_mode(True)
         with (
             patch(
                 "nanvix_zutil.script.Sysroot.from_local",
