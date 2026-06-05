@@ -61,25 +61,8 @@ newest release matching `1.2.3-nanvix-*` and uses it instead (e.g.
 `TAG`, `COMMITISH`, `ID`, and `LOCAL` refs are never suffixed — they
 resolve exactly as written.
 
-When the sysroot ref is `LOCAL` (i.e. `NANVIX_VERSION` is a filesystem
-path), the auto-suffix step is skipped entirely — `VERSION` deps keep
-their bare version string.
-
 Refs that already contain `-nanvix-` are rejected to prevent accidental
 double-suffixing.
-
-## Environment variable overrides
-
-| Variable | Overrides |
-|---|---|
-| `NANVIX_VERSION` | `nanvix-version` (sysroot ref value) |
-
-Overrides replace the **value** but keep the `RefKind` from the
-manifest — **unless** the override value looks like a filesystem path
-(absolute Unix path, Windows drive path, or relative `./`/`../` path),
-in which case the `RefKind` is changed to `LOCAL`.
-`NANVIX_VERSION` bypasses semver validation (intended for development
-use).
 
 ## Full example
 

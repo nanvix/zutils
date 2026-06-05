@@ -1233,11 +1233,11 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
 
         write_manifest()
 
-        with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
-            script = ZScript()
+        script = ZScript()
+        # Simulate a manifest with a LOCAL sysroot ref.
+        from nanvix_zutil.buildroot import Ref
 
-        # Verify manifest parsed as LOCAL.
-        self.assertEqual(script.manifest.sysroot_ref.kind, RefKind.LOCAL)
+        script.manifest.sysroot_ref = Ref(kind=RefKind.LOCAL, value=str(local_sysroot))
 
         with (
             patch("nanvix_zutil.script.Sysroot.download") as mock_download,
@@ -1250,19 +1250,27 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
             mock_download.assert_not_called()
             mock_from_local.assert_called_once()
 
-    def test_local_sysroot_no_dep_suffix(self) -> None:
-        """When sysroot is LOCAL, VERSION deps are not suffixed."""
+    def test_local_sysroot_via_cli_sysroot_path(self) -> None:
+        """When --sysroot-path is provided, Sysroot.from_local is used."""
         repo_root = paths.repo_root()
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
 
-        write_manifest(MANIFEST_WITH_DEPS)
+        write_manifest()
 
-        with patch.dict(os.environ, {"NANVIX_VERSION": str(local_sysroot)}):
-            script = ZScript()
+        script = ZScript()
+        script._cli_sysroot_path = str(local_sysroot)
 
-        # VERSION dep should NOT be suffixed (sysroot is LOCAL).
-        self.assertEqual(script.manifest.dependencies[0].ref.value, "1.0")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download") as mock_download,
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=MagicMock(path=local_sysroot, tag=""),
+            ) as mock_from_local,
+        ):
+            script.setup()
+            mock_download.assert_not_called()
+            mock_from_local.assert_called_once()
 
 
 class TestHelpersMakeInitrd(unittest.TestCase):

@@ -189,8 +189,10 @@ def build_parser(
                 type=str,
                 metavar="PATH",
                 dest="sysroot_path",
-                help="Explicit path to a local sysroot directory."
-                " Alternative to setting NANVIX_VERSION to a path.",
+                help="Explicit path to a local sysroot directory,"
+                " bypassing sysroot download/version resolution."
+                " The manifest's nanvix-version is still used for"
+                " dependency tag suffixing.",
             )
         if name == "install":
             sub.add_argument(

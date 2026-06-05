@@ -27,17 +27,13 @@ all artifacts to be available locally via `--with-nanvix`.  In offline mode:
   `PATH/deps/<name>/`.
 - Missing individual dependencies produce a warning rather than a fatal
   error, allowing the port's own build logic to handle fallbacks.
-- A local sysroot must be provided via `--sysroot-path` or by setting
-  `NANVIX_VERSION` to an absolute directory path.
+- A local sysroot must be provided via `--sysroot-path`.
 
 ## Sysroot Path Override
 
-The `--sysroot-path PATH` flag (or setting `NANVIX_VERSION` to an absolute
-directory path) provides an explicit local sysroot directory, bypassing the
-GitHub download entirely.  This takes precedence over version-based resolution.
-`NANVIX_VERSION` is only interpreted as a path when it is absolute (starts
-with `/`) and points to an existing directory — otherwise it is treated as a
-version string.
+The `--sysroot-path PATH` flag provides an explicit local sysroot
+directory, bypassing the GitHub download entirely.  This takes
+precedence over version-based resolution.
 
 ## Prerequisites
 
@@ -160,9 +156,3 @@ nanvix-zutil install --output /path/to/output
 
 This creates `<output>/{lib,include,bin}/` subdirectories with the port's
 artifacts from `.nanvix/output/`.
-
-## Environment Variables
-
-| Variable | Purpose |
-| --- | --- |
-| `NANVIX_VERSION` | When set to a directory path, used as local sysroot |

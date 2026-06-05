@@ -3,14 +3,12 @@
 
 """Tests for nanvix_zutil.manifest."""
 
-import os
 import unittest
 from unittest.mock import patch
 
 from nanvix_zutil import paths
 from nanvix_zutil.buildroot import RefKind
-from nanvix_zutil.manifest import load_manifest, is_local_path
-
+from nanvix_zutil.manifest import is_local_path, load_manifest
 from tests.testutils import make_toml
 
 
@@ -176,16 +174,6 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
         # Dep should NOT be suffixed — deferred to resolver
         self.assertEqual(m.dependencies[0].ref.value, "1.3.1")
 
-    def test_latest_sysroot_env_override_suffixes_normally(self) -> None:
-        path = paths.manifest_path()
-        path.write_text(make_toml(nanvix_version="latest", deps={"zlib": '"1.3.1"'}))
-
-        with patch.dict("os.environ", {"NANVIX_VERSION": "0.12.258"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.value, "0.12.258")
-        self.assertEqual(m.dependencies[0].ref.value, "1.3.1-nanvix-0.12.258")
-
     def test_nanvix_version_table_exits_2(self) -> None:
         path = paths.manifest_path()
         path.write_text(
@@ -329,31 +317,6 @@ class TestLoadManifestMalformedToml(unittest.TestCase):
             load_manifest()
 
         self.assertEqual(ctx.exception.code, 2)
-
-
-class TestLoadManifestEnvOverride(unittest.TestCase):
-    """Environment variables override manifest versions."""
-
-    def test_nanvix_version_overrides_sysroot(self) -> None:
-        path = paths.manifest_path()
-        path.write_text(make_toml(deps={"zlib": '"1.0.0"'}))
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "override_sha"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.value, "override_sha")
-        self.assertEqual(m.dependencies[0].ref.value, "1.0.0-nanvix-override_sha")
-
-    def test_nanvix_version_v_prefix_stripped_in_suffix(self) -> None:
-        """NANVIX_VERSION with 'v' prefix must strip it for dep suffix."""
-        path = paths.manifest_path()
-        path.write_text(make_toml(nanvix_version="latest", deps={"zlib": '"1.3.1"'}))
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "v0.12.291"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.value, "v0.12.291")
-        self.assertEqual(m.dependencies[0].ref.value, "1.3.1-nanvix-0.12.291")
 
 
 class TestLoadManifestAutoSuffix(unittest.TestCase):
@@ -567,54 +530,6 @@ class TestIsLocalPath(unittest.TestCase):
 
     def test_empty_not_path(self) -> None:
         self.assertFalse(is_local_path(""))
-
-
-class TestLoadManifestLocalRef(unittest.TestCase):
-    """Env var overrides with filesystem paths produce RefKind.LOCAL."""
-
-    def test_sysroot_env_unix_path_produces_local(self) -> None:
-        path = paths.manifest_path()
-        path.write_text(make_toml())
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "/path/to/sysroot"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
-        self.assertEqual(m.sysroot_ref.value, "/path/to/sysroot")
-
-    def test_sysroot_env_windows_path_produces_local(self) -> None:
-        path = paths.manifest_path()
-        path.write_text(make_toml())
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "C:\\nanvix\\sysroot"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
-        self.assertEqual(m.sysroot_ref.value, "C:\\nanvix\\sysroot")
-
-    def test_sysroot_env_version_still_works(self) -> None:
-        # make_toml default nanvix-version is a semver string, which
-        # _parse_nanvix_version maps to RefKind.TAG.  The env override
-        # keeps the manifest RefKind (TAG) and only replaces the value.
-        path = paths.manifest_path()
-        path.write_text(make_toml(nanvix_version="0.12.257"))
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "0.12.258"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.kind, RefKind.TAG)
-
-    def test_local_sysroot_skips_dep_suffix(self) -> None:
-        """When sysroot is LOCAL, VERSION deps must NOT be auto-suffixed."""
-        path = paths.manifest_path()
-        path.write_text(make_toml(deps={"zlib": '"1.3.1"'}))
-
-        with patch.dict(os.environ, {"NANVIX_VERSION": "/path/to/sysroot"}):
-            m = load_manifest()
-
-        self.assertEqual(m.sysroot_ref.kind, RefKind.LOCAL)
-        # Dep should NOT be suffixed — sysroot is local.
-        self.assertEqual(m.dependencies[0].ref.value, "1.3.1")
 
 
 if __name__ == "__main__":

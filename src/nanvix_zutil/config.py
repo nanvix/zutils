@@ -58,7 +58,7 @@ CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
 #: Curated mapping of the most common environment variables recognised by
 #: nanvix-zutil to human-readable descriptions.  Rendered in the ``--help``
 #: epilog.  Not exhaustive — consumers and other modules may honour additional
-#: ``NANVIX_*`` variables (e.g. ``NANVIX_VERSION`` in ``manifest.py``).
+#: ``NANVIX_*`` variables recognised by manifest/script modules.
 ENV_VARS: dict[str, str] = {
     "NANVIX_TARGET": f"Target architecture (default: {DEFAULT_TARGET})",
     "NANVIX_MACHINE": f"Target machine (default: {DEFAULT_MACHINE})",
