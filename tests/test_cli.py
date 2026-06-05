@@ -3,7 +3,10 @@
 
 """Tests for nanvix_zutil.cli."""
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 from nanvix_zutil.cli import SUBCOMMANDS, build_parser
 
@@ -157,15 +160,73 @@ class TestWithNanvixFlag(unittest.TestCase):
 
     def test_with_nanvix_parsed(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(
-            ["setup", "--with-docker", "img:t", "--with-nanvix", "/some/path"]
-        )
-        self.assertEqual(args.with_nanvix, "/some/path")
+        with tempfile.TemporaryDirectory() as tmp:
+            args = parser.parse_args(
+                ["setup", "--with-docker", "img:t", "--with-nanvix", tmp]
+            )
+            self.assertEqual(args.with_nanvix, str(Path(tmp).resolve(strict=True)))
+
+    def test_with_nanvix_canonicalised_to_absolute(self) -> None:
+        """Relative paths are resolved to absolute by the argparse type."""
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                Path("sub").mkdir()
+                args = parser.parse_args(
+                    ["setup", "--with-docker", "img:t", "--with-nanvix", "sub"]
+                )
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(Path(args.with_nanvix).is_absolute())
+            self.assertEqual(
+                Path(args.with_nanvix).name,
+                "sub",
+            )
 
     def test_with_nanvix_default_none(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["setup", "--with-docker", "img:t"])
         self.assertIsNone(args.with_nanvix)
+
+    def test_with_nanvix_rejects_missing_path(self) -> None:
+        """Non-existent paths are rejected at parse time."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(
+                [
+                    "setup",
+                    "--with-docker",
+                    "img:t",
+                    "--with-nanvix",
+                    "/definitely/does/not/exist/xyzzy",
+                ]
+            )
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_with_nanvix_rejects_file(self) -> None:
+        """A path that exists but is a file (not a directory) is rejected."""
+        parser = build_parser()
+        with tempfile.NamedTemporaryFile() as tmp:
+            with self.assertRaises(SystemExit) as ctx:
+                parser.parse_args(
+                    [
+                        "setup",
+                        "--with-docker",
+                        "img:t",
+                        "--with-nanvix",
+                        tmp.name,
+                    ]
+                )
+            self.assertEqual(ctx.exception.code, 2)
+
+    def test_with_nanvix_rejects_empty_string(self) -> None:
+        """Empty path is rejected (would otherwise resolve to CWD)."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["setup", "--with-docker", "img:t", "--with-nanvix", ""])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_with_nanvix_rejected_on_build(self) -> None:
         """--with-nanvix is only accepted on setup, not build."""

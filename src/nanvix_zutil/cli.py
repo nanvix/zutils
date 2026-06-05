@@ -17,6 +17,35 @@ from pathlib import Path
 from nanvix_zutil.lockfile import get_zutil_version
 
 # ---------------------------------------------------------------------------
+# argparse type helpers
+# ---------------------------------------------------------------------------
+
+
+def _abs_dir(raw: str) -> str:
+    """argparse ``type=`` callable: resolve ``raw`` to an absolute directory.
+
+    Expands ``~``, resolves symlinks, and requires the target to exist and
+    be a directory.  Returns the canonicalised absolute path as a string
+    so downstream consumers (``ZScript._with_nanvix_path``) receive a
+    fully-resolved value regardless of the caller's CWD.
+    """
+    if not raw:
+        raise argparse.ArgumentTypeError("path is empty")
+    p = Path(raw).expanduser()
+    try:
+        resolved = p.resolve(strict=True)
+    except (OSError, RuntimeError) as e:
+        raise argparse.ArgumentTypeError(
+            f"path does not exist: {raw}",
+        ) from e
+    if not resolved.is_dir():
+        raise argparse.ArgumentTypeError(
+            f"path is not a directory: {raw}",
+        )
+    return str(resolved)
+
+
+# ---------------------------------------------------------------------------
 # Parser factory
 # ---------------------------------------------------------------------------
 
@@ -147,12 +176,13 @@ def build_parser(
             )
             sub.add_argument(
                 "--with-nanvix",
-                type=str,
+                type=_abs_dir,
                 metavar="PATH",
                 dest="with_nanvix",
                 help="Path to a local build directory containing"
                 " deps/<name>/{lib,include}/ artifacts."
-                " Overrides the WITH_NANVIX environment variable.",
+                " Relative paths and ~ are accepted; the path is"
+                " canonicalised to an absolute directory.",
             )
             sub.add_argument(
                 "--sysroot-path",

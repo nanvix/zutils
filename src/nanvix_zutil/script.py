@@ -196,7 +196,7 @@ class ZScript:
         self.docker: DockerConfig | None = None
         self._used_fallback: bool = False
         self._offline: bool = False
-        self._with_nanvix_path: str | None = os.environ.get("WITH_NANVIX")
+        self._with_nanvix_path: str | None = None
         self._cli_sysroot_path: str | None = None
 
     # ------------------------------------------------------------------
@@ -358,13 +358,10 @@ class ZScript:
         # When --with-nanvix PATH is passed, overlay local build artifacts
         # (nanvixd.elf, mkramfs.elf, uservm.elf, libposix.a, etc.) on top
         # of the downloaded sysroot before verification.
-        # Re-read WITH_NANVIX here in case the env var was set after __init__
-        # (e.g., by a parent orchestrator between construction and setup()).
-        nanvix_local = self._with_nanvix_path or os.environ.get("WITH_NANVIX")
+        nanvix_local = self._with_nanvix_path
         if self._offline and not nanvix_local:
             log.fatal(
-                "Offline mode requires --with-nanvix or WITH_NANVIX to"
-                " provide local artifacts.",
+                "Offline mode requires --with-nanvix to" " provide local artifacts.",
                 code=EXIT_MISSING_DEP,
             )
         if nanvix_local:
