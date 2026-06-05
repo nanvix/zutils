@@ -53,7 +53,17 @@ CFG_GH_TOKEN: str = "GH_TOKEN"
 """GitHub token for authenticated API requests (rate limits)."""
 
 CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
-"""Docker image persisted by ``setup --with-docker``."""
+"""Docker image persisted by ``setup --with-docker``.
+
+This key is only ever read from / written to ``.nanvix/env.json``;
+the corresponding environment variable is intentionally *not* honoured
+so that ``--with-docker`` remains the sole way to change the configured
+image.
+"""
+
+#: Configuration keys that are persisted only and never overridden from the
+#: environment, even when the corresponding env var is set.
+_ENV_OVERRIDE_DENYLIST: frozenset[str] = frozenset({CFG_DOCKER_IMAGE})
 
 #: Curated mapping of the most common environment variables recognised by
 #: nanvix-zutil to human-readable descriptions.  Rendered in the ``--help``
@@ -65,7 +75,6 @@ ENV_VARS: dict[str, str] = {
     "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE})",
     "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE})",
     "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
-    "NANVIX_DOCKER_IMAGE": "Docker image override (set by setup --with-docker)",
     "GH_TOKEN": "GitHub token for API rate limits",
 }
 
@@ -120,12 +129,16 @@ class Config:
 
         # Apply environment variable overrides.
         for key in list(self._data.keys()):
+            if key in _ENV_OVERRIDE_DENYLIST:
+                continue
             env_val = os.environ.get(key)
             if env_val is not None:
                 self._data[key] = env_val
 
         # Apply any extra env vars not in defaults.
         for key, val in os.environ.items():
+            if key in _ENV_OVERRIDE_DENYLIST:
+                continue
             if key.startswith("NANVIX_"):
                 self._data[key] = val
 
@@ -163,7 +176,9 @@ class Config:
     def get(self, key: str, default: str | None = None) -> str | None:
         """Retrieve a configuration value.
 
-        Environment variables always take precedence.
+        Environment variables take precedence, except for keys in
+        :data:`_ENV_OVERRIDE_DENYLIST` which are only read from persisted
+        state.
 
         Args:
             key: The configuration key.
@@ -172,9 +187,10 @@ class Config:
         Returns:
             The configuration value or *default*.
         """
-        env_val = os.environ.get(key)
-        if env_val is not None:
-            return env_val
+        if key not in _ENV_OVERRIDE_DENYLIST:
+            env_val = os.environ.get(key)
+            if env_val is not None:
+                return env_val
         return self._data.get(key, default)
 
     def set(self, key: str, value: str) -> None:
