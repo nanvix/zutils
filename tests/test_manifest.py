@@ -7,7 +7,6 @@ import os
 import unittest
 from unittest.mock import patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import paths
 from nanvix_zutil.buildroot import RefKind
 from nanvix_zutil.manifest import load_manifest, is_local_path
@@ -18,12 +17,6 @@ from tests.testutils import make_toml
 class TestLoadManifestFileNotFound(unittest.TestCase):
     """load_manifest exits 3 when the file does not exist."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_missing_file_exits_3(self) -> None:
         with self.assertRaises(SystemExit) as ctx:
             load_manifest()
@@ -33,12 +26,6 @@ class TestLoadManifestFileNotFound(unittest.TestCase):
 
 class TestLoadManifestBasic(unittest.TestCase):
     """load_manifest parses a well-formed nanvix.toml."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_single_dependency_commitish(self) -> None:
         path = paths.manifest_path()
@@ -142,12 +129,6 @@ class TestLoadManifestBasic(unittest.TestCase):
 
 class TestLoadManifestInvalidVersion(unittest.TestCase):
     """Invalid version specs are rejected."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_empty_string_nanvix_version_exits_2(self) -> None:
         path = paths.manifest_path()
@@ -277,12 +258,6 @@ class TestLoadManifestInvalidVersion(unittest.TestCase):
 class TestLoadManifestLatestWarning(unittest.TestCase):
     """'latest' emits a warning but is accepted for dependencies."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_latest_dep_version_warns(self) -> None:
         path = paths.manifest_path()
         path.write_text(make_toml(deps={"zlib": '"latest"'}))
@@ -296,12 +271,6 @@ class TestLoadManifestLatestWarning(unittest.TestCase):
 
 class TestLoadManifestPackageValidation(unittest.TestCase):
     """Required [package] keys are validated."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_missing_package_section_exits_2(self) -> None:
         path = paths.manifest_path()
@@ -352,12 +321,6 @@ class TestLoadManifestPackageValidation(unittest.TestCase):
 class TestLoadManifestMalformedToml(unittest.TestCase):
     """Invalid TOML syntax is rejected."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_invalid_toml_exits_2(self) -> None:
         path = paths.manifest_path()
         path.write_text("this is not valid toml [[[")
@@ -370,12 +333,6 @@ class TestLoadManifestMalformedToml(unittest.TestCase):
 
 class TestLoadManifestEnvOverride(unittest.TestCase):
     """Environment variables override manifest versions."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_nanvix_version_overrides_sysroot(self) -> None:
         path = paths.manifest_path()
@@ -447,12 +404,6 @@ class TestLoadManifestEnvOverride(unittest.TestCase):
 class TestLoadManifestAutoSuffix(unittest.TestCase):
     """Only VERSION refs are auto-suffixed with the nanvix version."""
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_version_string_dep_suffixed(self) -> None:
         path = paths.manifest_path()
         path.write_text(make_toml(nanvix_version="1.0.0", deps={"zlib": '"4.5.6"'}))
@@ -504,10 +455,8 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
         path = paths.manifest_path()
         path.write_text(make_toml(deps={"zlib": '"b7a6a3c-nanvix-fa06b88"'}))
 
-        log_mod.set_json_mode(True)
         with self.assertRaises(SystemExit) as ctx:
             load_manifest()
-        log_mod.set_json_mode(False)
 
         self.assertEqual(ctx.exception.code, 2)
 
@@ -538,12 +487,6 @@ class TestLoadManifestAutoSuffix(unittest.TestCase):
 
 class TestLoadManifestSystemDependencies(unittest.TestCase):
     """[system-dependencies] are parsed correctly."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_system_deps_parsed(self) -> None:
         path = paths.manifest_path()
@@ -581,12 +524,6 @@ class TestLoadManifestSystemDependencies(unittest.TestCase):
 
 class TestLoadManifestTypeValidation(unittest.TestCase):
     """Non-string/non-table dependency values and non-table sections are rejected."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_integer_dependency_value_exits_2(self) -> None:
         path = paths.manifest_path()
@@ -679,12 +616,6 @@ class TestIsLocalPath(unittest.TestCase):
 
 class TestLoadManifestLocalRef(unittest.TestCase):
     """Env var overrides with filesystem paths produce RefKind.LOCAL."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_dep_env_unix_path_produces_local(self) -> None:
         path = paths.manifest_path()

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 
@@ -30,15 +29,8 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="nanvix-zutil resolve",
         description=(
             "Resolve the .nanvix/nanvix.toml manifest and emit release "
-            "metadata as key=value lines (suitable for $GITHUB_OUTPUT) "
-            "or JSON."
+            "metadata as key=value lines (suitable for $GITHUB_OUTPUT)."
         ),
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        default=False,
-        help="Emit a single JSON object instead of key=value lines",
     )
     parser.add_argument(
         "--shallow",
@@ -70,9 +62,6 @@ def main() -> None:
 
     gh_token: str | None = args.gh_token or os.environ.get("GH_TOKEN")
 
-    if args.json:
-        log.set_json_mode(True)
-
     manifest = load_manifest()
     lockfile = resolve(
         manifest,
@@ -99,11 +88,7 @@ def main() -> None:
         "package_version": manifest.version,
     }
 
-    if args.json:
-        log.set_json_mode(False)
-        print(json.dumps(result))
-    else:
-        for key, value in result.items():
-            print(f"{key}={value}")
+    for key, value in result.items():
+        print(f"{key}={value}")
 
     sys.exit(EXIT_SUCCESS)

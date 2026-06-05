@@ -614,13 +614,11 @@ class ZScript:
             framework_argv = argv
             targets = []
 
-        # Pre-parse --json and --version before creating the instance so
-        # that JSON mode is active for any errors raised during __init__,
-        # and --version can exit cleanly without requiring a valid manifest.
-        # Also pre-parse --mode so that --mode can override
-        # NANVIX_DEPLOYMENT_MODE before Config.__init__ runs.
+        # Pre-parse --version and --mode before creating the instance so
+        # that --version can exit cleanly without requiring a valid manifest,
+        # and so that --mode can override NANVIX_DEPLOYMENT_MODE before
+        # Config.__init__ runs.
         pre_parser = argparse.ArgumentParser(add_help=False)
-        pre_parser.add_argument("--json", action="store_true", default=False)
         pre_parser.add_argument(
             "--version",
             action="version",
@@ -628,9 +626,6 @@ class ZScript:
         )
         pre_parser.add_argument("--mode", default=None, dest="mode")
         pre_args, _ = pre_parser.parse_known_args(framework_argv)
-
-        if pre_args.json:
-            log.set_json_mode(True)
 
         # Detect --help/-h and the 'help' subcommand (or no subcommand at
         # all) BEFORE loading the manifest.  A missing nanvix.toml must not

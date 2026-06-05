@@ -15,7 +15,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import nanvix_zutil.github as github_mod
-import nanvix_zutil.log as log_mod
 
 
 def _make_urlopen_response(body: bytes, chunked: bool = False) -> MagicMock:
@@ -58,11 +57,9 @@ class TestDownloadReleaseAssetAlreadyExists(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_returns_existing_path_without_network(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -86,11 +83,9 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_downloads_and_writes_file(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -152,11 +147,9 @@ class TestDownloadReleaseAssetNotFound(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_asset_not_in_release_exits_3(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -179,11 +172,9 @@ class TestDownloadReleaseAssetNetworkError(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_metadata_network_error_exits_4(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -256,11 +247,9 @@ class TestDownloadReleaseAssetLatestTag(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_latest_tag_uses_releases_latest_endpoint(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -336,11 +325,9 @@ class TestDownloadReleaseAssetPrefixMatch(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_prefix_match_finds_asset_with_sha(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -390,7 +377,6 @@ class TestDownloadReleaseAssetPrefixMatch(unittest.TestCase):
         metadata_resp = _make_urlopen_response(
             _make_release_payload("unrelated-asset.tar.bz2", "https://example.com/x")
         )
-        log_mod.set_json_mode(True)
 
         with patch("urllib.request.urlopen", return_value=metadata_resp):
             with self.assertRaises(SystemExit) as ctx:
@@ -409,11 +395,9 @@ class TestDownloadReleaseAssetPrefixPreference(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def _make_multi_asset_release(self, assets: list[tuple[str, str]]) -> bytes:
         """Build a release payload with multiple assets."""
@@ -677,12 +661,6 @@ class TestFetchJson(unittest.TestCase):
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_404_without_allow_404_exits_3(self) -> None:
         """HTTP 404 (allow_404=False) exits with EXIT_MISSING_DEP (3)."""
         url = "https://api.github.com/repos/nanvix/zlib/releases/tags/v0.0.0"
@@ -746,12 +724,6 @@ class TestListReleases(unittest.TestCase):
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_single_page_no_link_header(self) -> None:
         releases_data: list[dict[str, object]] = [
             {"tag_name": "v1", "target_commitish": "a" * 40},
@@ -814,12 +786,6 @@ class TestResolveRelease(unittest.TestCase):
     """Tests for :func:`github._resolve_release` (full hash resolution)."""
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_latest_uses_releases_latest_endpoint(self) -> None:
         release_data: dict[str, object] = {"tag_name": "latest", "assets": []}
@@ -1052,12 +1018,6 @@ class TestResolveReleaseSemver(unittest.TestCase):
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
 
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
-
     def test_semver_resolves_via_v_prefix_tag(self) -> None:
         """``"1.2.3"`` resolves via ``GET /releases/tags/v1.2.3``."""
         release_data: dict[str, object] = {"tag_name": "v1.2.3", "assets": []}
@@ -1194,11 +1154,9 @@ class TestDownloadReleaseAssetFullHash(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_full_hash_downloads_correct_asset(self) -> None:
         dest = Path(self._tmpdir.name)
@@ -1243,7 +1201,6 @@ class TestDownloadReleaseAssetFullHash(unittest.TestCase):
             {"tag_name": "latest", "target_commitish": "b" * 40, "assets": []},
         ]
         resp = _make_urlopen_response(json.dumps(releases_list).encode())
-        log_mod.set_json_mode(True)
 
         with patch("urllib.request.urlopen", return_value=resp):
             with self.assertRaises(SystemExit) as ctx:
@@ -1266,12 +1223,6 @@ class TestResolveReleaseId(unittest.TestCase):
     """Tests for integer release ID resolution."""
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_int_tag_fetches_releases_id_endpoint(self) -> None:
         release_data: dict[str, object] = {"id": 12345678, "assets": []}
@@ -1302,12 +1253,6 @@ class TestResolveReleaseSemverGating(unittest.TestCase):
     """Semver cascade only runs when ``semver=True``."""
 
     _headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_semver_string_without_flag_uses_plain_tag(self) -> None:
         """``1.2.3`` without ``semver=True`` goes to /releases/tags/1.2.3."""
@@ -1353,12 +1298,6 @@ class TestResolveReleaseSemverGating(unittest.TestCase):
 
 class TestFindBestRelease(unittest.TestCase):
     """Tests for _find_best_release()."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_finds_matching_release(self) -> None:
         """First release whose tag matches the prefix is returned."""
@@ -1411,12 +1350,6 @@ class TestFindBestRelease(unittest.TestCase):
 
 class TestResolveReleaseWithFallback(unittest.TestCase):
     """Tests for resolve_release_with_fallback()."""
-
-    def setUp(self) -> None:
-        log_mod.set_json_mode(True)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     @patch.object(github_mod, "_find_best_release")
     @patch.object(github_mod, "_resolve_release")

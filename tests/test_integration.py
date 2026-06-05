@@ -7,14 +7,12 @@ These tests exercise the full lifecycle of a mock consumer ``z.py`` that
 subclasses :class:`~nanvix_zutil.ZScript` and implements all lifecycle hooks.
 """
 
-import json
 import os
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil import ZScript
 from nanvix_zutil.helpers import run
 from nanvix_zutil.paths import manifest_path, nanvix_root, repo_root
@@ -66,13 +64,9 @@ class TestIntegrationLifecycle(unittest.TestCase):
         write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-        log_mod.set_json_mode(False)
         p = patch("nanvix_zutil.script.check_docker", return_value=None)
         p.start()
         self.addCleanup(p.stop)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def _run_main(
         self, subcommand: str, extra_argv: list[str] | None = None
@@ -131,36 +125,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def test_clean_hook_called(self) -> None:
         instance = self._run_main("clean")
         self.assertIn("clean", instance.called)
-
-    def test_json_flag_enables_json_mode(self) -> None:
-        """--json flag produces JSON output on stderr."""
-        from io import StringIO
-
-        fake_script = str(nanvix_root() / "z.py")
-
-        # build needs a persisted Docker image.
-        nanvix_dir = repo_root() / ".nanvix"
-        (nanvix_dir / "env.json").write_text(
-            '{"NANVIX_DOCKER_IMAGE": "test/image:tag"}'
-        )
-
-        with (patch("sys.argv", [fake_script, "--json", "build"]),):
-            _MockConsumer.main()
-
-        # After main(), log mode was set to True. Verify it produces JSON output.
-        buf = StringIO()
-        original_stderr = sys.stderr
-        sys.stderr = buf
-        try:
-            log_mod.info("json-check")
-        finally:
-            sys.stderr = original_stderr
-            log_mod.set_json_mode(False)
-
-        raw: object = json.loads(buf.getvalue().strip())
-        self.assertIsInstance(raw, dict)
-        assert isinstance(raw, dict)
-        self.assertEqual(raw["level"], "info")
 
     def test_help_subcommand_returns(self) -> None:
         """help subcommand prints help and returns without calling any hook."""
@@ -245,10 +209,6 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
         write_manifest()
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_config_save_and_reload(self) -> None:
         script = _MockConsumer()
@@ -265,23 +225,15 @@ class TestIntegrationRunSubprocess(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()
-        log_mod.set_json_mode(False)
-
-    def tearDown(self) -> None:
-        log_mod.set_json_mode(False)
 
     def test_run_echo_succeeds(self) -> None:
         result = run(sys.executable, "-c", "import sys; sys.exit(0)", cwd=repo_root())
         self.assertEqual(result.returncode, 0)
 
     def test_run_exit_nonzero_raises_system_exit_5(self) -> None:
-        log_mod.set_json_mode(True)
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                run(sys.executable, "-c", "import sys; sys.exit(2)", cwd=repo_root())
-            self.assertEqual(ctx.exception.code, 5)
-        finally:
-            log_mod.set_json_mode(False)
+        with self.assertRaises(SystemExit) as ctx:
+            run(sys.executable, "-c", "import sys; sys.exit(2)", cwd=repo_root())
+        self.assertEqual(ctx.exception.code, 5)
 
 
 if __name__ == "__main__":

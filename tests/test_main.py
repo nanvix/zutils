@@ -75,7 +75,7 @@ class TestInfoDispatch(unittest.TestCase):
         """info subcommand calls info.main()."""
         original_argv = sys.argv[:]
         try:
-            with patch("sys.argv", ["nanvix-zutil", "info", "--json"]):
+            with patch("sys.argv", ["nanvix-zutil", "info"]):
                 main()
         except SystemExit:
             pass

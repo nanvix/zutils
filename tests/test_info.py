@@ -3,7 +3,6 @@
 
 """Tests for nanvix_zutil.commands.info."""
 
-import json
 import sys
 import unittest
 from io import StringIO
@@ -213,41 +212,6 @@ class TestNanvixInfoMain(unittest.TestCase):
         self.assertEqual(call_args[0][0], "nanvix/nanvix")
         self.assertEqual(call_args[0][1], "latest")
 
-    @patch("nanvix_zutil.commands.info.resolve_release")
-    def test_json_output(self, mock_resolve: MagicMock) -> None:
-        mock_resolve.return_value = _make_release()
-        buf = StringIO()
-        sys.stdout = buf
-        try:
-            with (
-                patch("sys.argv", ["nanvix-info", "--json"]),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                main()
-        finally:
-            sys.stdout = sys.__stdout__
-        self.assertEqual(ctx.exception.code, 0)
-        obj = json.loads(buf.getvalue().strip())
-        self.assertEqual(obj["tag"], _TAG)
-        self.assertEqual(obj["sha"], _SHA)
-        self.assertEqual(obj["version"], _VERSION)
-
-    @patch("nanvix_zutil.commands.info.resolve_release")
-    def test_json_output_without_version(self, mock_resolve: MagicMock) -> None:
-        mock_resolve.return_value = _make_release(name="no version here")
-        buf = StringIO()
-        sys.stdout = buf
-        try:
-            with (
-                patch("sys.argv", ["nanvix-info", "--json"]),
-                self.assertRaises(SystemExit),
-            ):
-                main()
-        finally:
-            sys.stdout = sys.__stdout__
-        obj = json.loads(buf.getvalue().strip())
-        self.assertNotIn("version", obj)
-
     def test_invalid_repo_format_exits(self) -> None:
         with (
             patch("sys.argv", ["nanvix-info", "--repo", "invalid"]),
@@ -343,6 +307,22 @@ class TestNanvixInfoMain(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("sha=deadbee", output)
 
+    @patch("nanvix_zutil.commands.info.resolve_release")
+    def test_release_name_without_version(self, mock_resolve: MagicMock) -> None:
+        """Release name without semver omits the version line entirely."""
+        mock_resolve.return_value = _make_release(name="no version here")
+        buf = StringIO()
+        sys.stdout = buf
+        try:
+            with (
+                patch("sys.argv", ["nanvix-info"]),
+                self.assertRaises(SystemExit),
+            ):
+                main()
+        finally:
+            sys.stdout = sys.__stdout__
+        self.assertNotIn("version=", buf.getvalue())
+
 
 class TestNanvixZutilInfoInvocation(unittest.TestCase):
     """Tests for invocation via ``nanvix-zutil info`` (CLI dispatcher)."""
@@ -365,25 +345,6 @@ class TestNanvixZutilInfoInvocation(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn(f"tag={_TAG}", output)
         self.assertIn(f"sha={_SHA}", output)
-
-    @patch("nanvix_zutil.commands.info.resolve_release")
-    def test_nanvix_zutil_info_json(self, mock_resolve: MagicMock) -> None:
-        """nanvix-zutil info --json produces valid JSON."""
-        mock_resolve.return_value = _make_release()
-        buf = StringIO()
-        sys.stdout = buf
-        try:
-            with (
-                patch("sys.argv", ["nanvix-zutil info", "--json"]),
-                self.assertRaises(SystemExit) as ctx,
-            ):
-                main()
-        finally:
-            sys.stdout = sys.__stdout__
-        self.assertEqual(ctx.exception.code, 0)
-        obj = json.loads(buf.getvalue().strip())
-        self.assertEqual(obj["tag"], _TAG)
-        self.assertEqual(obj["sha"], _SHA)
 
 
 if __name__ == "__main__":

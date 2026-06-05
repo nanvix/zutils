@@ -5,21 +5,18 @@
 
 Queries the GitHub Releases API for a Nanvix release, extracts the short
 commit SHA embedded in the sysroot asset filename, and optionally resolves
-the semver version from the release name.  Output is either a series of
-``key=value`` lines (suitable for ``>> $GITHUB_OUTPUT`` in CI) or a single
-JSON object (``--json``).
+the semver version from the release name.  Output is a series of
+``key=value`` lines (suitable for ``>> $GITHUB_OUTPUT`` in CI).
 
 Example usage::
 
     nanvix-info
     nanvix-info --version latest --machine microvm --mode standalone
-    nanvix-info --json
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -283,12 +280,6 @@ def _build_parser(prog: str = "nanvix-info") -> argparse.ArgumentParser:
         help=f"Memory size string used in asset names (default: {DEFAULT_MEMORY_SIZE})",
     )
     parser.add_argument(
-        "--json",
-        action="store_true",
-        default=False,
-        help="Emit a single JSON object instead of key=value lines",
-    )
-    parser.add_argument(
         "--gh-token",
         default=None,
         metavar="TOKEN",
@@ -302,7 +293,7 @@ def main() -> None:
     """Entry point for the ``nanvix-info`` command.
 
     Parses command-line arguments, resolves release information, and prints
-    the result to stdout as either ``key=value`` lines or JSON.
+    the result to stdout as ``key=value`` lines.
     """
     parser = _build_parser()
     args = parser.parse_args()
@@ -316,9 +307,6 @@ def main() -> None:
 
     gh_token: str | None = args.gh_token or os.environ.get("GH_TOKEN")
 
-    if args.json:
-        log.set_json_mode(True)
-
     info = get_nanvix_info(
         repo=args.repo,
         version=args.version,
@@ -329,13 +317,8 @@ def main() -> None:
         gh_token=gh_token,
     )
 
-    if args.json:
-        # Emit a single JSON object to stdout (not via log machinery).
-        log.set_json_mode(False)
-        print(json.dumps(info.to_dict()))
-    else:
-        for key, value in info.to_dict().items():
-            print(f"{key}={value}")
+    for key, value in info.to_dict().items():
+        print(f"{key}={value}")
 
     sys.exit(EXIT_SUCCESS)
 

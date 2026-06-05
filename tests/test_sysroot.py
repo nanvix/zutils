@@ -11,7 +11,6 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import nanvix_zutil.log as log_mod
 from nanvix_zutil.config import DEFAULT_TARGET, Config
 from nanvix_zutil.sysroot import WINDOWS_HOST_BINARIES, Sysroot
 
@@ -55,11 +54,9 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_skips_download_when_dest_exists(self) -> None:
         dest = Path(self._tmpdir.name) / "sysroot"
@@ -95,11 +92,9 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_redownloads_when_tag_mismatches(self) -> None:
         """If sysroot exists but cached tag != requested tag, re-download."""
@@ -229,11 +224,9 @@ class TestWindowsBinariesStaleDetection(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_redownloads_when_tag_changes(self) -> None:
         """If Windows binaries exist but persisted tag differs, re-download."""
@@ -301,7 +294,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
         self._resolve_patcher = patch(
             "nanvix_zutil.github.resolve_release",
             return_value={"target_commitish": "abc1234def5678"},
@@ -311,7 +303,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
     def tearDown(self) -> None:
         self._resolve_patcher.stop()
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_downloads_and_extracts(self) -> None:
         dest = Path(self._tmpdir.name) / "sysroot"
@@ -402,11 +393,9 @@ class TestSysrootVerify(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(True)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_verify_passes_when_files_present(self) -> None:
         sysroot_dir = Path(self._tmpdir.name) / "sysroot"
@@ -444,11 +433,9 @@ class TestSysrootOverlayLocal(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_overlay_copies_bin_files(self) -> None:
         sysroot_dir = Path(self._tmpdir.name) / "sysroot"
@@ -510,7 +497,6 @@ class TestSysrootOverlayLocal(unittest.TestCase):
     def test_overlay_nonexistent_path_exits(self) -> None:
         sysroot_dir = Path(self._tmpdir.name) / "sysroot"
         sysroot_dir.mkdir()
-        log_mod.set_json_mode(True)
 
         sysroot = Sysroot(sysroot_dir)
         with self.assertRaises(SystemExit) as ctx:
@@ -523,11 +509,9 @@ class TestSysrootFromLocal(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_returns_sysroot_pointing_at_path(self) -> None:
         sysroot_dir = Path(self._tmpdir.name) / "my-sysroot"
@@ -549,7 +533,6 @@ class TestSysrootFromLocal(unittest.TestCase):
                 mock_dl.assert_not_called()
 
     def test_exits_if_path_not_directory(self) -> None:
-        log_mod.set_json_mode(True)
         bad_path = Path(self._tmpdir.name) / "nonexistent"
 
         with self.assertRaises(SystemExit) as ctx:
@@ -557,7 +540,6 @@ class TestSysrootFromLocal(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
 
     def test_exits_if_path_is_file(self) -> None:
-        log_mod.set_json_mode(True)
         file_path = Path(self._tmpdir.name) / "a-file"
         file_path.write_text("not a dir")
 
@@ -571,7 +553,6 @@ class TestSysrootDownloadZip(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        log_mod.set_json_mode(False)
         self._resolve_patcher = patch(
             "nanvix_zutil.github.resolve_release",
             return_value={"target_commitish": "abc1234def5678"},
@@ -581,7 +562,6 @@ class TestSysrootDownloadZip(unittest.TestCase):
     def tearDown(self) -> None:
         self._resolve_patcher.stop()
         self._tmpdir.cleanup()
-        log_mod.set_json_mode(False)
 
     def test_downloads_and_extracts_zip(self) -> None:
         dest = Path(self._tmpdir.name) / "sysroot"

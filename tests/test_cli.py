@@ -17,16 +17,6 @@ class TestBuildParser(unittest.TestCase):
         parser = build_parser()
         self.assertIsInstance(parser, argparse.ArgumentParser)
 
-    def test_json_flag(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["--json", "build"])
-        self.assertTrue(args.json)
-
-    def test_no_json_by_default(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["build"])
-        self.assertFalse(args.json)
-
     def test_subcommands_registered(self) -> None:
         parser = build_parser()
         for cmd in SUBCOMMANDS:
