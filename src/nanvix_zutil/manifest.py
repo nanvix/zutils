@@ -9,9 +9,8 @@ or the literal ``"latest"``.  Dependency version fields accept a plain
 string (``version`` specifier), or a table with one of ``version``,
 ``tag``, ``commitish``, or ``id``.
 
-Environment variables ``NANVIX_VERSION`` (for the sysroot) and
-``NANVIX_VERSION_<NAME>`` (for individual dependencies) override the
-versions declared in the manifest.
+The environment variable ``NANVIX_VERSION`` (for the sysroot) overrides
+the version declared in the manifest.
 
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
@@ -273,16 +272,6 @@ def _parse_dependencies(
                 " nanvix-version.",
             )
 
-        env_key = f"NANVIX_VERSION_{name.upper()}"
-        env_val = os.environ.get(env_key)
-        if env_val is not None:
-            # Env overrides MAY include "-nanvix-" for full control.
-            # suffix_dep() will skip values that already contain it.
-            if is_local_path(env_val):
-                ref = Ref(kind=RefKind.LOCAL, value=env_val)
-            else:
-                ref = Ref(kind=ref.kind, value=env_val)
-
         deps.append(Dependency(name=name, repo=f"nanvix/{name}", ref=ref))
     return deps
 
@@ -300,8 +289,8 @@ def load_manifest() -> Manifest:
     ``{ version }``, ``{ tag }``, ``{ commitish }``, ``{ id }``), and
     auto-suffixes ``version`` refs with ``-nanvix-{sysroot_version}``.
 
-    Environment variables ``NANVIX_VERSION`` (sysroot) and
-    ``NANVIX_VERSION_<NAME>`` (per dependency) override manifest values.
+    Environment variable ``NANVIX_VERSION`` (sysroot) overrides the
+    manifest value.
 
     Returns:
         A :class:`Manifest` instance.

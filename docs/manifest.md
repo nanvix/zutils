@@ -73,7 +73,6 @@ double-suffixing.
 | Variable | Overrides |
 |---|---|
 | `NANVIX_VERSION` | `nanvix-version` (sysroot ref value) |
-| `NANVIX_VERSION_<NAME>` | Dependency `<name>` ref value (uppercase) |
 
 Overrides replace the **value** but keep the `RefKind` from the
 manifest — **unless** the override value looks like a filesystem path
