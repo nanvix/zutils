@@ -1441,14 +1441,16 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            result = helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
+            result = helpers.make_initrd(
+                script, "my-app.elf", test=False, args=InitRdArgs()
+            )
 
-        self.assertEqual(result, paths.repo_root() / "my-app.img")
+        self.assertEqual(result, paths.bin_out() / "my-app.img")
         cmd = captured[0]
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(cmd[0], str(bin_dir / "mkimage.elf"))
         self.assertEqual(cmd[1], "-o")
-        self.assertEqual(cmd[2], str(paths.repo_root() / "my-app.img"))
+        self.assertEqual(cmd[2], str(paths.bin_out() / "my-app.img"))
         self.assertEqual(cmd[3], f"{bin_dir / 'procd.elf'};procd")
         self.assertEqual(cmd[4], f"{bin_dir / 'memd.elf'};memd")
         self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
@@ -1465,7 +1467,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
+            helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
 
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
@@ -1484,6 +1486,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(app_args=["--verbose", "--port=8080"]),
             )
 
@@ -1507,6 +1510,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(
                     procd_args=["--debug"],
                     memd_args=["--heap=64m"],
@@ -1533,6 +1537,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(kernel_args=["console=ttyS0", "debug"]),
             )
 
@@ -1553,7 +1558,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", args=InitRdArgs(app_args=["--sep=;"])
+                script, "my-app.elf", test=False, args=InitRdArgs(app_args=["--sep=;"])
             )
 
         app_entry = captured[0][6]
@@ -1573,7 +1578,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", args=InitRdArgs(kernel_args=["a;b"])
+                script, "my-app.elf", test=False, args=InitRdArgs(kernel_args=["a;b"])
             )
 
         cmd = captured[0]
@@ -1595,7 +1600,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", args=InitRdArgs(bin_dir=custom_bin)
+                script, "my-app.elf", test=False, args=InitRdArgs(bin_dir=custom_bin)
             )
 
         self.assertEqual(captured[0][0], str(custom_bin / "mkimage.elf"))
@@ -1608,7 +1613,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
+                helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1624,9 +1629,11 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
-            result = helpers.make_initrd(script, "hello-world.elf", args=InitRdArgs())
+            result = helpers.make_initrd(
+                script, "hello-world.elf", test=False, args=InitRdArgs()
+            )
 
-        self.assertEqual(result, paths.repo_root() / "hello-world.img")
+        self.assertEqual(result, paths.bin_out() / "hello-world.img")
         self.assertEqual(
             captured[0][6], f"{paths.repo_root() / 'hello-world.elf'};hello-world.elf"
         )
@@ -1637,7 +1644,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "build/hello.elf", args=InitRdArgs())
+                helpers.make_initrd(
+                    script, "build/hello.elf", test=False, args=InitRdArgs()
+                )
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1655,7 +1664,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         log_mod.set_json_mode(True)
         try:
             with self.assertRaises(SystemExit) as ctx:
-                helpers.make_initrd(script, "my-app.elf", args=InitRdArgs())
+                helpers.make_initrd(script, "my-app.elf", test=False, args=InitRdArgs())
             self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
         finally:
             log_mod.set_json_mode(False)
@@ -1672,7 +1681,10 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", args=InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"])
+                script,
+                "my-app.elf",
+                test=False,
+                args=InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"]),
             )
 
         app_entry = captured[0][6]
@@ -1695,6 +1707,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
             )
 
@@ -1718,6 +1731,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(
                     procd_env=["LOG=debug"],
                     memd_env=["HEAP=64m"],
@@ -1742,7 +1756,10 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script, "my-app.elf", args=InitRdArgs(app_env=["PATH=/a;/b"])
+                script,
+                "my-app.elf",
+                test=False,
+                args=InitRdArgs(app_env=["PATH=/a;/b"]),
             )
 
         app_entry = captured[0][6]
@@ -1765,6 +1782,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(
                     procd_args=["--log-level", "trace"], procd_env=["LOG=debug"]
                 ),
@@ -1790,6 +1808,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 "my-app.elf",
+                test=False,
                 args=InitRdArgs(
                     app_args=["--verbose"], app_env=["DEBUG=1"], procd_env=["LOG=debug"]
                 ),
@@ -1802,6 +1821,40 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             captured[0][6],
             f"{paths.repo_root() / 'my-app.elf'};my-app.elf --verbose;DEBUG=1",
         )
+
+    @patch("nanvix_zutil.helpers.is_windows", return_value=False)
+    def test_output_location_depends_on_test_flag(self, _mock: object) -> None:
+        """Output directory is ``test_out()`` when ``test=True`` and
+        ``bin_out()`` when ``test=False``; in both cases the directory is
+        created automatically if it does not already exist."""
+        script = self._make_script()
+        captured: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+            captured.append(cmd)
+            return sp.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        # Sanity: neither output directory should exist before the calls
+        # so we can verify make_initrd creates them.
+        self.assertFalse(paths.bin_out().exists())
+        self.assertFalse(paths.test_out().exists())
+
+        with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
+            release = helpers.make_initrd(
+                script, "my-app.elf", test=False, args=InitRdArgs()
+            )
+            test_img = helpers.make_initrd(
+                script, "my-app.elf", test=True, args=InitRdArgs()
+            )
+
+        self.assertEqual(release, paths.bin_out() / "my-app.img")
+        self.assertEqual(test_img, paths.test_out() / "my-app.img")
+        self.assertTrue(paths.bin_out().is_dir())
+        self.assertTrue(paths.test_out().is_dir())
+        # The mkimage command's ``-o`` argument should reflect the chosen
+        # output directory for each invocation.
+        self.assertEqual(captured[0][2], str(paths.bin_out() / "my-app.img"))
+        self.assertEqual(captured[1][2], str(paths.test_out() / "my-app.img"))
 
 
 class TestHelpersCheckDocker(unittest.TestCase):
