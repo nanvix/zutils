@@ -60,6 +60,9 @@ def discover_script_class() -> type[ZScript]:
         log.fatal(f"Cannot load {z_py}", code=EXIT_GENERAL_ERROR)
     module = importlib.util.module_from_spec(spec)
     sys.modules["_z_consumer"] = module
+    # Note: Equivalent to nanvix_root(). Kept in case the location changes.
+    # Appended so as not to shadow stdlib.
+    sys.path.append(str(z_py_path().parent))
     try:
         spec.loader.exec_module(module)  # type: ignore[union-attr]
     except Exception as exc:

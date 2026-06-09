@@ -14,8 +14,9 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
 """
 
 import dataclasses
-import sys
 from pathlib import Path, PurePosixPath
+
+import _test
 
 from nanvix_zutil import (
     BUILDROOT_CONTAINER_PATH,
@@ -25,7 +26,7 @@ from nanvix_zutil import (
     ZScript,
     log,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
+from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 from nanvix_zutil.paths import nanvix_root, repo_root
 
@@ -115,96 +116,7 @@ class BinHello(ZScript):
             make_initrd(self, "hello.elf", test=False, args=InitRdArgs())
 
     def test(self) -> None:
-        """Run the test suite (smoke + integration + functional).
-
-        The functional test phase runs under ``nanvixd.elf`` inside a
-        Docker container on Linux, or natively under ``nanvixd.exe`` on
-        Windows.  On Linux, functional tests are skipped when Docker is
-        not configured (the ``test`` subcommand does not enable Docker
-        automatically).
-        """
-        binary = repo_root() / "hello.elf"
-
-        # Smoke: binary must exist and be non-trivially sized.
-        log.info("=== bin-hello smoke tests ===")
-        if not binary.exists():
-            log.fatal(
-                f"{binary} not found — run 'nanvix-zutil build' first.",
-                code=EXIT_TEST_FAILURE,
-            )
-        size = binary.stat().st_size
-        if size < 1000:
-            log.fatal(f"{binary} too small ({size} bytes).", code=EXIT_TEST_FAILURE)
-        log.success(f"OK: {binary.name} ({size} bytes)")
-
-        # Integration: verify ELF magic.
-        log.info("=== bin-hello integration tests ===")
-        with binary.open("rb") as fh:
-            magic = fh.read(4)
-        if magic != b"\x7fELF":
-            log.fatal(f"{binary} is not a valid ELF binary.", code=EXIT_TEST_FAILURE)
-        log.success(f"OK: {binary.name} is a valid ELF binary")
-
-        # Functional: run under nanvixd on the appropriate platform.
-        #
-        # On Linux the functional test requires Docker (nanvixd.elf
-        # cannot run directly on the CI host).  The ``test`` subcommand
-        # does not enable Docker, so functional tests are skipped unless
-        # Docker was explicitly configured.
-        #
-        # On Windows, nanvixd.exe is a native host binary and runs
-        # without Docker.
-        if sys.platform == "win32":
-            self._test_functional_windows(binary)
-        elif self.docker:
-            self._test_functional_docker(binary)
-        else:
-            log.info("=== skipping functional tests (Docker not configured) ===")
-
-    def _test_functional_docker(self, binary: Path) -> None:
-        """Run functional tests inside a Docker container (Linux)."""
-        log.info("=== bin-hello functional tests (Docker) ===")
-        sysroot = self._sysroot()
-        workspace_binary = self.docker.translate_path(binary) if self.docker else binary
-        run(
-            "timeout",
-            "--foreground",
-            "60",
-            f"{sysroot}/bin/nanvixd.elf",
-            "-bin-dir",
-            f"{sysroot}/bin",
-            "--",
-            str(workspace_binary),
-            docker=self.docker,
-        )
-        log.success("PASS: bin-hello functional tests")
-
-    def _test_functional_windows(self, binary: Path) -> None:
-        """Run functional tests natively on Windows using nanvixd.exe."""
-        log.info("=== bin-hello functional tests (Windows) ===")
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_TEST_FAILURE,
-            )
-        sysroot = Path(sysroot_str)  # type: ignore[arg-type]
-        nanvixd = sysroot / "bin" / "nanvixd.exe"
-        if not nanvixd.exists():
-            log.fatal(
-                f"{nanvixd} not found — run 'nanvix-zutil setup' to download it.",
-                code=EXIT_TEST_FAILURE,
-            )
-        run(
-            str(nanvixd),
-            "-bin-dir",
-            str(sysroot / "bin"),
-            "--",
-            str(binary),
-            cwd=repo_root(),
-            timeout=60,
-        )
-        log.success("PASS: bin-hello functional tests")
+        _test.Test(self).test()
 
     def clean(self) -> None:
         """Remove build artifacts."""
