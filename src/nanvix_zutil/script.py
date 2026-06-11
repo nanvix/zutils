@@ -391,19 +391,6 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create()
             for dep in deps:
-                # LOCAL deps: install from the filesystem path directly.
-                if dep.ref.kind == RefKind.LOCAL:
-                    local_dep_path = Path(str(dep.ref.value))
-                    if not self.buildroot.install_local_nanvix(dep, local_dep_path):
-                        log.fatal(
-                            f"Local dependency path has no artifacts for"
-                            f" '{dep.name}': {local_dep_path}",
-                            code=EXIT_MISSING_DEP,
-                            hint=f"Ensure '{local_dep_path}/deps/{dep.name}/' "
-                            "contains lib/ and/or include/ directories.",
-                        )
-                    continue
-
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
