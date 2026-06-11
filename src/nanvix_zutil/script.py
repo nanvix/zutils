@@ -302,18 +302,8 @@ class ZScript:
         """
         self._used_fallback = False
 
-        # Resolve sysroot: --sysroot-path / NANVIX_VERSION (path) take precedence.
-        # NANVIX_VERSION is only treated as a path when it is absolute AND
-        # points to an existing directory — this avoids accidentally matching
-        # a version string like "3" against a relative directory.
-        _env_version = os.environ.get("NANVIX_VERSION")
-        sysroot_path = self._cli_sysroot_path or (
-            _env_version
-            if _env_version
-            and Path(_env_version).is_absolute()
-            and Path(_env_version).is_dir()
-            else None
-        )
+        # Resolve sysroot: --sysroot-path takes precedence.
+        sysroot_path = self._cli_sysroot_path
 
         if sysroot_path:
             self.sysroot = Sysroot.from_local(
@@ -328,7 +318,7 @@ class ZScript:
         elif self._offline:
             log.fatal(
                 "Offline mode requires a local sysroot."
-                " Set --sysroot-path or NANVIX_VERSION to a directory.",
+                " Set --sysroot-path to a directory.",
                 code=EXIT_MISSING_DEP,
             )
         else:

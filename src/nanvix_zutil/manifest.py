@@ -9,9 +9,6 @@ or the literal ``"latest"``.  Dependency version fields accept a plain
 string (``version`` specifier), or a table with one of ``version``,
 ``tag``, ``commitish``, or ``id``.
 
-The environment variable ``NANVIX_VERSION`` (for the sysroot) overrides
-the version declared in the manifest.
-
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
 are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
 ``commitish``, and ``id`` specifiers are exact-match and never suffixed.
@@ -22,7 +19,6 @@ deferred to the resolver (which resolves the actual version first).
 
 from __future__ import annotations
 
-import os
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -289,9 +285,6 @@ def load_manifest() -> Manifest:
     ``{ version }``, ``{ tag }``, ``{ commitish }``, ``{ id }``), and
     auto-suffixes ``version`` refs with ``-nanvix-{sysroot_version}``.
 
-    Environment variable ``NANVIX_VERSION`` (sysroot) overrides the
-    manifest value.
-
     Returns:
         A :class:`Manifest` instance.
 
@@ -352,15 +345,6 @@ def load_manifest() -> Manifest:
         )
 
     sysroot_ref = _parse_nanvix_version(raw_nanvix_version)
-    env_sysroot = os.environ.get("NANVIX_VERSION")
-    if env_sysroot is not None:
-        # NOTE: NANVIX_VERSION intentionally bypasses semver validation.
-        # This is a development escape hatch — CI may pass with a non-semver
-        # sysroot version if this env var is set.
-        if is_local_path(env_sysroot):
-            sysroot_ref = Ref(kind=RefKind.LOCAL, value=env_sysroot)
-        else:
-            sysroot_ref = Ref(kind=sysroot_ref.kind, value=env_sysroot)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})

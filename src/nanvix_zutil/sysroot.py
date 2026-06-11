@@ -81,7 +81,7 @@ class Sysroot:
             log.fatal(
                 f"Local sysroot path is not a directory: {local_path}",
                 code=EXIT_MISSING_DEP,
-                hint="Set NANVIX_VERSION to a valid sysroot directory path.",
+                hint="Pass --sysroot-path with a valid sysroot directory.",
             )
         log.info(f"Using local sysroot at {resolved}")
         if config is not None:
