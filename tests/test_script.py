@@ -20,7 +20,10 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
+from nanvix_zutil.exitcodes import (
+    EXIT_BUILD_FAILURE,
+    EXIT_MISSING_DEP,
+)
 from nanvix_zutil.helpers import InitRdArgs
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
@@ -334,15 +337,7 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
 
 
 class TestZScriptReleaseDefault(unittest.TestCase):
-    """Default ``ZScript.release()`` packages ``.nanvix/out/release``.
-
-    The hook is a thin wrapper around :func:`nanvix_zutil.release.package`;
-    exhaustive coverage of archive contents, format handling, and input
-    validation lives in ``tests/test_release.py``. These tests only verify
-    the wiring: the release directory is picked up, archives land in the
-    dist directory under the manifest name, and a missing release directory
-    fails cleanly.
-    """
+    """Default ``ZScript.release()`` packages ``.nanvix/out/release``."""
 
     def setUp(self) -> None:
         write_manifest()  # manifest name = "test"
@@ -379,41 +374,90 @@ class TestZScriptReleaseDefault(unittest.TestCase):
             sys.stderr = original_stderr
 
         output = buf.getvalue()
-        self.assertIn("success:", output)
-        self.assertIn("Packaged 2 archive(s) for 'test'", output)
+        self.assertIn("Created", output)
+        self.assertEqual(output.count("Created"), 2)
+        self.assertIn("info:", output)
+        self.assertIn("test.tar.gz", output)
+        self.assertIn("test.zip", output)
         self.assertIn(str(paths.dist_dir()), output)
 
-    def test_fails_when_release_dir_missing(self) -> None:
-        """Missing ``.nanvix/out/release`` aborts with EXIT_GENERAL_ERROR."""
-        from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
 
+class TestZScriptReleaseMultiMode(unittest.TestCase):
+    """``ZScript.release()`` in multi-release mode.
+
+    With ``multi_release_mode = true`` in the manifest, each child of
+    ``paths.release_dir()`` is packaged into its own pair of archives,
+    with the child's stem appended to the manifest name.
+    """
+
+    MULTI_RELEASE_MANIFEST = (
+        "[package]\n"
+        'name = "test"\n'
+        'version = "0.1.0"\n'
+        'nanvix-version = "0.1.0"\n'
+        "multi-release-mode = true\n"
+    )
+
+    def setUp(self) -> None:
+        write_manifest(self.MULTI_RELEASE_MANIFEST)
+
+    def test_packages_each_subdirectory_separately(self) -> None:
+        import tarfile
+        import zipfile
+
+        rel = paths.release_dir()
+        rel.mkdir(parents=True, exist_ok=True)
+        (rel / "a").mkdir()
+        (rel / "a" / "file_a.bin").write_bytes(b"alpha")
+        (rel / "b").mkdir()
+        (rel / "b" / "file_b.bin").write_bytes(b"beta")
+
+        ZScript().release()
+
+        dist = paths.dist_dir()
+        produced = {p.name for p in dist.iterdir()}
+        # name="test" + "-" + item.stem ("a"/"b") + DEFAULT_FORMATS (tar.gz, zip).
+        self.assertEqual(
+            produced,
+            {"test-a.tar.gz", "test-a.zip", "test-b.tar.gz", "test-b.zip"},
+        )
+        for p in dist.iterdir():
+            self.assertGreater(p.stat().st_size, 0, f"empty archive: {p}")
+
+        # Each archive must contain ONLY its own subdir's file — not the
+        # union of both. This is the headline contract of multi-release mode.
+        def _tar_files(name: str) -> set[str]:
+            with tarfile.open(dist / name, "r:gz") as tf:
+                return {n for n in tf.getnames() if not tf.getmember(n).isdir()}
+
+        def _zip_files(name: str) -> set[str]:
+            with zipfile.ZipFile(dist / name, "r") as zf:
+                return set(zf.namelist())
+
+        self.assertEqual(_tar_files("test-a.tar.gz"), {"file_a.bin"})
+        self.assertEqual(_zip_files("test-a.zip"), {"file_a.bin"})
+        self.assertEqual(_tar_files("test-b.tar.gz"), {"file_b.bin"})
+        self.assertEqual(_zip_files("test-b.zip"), {"file_b.bin"})
+
+    def test_fails_when_release_dir_is_file(self) -> None:
+        """In multi-release mode, a non-directory release path is fatal."""
+        rel = paths.release_dir()
+        rel.parent.mkdir(parents=True, exist_ok=True)
+        rel.write_bytes(b"not a directory")
+
+        with self.assertRaises(SystemExit) as ctx:
+            ZScript().release()
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+
+    def test_fails_when_release_dir_missing(self) -> None:
+        """In multi-release mode, a missing release path is also fatal
+        (same ``not sources.is_dir()`` branch as the is-a-file case).
+        """
         self.assertFalse(paths.release_dir().exists())
 
         with self.assertRaises(SystemExit) as ctx:
             ZScript().release()
-        self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
-
-        # Nothing should have been produced in dist/.
-        dist = paths.dist_dir()
-        if dist.exists():
-            self.assertEqual(list(dist.iterdir()), [])
-
-    def test_failure_emits_error_with_hint(self) -> None:
-        """The failure path surfaces a recognizable error + hint on stderr."""
-        buf = StringIO()
-        original_stderr = sys.stderr
-        sys.stderr = buf
-        try:
-            with self.assertRaises(SystemExit):
-                ZScript().release()
-        finally:
-            sys.stderr = original_stderr
-
-        output = buf.getvalue()
-        self.assertIn("error:", output)
-        self.assertIn(str(paths.release_dir()), output)
-        self.assertIn("hint:", output)
-        self.assertIn("release", output)
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):

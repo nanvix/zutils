@@ -45,6 +45,7 @@ class Manifest:
         sysroot_ref: Nanvix sysroot version reference.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
+        multi_release_mode: See field description
     """
 
     name: str
@@ -52,6 +53,22 @@ class Manifest:
     sysroot_ref: Ref
     dependencies: list[Dependency] = field(default_factory=lambda: [])
     system_dependencies: list[Dependency] = field(default_factory=lambda: [])
+    multi_release_mode: bool = False
+    """
+    Whether the release() target will map from subdirectories to release
+    artifacts.
+
+    Leaving this variable unset (= False) will result in a single release
+    artifact which wraps everything in ``paths.release_dir()``.
+
+    Example:
+        Suppose we're porting 'mytool', which has multi-release mode enabled.
+        Then the following map holds:
+        ```
+            .nanvix/out/release/bin -> .nanvix/out/dist/mytool-bin.tar.gz
+            .nanvix/out/release/lib -> .nanvix/out/dist/mytool-lib.tar.gz
+        ```
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +344,20 @@ def load_manifest() -> Manifest:
             code=EXIT_INVALID_ARGS,
             hint="Add 'name = \"...\"' under [package].",
         )
+    # Validate name is a safe, non-empty filename
+    if not pkg_name.strip():
+        log.fatal(
+            f"Invalid package name '{pkg_name}': must be a non-empty filename",
+            code=EXIT_INVALID_ARGS,
+            hint="Provide a proper basename like 'mylib-v1.0'.",
+        )
+    # Validate name has no path separators or parent traversal
+    if "/" in pkg_name or "\\" in pkg_name or ".." in pkg_name:
+        log.fatal(
+            f"Invalid package name '{pkg_name}': must be a plain filename without path separators or '..'",
+            code=EXIT_INVALID_ARGS,
+            hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
+        )
 
     pkg_version: object = pkg.get("version")
     if not isinstance(pkg_version, str) or not pkg_version:
@@ -345,6 +376,15 @@ def load_manifest() -> Manifest:
         )
 
     sysroot_ref = _parse_nanvix_version(raw_nanvix_version)
+
+    # optional
+    multi_release_mode: object = pkg.get("multi-release-mode", False)
+    if not isinstance(multi_release_mode, bool):
+        log.fatal(
+            "multi-release-mode must be a boolean value.",
+            code=EXIT_INVALID_ARGS,
+            hint="Use a boolean value.",
+        )
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})
@@ -394,4 +434,5 @@ def load_manifest() -> Manifest:
         sysroot_ref=sysroot_ref,
         dependencies=dependencies,
         system_dependencies=system_dependencies,
+        multi_release_mode=multi_release_mode,
     )

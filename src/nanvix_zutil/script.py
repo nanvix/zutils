@@ -63,7 +63,7 @@ from nanvix_zutil.helpers import (
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
-from nanvix_zutil.paths import dist_dir, nanvix_root, out_dir, release_dir, repo_root
+from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
 from nanvix_zutil.paths import sysroot as _sysroot_dir
 from nanvix_zutil.release import package
 from nanvix_zutil.resolver import is_stale, resolve
@@ -456,8 +456,7 @@ class ZScript:
         The resulting archives are written to ``.nanvix/out/dist`` under the
         manifest package name.
         """
-        manifest = load_manifest()
-        package([release_dir()], dist_dir(), manifest.name)
+        package()
 
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.

@@ -1,36 +1,20 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Release artifact packaging.
-
-Produces release archives in multiple formats (``.tar.gz``, ``.tar.bz2``,
-``.zip``) from a source directory.  Consumer repositories call
-:func:`package` from their :meth:`~nanvix_zutil.ZScript.release` hook to
-generate distribution archives::
-
-    from nanvix_zutil.release import ArchiveFormat, package
-
-    archives = package(
-        sources=[Path("build/output")],
-        dest=Path("dist"),
-        name="mylib-microvm-standalone-256mb",
-    )
-"""
+"""Release artifact packaging."""
 
 from __future__ import annotations
 
 import os
-import shutil
 import tarfile
 import zipfile
-from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from tempfile import mkdtemp
-from typing import Literal, Sequence
+from shutil import rmtree
+from typing import Literal
 
-from nanvix_zutil import log
-from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
+from nanvix_zutil import EXIT_MISSING_DEP, load_manifest, log, paths
+from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
 
 # ---------------------------------------------------------------------------
 # Archive format enum
@@ -173,110 +157,58 @@ def _build_zip(source: Path, dest: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def package(
-    sources: list[Path],
-    dest: Path,
-    name: str,
-    formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
-    staging: Path | None = None,
-) -> list[Path]:
+def package():
     """Package one or more sources into release archives.
 
-    Creates one archive per requested format.  The output file names are
-    formed as ``<name><extension>`` (e.g. ``mylib-v1.0.tar.gz``,
-    ``mylib-v1.0.zip``).
+    Creates one archive per ``DEFAULT_FORMATS``.  The output file names are
+    formed as ``<name><postfix?><extension>`` (e.g. ``mylib-v1.0.tar.gz``,
+    ``mylib-v1.0.zip``, ``mytool-v0.5-bin.tar.bz``).
 
-    Args:
-        sources: Items to archive.  Each entry may be a file or a directory.
-            Directory contents are merged flat into the staging root;
-            individual files are placed at the staging root by their basename.
-            Duplicate items are clobbered.
-            Symlinks in *sources* and symlinks encountered inside source
-            directories are silently skipped.
-        dest: Output directory for archives.  Created if it does not exist.
-        name: Base name for the archives (without extension). Must be a plain
-            filename without path separators or parent directory traversal.
-        formats: Archive formats to produce.  Defaults to
-            :data:`DEFAULT_FORMATS` (tar.gz + zip).
-        staging: Directory to use as the staging area.  When supplied, sources
-            are copied directly into this directory (which must already exist)
-            and the caller is responsible for its lifetime.  When omitted, a
-            fresh temporary directory is created and removed automatically on
-            return.
-
-    Returns:
-        List of absolute paths to created archives, one per format, in
-        the same order as *formats*.
+    May release multiple archives if ``multi_release_mode: true`` is specified in nanvix.toml.
+    By default releases only one, containing the full contents of ``paths.release_dir()``
 
     Raises:
-        SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
-            if any entry in *sources* does not exist, if staging or copying
-            fails, or if archive creation fails.  With
-            :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
-            empty, whitespace-only, or contains path separators or parent
-            directory traversal, or if an unknown format is encountered,
-            or if *sources* is empty.
+        SystemExit:
+            - With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
+                if ``paths.release_dir()`` does not exist, if staging or copying
+                fails, or if archive creation fails.
+            - with :data:`~nanvix_zutil.exitcodes.EXIT_MISSING_DEP` if the
+                release source directory is missing or not a directory.
     """
-    if not sources:
+    formats = DEFAULT_FORMATS
+    manifest = load_manifest()
+    name = manifest.name
+    multi_release = manifest.multi_release_mode
+    sources = paths.release_dir()
+    if sources.is_dir() and not sources.is_symlink():
+        if multi_release:
+            _sources: list[Path] = []
+            for s in sources.iterdir():
+                if s.is_dir() and not s.is_symlink():
+                    _sources.append(s)
+                else:
+                    log.warning(f"Skipping non-directory item {s}")
+            sources = _sources
+            if len(sources) == 0:
+                log.fatal(
+                    "No release content found.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Run ./z build first.",
+                )
+        else:
+            sources = [sources]
+    else:
         log.fatal(
-            "package() requires at least one source item.",
-            code=EXIT_INVALID_ARGS,
-            hint="Pass one or more file or directory paths in the 'sources' list.",
-        )
-    for item in sources:
-        if not item.exists():
-            log.fatal(
-                f"Release source '{item}' does not exist.",
-                code=EXIT_GENERAL_ERROR,
-                hint="Ensure the build step has run and produced output in the"
-                " expected directory before calling 'release'.",
-            )
-
-    # Validate name is a safe, non-empty filename
-    if not name or not name.strip():
-        log.fatal(
-            f"Invalid archive name '{name}': must be a non-empty filename",
-            code=EXIT_INVALID_ARGS,
-            hint="Provide a proper basename like 'mylib-v1.0'.",
-        )
-
-    # Validate name has no path separators or parent traversal
-    if "/" in name or "\\" in name or ".." in name:
-        log.fatal(
-            f"Invalid archive name '{name}': must be a plain filename without path separators or '..'",
-            code=EXIT_INVALID_ARGS,
-            hint="Use a simple basename like 'mylib-v1.0' instead of paths like '../evil' or 'dir/name'.",
+            f"Release source {sources} is not a directory.",
+            code=EXIT_MISSING_DEP,
+            hint="Run ./z build first.",
         )
 
-    if formats is None:  # type: ignore[redundant-expr]
-        log.fatal(
-            "Invalid formats parameter: cannot be None",
-            code=EXIT_INVALID_ARGS,
-            hint="Provide a sequence of ArchiveFormat values, e.g., (ArchiveFormat.TAR_GZ, ArchiveFormat.ZIP).",
-        )
-    if isinstance(formats, (str, bytes)):
-        log.fatal(
-            f"Invalid formats parameter: {type(formats).__name__!r} is not a valid sequence",
-            code=EXIT_INVALID_ARGS,
-            hint="Provide a sequence of ArchiveFormat values, not a string or bytes object.",
-        )
-    if not isinstance(formats, Iterable):  # type: ignore[redundant-expr]
-        log.fatal(
-            f"Invalid formats parameter: {type(formats).__name__!r} is not iterable",
-            code=EXIT_INVALID_ARGS,
-            hint="Provide a sequence of ArchiveFormat values, e.g., (ArchiveFormat.TAR_GZ, ArchiveFormat.ZIP).",
-        )
+    dest = paths.dist_dir()
 
-    # Create destination directory with proper error handling
     try:
+        rmtree(dest, ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
-        # Verify it's actually a directory (not a file with the same name)
-        if not dest.is_dir():
-            log.fatal(
-                f"Destination path exists but is not a directory: {dest}",
-                code=EXIT_GENERAL_ERROR,
-                hint="Choose a different destination path or remove the conflicting file.",
-            )
     except (OSError, PermissionError) as e:
         log.fatal(
             f"Cannot create destination directory '{dest}': {e}",
@@ -284,65 +216,18 @@ def package(
             hint="Check parent directory permissions and available disk space.",
         )
 
-    _cleanup_staging = staging is None
-    if staging is not None:
-        if not staging.exists():
-            log.fatal(
-                f"Staging directory '{staging}' does not exist.",
-                code=EXIT_INVALID_ARGS,
-                hint="Create the directory before passing it as 'staging', or omit the argument to use a temporary directory.",
-            )
-        if not staging.is_dir():
-            log.fatal(
-                f"Staging path '{staging}' exists but is not a directory.",
-                code=EXIT_INVALID_ARGS,
-                hint="Pass a directory path for 'staging', or omit the argument to use a temporary directory.",
-            )
-    staging = staging if staging else Path(mkdtemp())
-
-    def package_sources() -> list[Path]:
-        created: list[Path] = []
-        try:
-            for item in sources:
-                if item.is_dir():
-                    shutil.copytree(item, staging, dirs_exist_ok=True, symlinks=True)
-                else:
-                    if item.is_symlink():
-                        log.warning(f"Skipping symlink source '{item}'.")
-                        continue
-                    shutil.copy2(item, staging / item.name)
-        except (OSError, shutil.Error) as e:
-            log.fatal(
-                f"Failed to stage sources into '{staging}': {e}",
-                code=EXIT_GENERAL_ERROR,
-                hint="Check source file permissions and available disk space.",
-            )
-
+    for subdir in sources:
         for fmt in formats:
-            # Runtime validation: users could pass invalid types despite type hints
-            if not isinstance(fmt, ArchiveFormat):  # type: ignore[redundant-expr]
-                log.fatal(
-                    f"Invalid archive format: {fmt!r} (expected ArchiveFormat)",
-                    code=EXIT_INVALID_ARGS,
-                    hint="Use one of the supported ArchiveFormat enum values (TAR_GZ, TAR_BZ2, ZIP).",
-                )
-
-            out = dest / f"{name}{fmt.extension}"
-
+            postfix = f"-{subdir.name}" if multi_release else ""
+            out = dest / f"{name}{postfix}{fmt.extension}"
             try:
-                if fmt is ArchiveFormat.TAR_GZ:
-                    _build_tarball(staging, out, "gz")
-                elif fmt is ArchiveFormat.TAR_BZ2:
-                    _build_tarball(staging, out, "bz2")
-                elif fmt is ArchiveFormat.ZIP:
-                    _build_zip(staging, out)
-                else:
-                    # This should never happen with a proper ArchiveFormat enum value
-                    log.fatal(
-                        f"Unknown archive format: {fmt}",
-                        code=EXIT_INVALID_ARGS,
-                        hint="Use one of the supported ArchiveFormat enum values.",
-                    )
+                match fmt:
+                    case ArchiveFormat.TAR_GZ:
+                        _build_tarball(subdir, out, "gz")
+                    case ArchiveFormat.TAR_BZ2:
+                        _build_tarball(subdir, out, "bz2")
+                    case ArchiveFormat.ZIP:
+                        _build_zip(subdir, out)
             except Exception as e:
                 log.fatal(
                     f"Failed to create {fmt.name} archive: {e}",
@@ -359,13 +244,3 @@ def package(
                 )
 
             log.info(f"Created {out}")
-            created.append(out.resolve())
-
-        log.success(f"Packaged {len(created)} archive(s) for '{name}' into {dest}")
-        return created
-
-    try:
-        return package_sources()
-    finally:
-        if _cleanup_staging:
-            shutil.rmtree(staging, ignore_errors=True)
