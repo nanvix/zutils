@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -162,23 +163,21 @@ class ZScript:
         {"setup", "build", "release", "clean"}
     )
 
+    #: Consumer-provided release targets.
+    #: By default, `./z release` will wrap everything in the `release_dir()`.
+    #: Specify this value to override.
+    #: This value maps from subdirectory names to release artifacts.
+    #:
+    #: Example usage:
+    #: ```python
+    #: RELEASE_TARGETS = {
+    #:     # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+    #:     "sysroot-pkg": f"{name}-{toolchain}",
+    #:     # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+    #:     "buildroot-pkg": f"{name}-{toolchain}-buildroot",
+    #: }
+    #: ```
     RELEASE_TARGETS: dict[str, str] = {}
-    """
-    Consumer-provided release targets.
-    By default, `./z release` will wrap everything in the `release_dir()`.
-    Specify this value to override.
-    This value maps from subdirectory names to release artifacts.
-
-    Example usage:
-    ```python
-    RELEASE_TARGETS = {
-        # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-        "sysroot-pkg": f"{name}-{toolchain}",
-        # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-        "buildroot-pkg": f"{name}-{toolchain}-buildroot",
-    }
-    ```
-    """
 
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current platform and mode.
@@ -475,10 +474,22 @@ class ZScript:
         manifest package name.
         """
         manifest = load_manifest()
+
+        def check_target(target: str):
+            allowlist = re.compile(r"^[A-Za-z0-9_.-]+$")
+            if not allowlist.match(target) and target not in (".", ".."):
+                log.fatal(
+                    f"Invalid release target '{target}'."
+                    "Characters must be alphanumeric, underscore, hyphen, or dot.",
+                    code=EXIT_INVALID_ARGS,
+                )
+
         if self.RELEASE_TARGETS == {}:
             package([release_dir()], dist_dir(), manifest.name)
         else:
             for input, output in self.RELEASE_TARGETS.items():
+                check_target(input)
+                check_target(output)
                 package([release_dir() / input], dist_dir(), output)
 
     def install_artifacts(self, output: str) -> None:
