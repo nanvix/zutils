@@ -485,7 +485,13 @@ class ZScript:
                 )
 
         if self.RELEASE_TARGETS == {}:
-            package([release_dir()], dist_dir(), manifest.name)
+            name = (
+                f"{manifest.name}"
+                f"-{self.config.machine}"
+                f"-{self.config.deployment_mode}"
+                f"-{self.config.memory_size}"
+            )
+            package([release_dir()], dist_dir(), name)
         else:
             for input, output in self.RELEASE_TARGETS.items():
                 check_target(input)

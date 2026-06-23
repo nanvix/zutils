@@ -362,7 +362,14 @@ class TestZScriptReleaseDefault(unittest.TestCase):
         dist = paths.dist_dir()
         produced = {p.name for p in dist.iterdir()}
         # Manifest name is "test"; DEFAULT_FORMATS = tar.gz + zip.
-        self.assertEqual(produced, {"test.tar.gz", "test.zip"})
+        # Default release name suffixes manifest name with machine/mode/memory.
+        self.assertEqual(
+            produced,
+            {
+                "test-microvm-standalone-256mb.tar.gz",
+                "test-microvm-standalone-256mb.zip",
+            },
+        )
         for p in dist.iterdir():
             self.assertGreater(p.stat().st_size, 0, f"empty archive: {p}")
 
@@ -380,7 +387,9 @@ class TestZScriptReleaseDefault(unittest.TestCase):
 
         output = buf.getvalue()
         self.assertIn("success:", output)
-        self.assertIn("Packaged 2 archive(s) for 'test'", output)
+        self.assertIn(
+            "Packaged 2 archive(s) for 'test-microvm-standalone-256mb'", output
+        )
         self.assertIn(str(paths.dist_dir()), output)
 
     def test_fails_when_release_dir_missing(self) -> None:
@@ -471,7 +480,9 @@ class TestZScriptReleaseMulti(unittest.TestCase):
         mock_pkg.assert_called_once()
         args, _ = mock_pkg.call_args
         self.assertEqual(args[0], [rel])
-        self.assertEqual(args[2], "test")  # manifest name
+        self.assertEqual(
+            args[2], "test-microvm-standalone-256mb"
+        )  # manifest name + config suffix
 
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
