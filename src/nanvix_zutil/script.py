@@ -162,6 +162,24 @@ class ZScript:
         {"setup", "build", "release", "clean"}
     )
 
+    RELEASE_TARGETS: dict[str, str] = {}
+    """
+    Consumer-provided release targets.
+    By default, `./z release` will wrap everything in the `release_dir()`.
+    Specify this value to override.
+    This value maps from subdirectory names to release artifacts.
+
+    Example usage:
+    ```python
+    RELEASE_TARGETS = {
+        # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+        "sysroot-pkg": f"{name}-{toolchain}",
+        # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+        "buildroot-pkg": f"{name}-{toolchain}-buildroot",
+    }
+    ```
+    """
+
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current platform and mode.
 
@@ -457,7 +475,11 @@ class ZScript:
         manifest package name.
         """
         manifest = load_manifest()
-        package([release_dir()], dist_dir(), manifest.name)
+        if self.RELEASE_TARGETS == {}:
+            package([release_dir()], dist_dir(), manifest.name)
+        else:
+            for input, output in self.RELEASE_TARGETS.items():
+                package([release_dir() / input], dist_dir(), output)
 
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.

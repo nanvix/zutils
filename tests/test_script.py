@@ -416,6 +416,64 @@ class TestZScriptReleaseDefault(unittest.TestCase):
         self.assertIn("release", output)
 
 
+class TestZScriptReleaseMulti(unittest.TestCase):
+    """``ZScript.RELEASE_TARGETS`` drives multi-release packaging.
+
+    Wiring only: archive contents are covered by ``tests/test_release.py``.
+    We just check that ``release()`` issues one ``package()`` call per
+    target, with the right source subdir and output name.
+    """
+
+    def setUp(self) -> None:
+        write_manifest()
+
+    def _populate(self, *subdirs: str) -> None:
+        for sub in subdirs:
+            d = paths.release_dir() / sub
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "artifact.bin").write_bytes(b"payload")
+
+    def test_dispatches_one_package_call_per_target(self) -> None:
+        self._populate("sysroot-pkg", "buildroot-pkg")
+
+        class MultiScript(ZScript):
+            RELEASE_TARGETS = {
+                "sysroot-pkg": "test-sysroot",
+                "buildroot-pkg": "test-buildroot",
+            }
+
+        with patch("nanvix_zutil.script.package") as mock_pkg:
+            MultiScript().release()
+
+        rel = paths.release_dir()
+        dist = paths.dist_dir()
+        self.assertEqual(mock_pkg.call_count, 2)
+        seen = {(tuple(c.args[0]), c.args[2]) for c in mock_pkg.call_args_list}
+        self.assertEqual(
+            seen,
+            {
+                ((rel / "sysroot-pkg",), "test-sysroot"),
+                ((rel / "buildroot-pkg",), "test-buildroot"),
+            },
+        )
+        for c in mock_pkg.call_args_list:
+            self.assertEqual(c.args[1], dist)
+
+    def test_empty_targets_falls_back_to_default(self) -> None:
+        """``RELEASE_TARGETS = {}`` keeps the single-archive default."""
+        rel = paths.release_dir()
+        rel.mkdir(parents=True, exist_ok=True)
+        (rel / "artifact.bin").write_bytes(b"payload")
+
+        with patch("nanvix_zutil.script.package") as mock_pkg:
+            ZScript().release()
+
+        mock_pkg.assert_called_once()
+        args, _ = mock_pkg.call_args
+        self.assertEqual(args[0], [rel])
+        self.assertEqual(args[2], "test")  # manifest name
+
+
 class TestZScriptAvailableSubcommands(unittest.TestCase):
     """available_subcommands() reflects hook overrides."""
 
