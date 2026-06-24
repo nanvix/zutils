@@ -163,21 +163,25 @@ class ZScript:
         {"setup", "build", "release", "clean"}
     )
 
-    #: Consumer-provided release targets.
-    #: By default, `./z release` will wrap everything in the `release_dir()`.
-    #: Specify this value to override.
-    #: This value maps from subdirectory names to release artifacts.
-    #:
-    #: Example usage:
-    #: ```python
-    #: RELEASE_TARGETS = {
-    #:     # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-    #:     "sysroot-pkg": f"{name}-{toolchain}",
-    #:     # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-    #:     "buildroot-pkg": f"{name}-{toolchain}-buildroot",
-    #: }
-    #: ```
-    RELEASE_TARGETS: dict[str, str] = {}
+    def release_targets(self) -> dict[str, str]:
+        """
+        Consumer-provided release targets.
+        By default, `./z release` will wrap everything in the `release_dir()`.
+        Specify this value to override.
+        This value maps from subdirectory names to release artifacts.
+
+        Example usage:
+        ```python
+        def release_targets() -> dict[str,str]:
+            return {
+                # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+                "sysroot-pkg": f"{name}-{toolchain}",
+                # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+                "buildroot-pkg": f"{name}-{toolchain}-buildroot",
+            }
+        ```
+        """
+        return {}
 
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current platform and mode.
@@ -484,7 +488,7 @@ class ZScript:
                     code=EXIT_INVALID_ARGS,
                 )
 
-        if self.RELEASE_TARGETS == {}:
+        if self.release_targets() == {}:
             name = (
                 f"{manifest.name}"
                 f"-{self.config.machine}"
@@ -493,7 +497,7 @@ class ZScript:
             )
             package([release_dir()], dist_dir(), name)
         else:
-            for input, output in self.RELEASE_TARGETS.items():
+            for input, output in self.release_targets().items():
                 check_target(input)
                 check_target(output)
                 package([release_dir() / input], dist_dir(), output)
