@@ -10,6 +10,7 @@ import sys
 import unittest
 from io import StringIO
 from pathlib import Path
+from typing import override
 from unittest.mock import MagicMock, patch
 
 from nanvix_zutil import helpers, paths
@@ -446,10 +447,12 @@ class TestZScriptReleaseMulti(unittest.TestCase):
         self._populate("sysroot-pkg", "buildroot-pkg")
 
         class MultiScript(ZScript):
-            RELEASE_TARGETS = {
-                "sysroot-pkg": "test-sysroot",
-                "buildroot-pkg": "test-buildroot",
-            }
+            @override
+            def release_targets(self) -> dict[str, str]:
+                return {
+                    "sysroot-pkg": "test-sysroot",
+                    "buildroot-pkg": "test-buildroot",
+                }
 
         with patch("nanvix_zutil.script.package") as mock_pkg:
             MultiScript().release()
