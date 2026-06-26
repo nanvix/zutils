@@ -28,7 +28,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
-from nanvix_zutil.paths import nanvix_root, repo_root
+from nanvix_zutil.paths import bin_out, nanvix_root, repo_root
 
 
 class BinHello(ZScript):
@@ -113,7 +113,12 @@ class BinHello(ZScript):
         # For standalone deployment mode, produce an initrd image
         # containing the system daemons and the application binary.
         if self.config.deployment_mode == "standalone":
-            make_initrd(self, "hello.elf", test=False, args=InitRdArgs())
+            make_initrd(
+                self,
+                repo_root() / "hello.elf",
+                bin_out(),
+                args=InitRdArgs(),
+            )
 
     def test(self) -> None:
         _test.Test(self).test()
