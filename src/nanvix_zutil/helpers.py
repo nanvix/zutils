@@ -15,7 +15,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
-from nanvix_zutil.paths import bin_out, nanvix_root, repo_root, test_out
+from nanvix_zutil.paths import nanvix_root
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -165,7 +165,11 @@ class InitRdArgs:
 
 
 def make_initrd(
-    instance: "ZScript", app: str, *, test: bool, args: InitRdArgs | None = None
+    instance: "ZScript",
+    input_path: Path,
+    out_dir: Path,
+    *,
+    args: InitRdArgs | None = None,
 ) -> Path:
     """Build a standalone initrd image for *app*.
 
@@ -179,11 +183,8 @@ def make_initrd(
     ``run-linux.md`` for the full protocol).
 
     Args:
-        app: A bare application binary filename (e.g. ``"my-app.elf"``).
-            Must include the extension and must not contain path
-            separators (``/`` or ``\\``).
-        test: Controls the output directory. Is this for test, or release?
-            If true, outputs to ``test_out()``, else ``bin_out()``
+        input_path: Path to the application to be placed in the initrd image.
+        out_dir: Path to place the compiled image. The name is determined by the input_path.
         args: Additional arguments controlling the image generation.
 
     Returns:
@@ -193,12 +194,6 @@ def make_initrd(
         SystemExit: If *app* contains path separators, the sysroot
             is unavailable, or ``mkimage`` is missing.
     """
-    # Validate that app is a bare filename — no directory components.
-    if "/" in app or "\\" in app:
-        log.fatal(
-            f"app must be a bare filename without path separators, got: {app!r}",
-            code=EXIT_MISSING_DEP,
-        )
 
     if args is None:
         args = InitRdArgs()
@@ -229,8 +224,7 @@ def make_initrd(
             hint="Ensure the sysroot contains mkimage by running ./z setup.",
         )
 
-    app_stem = Path(app).stem
-    out_dir = test_out() if test else bin_out()
+    app_stem = input_path.stem
     out_dir.mkdir(parents=True, exist_ok=True)
     output = out_dir / f"{app_stem}.img"
 
@@ -267,7 +261,7 @@ def make_initrd(
             ),
             _entry(args.bin_dir / "memd.elf", "memd", args.memd_args, args.memd_env),
             _entry(args.bin_dir / "vfsd.elf", "vfsd", args.vfsd_args, args.vfsd_env),
-            _entry(repo_root() / app, app, args.app_args, args.app_env),
+            _entry(input_path, app_stem, args.app_args, args.app_env),
         ]
     )
 
