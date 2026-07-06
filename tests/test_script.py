@@ -1066,6 +1066,58 @@ class TestZScriptMainDegradedExit(unittest.TestCase):
         self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
 
 
+class TestZScriptSysrootDriftCheck(unittest.TestCase):
+    """Preflight check fatals on env.json / nanvix.toml sysroot drift."""
+
+    def setUp(self) -> None:
+        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
+            os.environ.pop(key, None)
+
+    def test_main_exits_missing_dep_on_sysroot_tag_drift(self) -> None:
+        """Non-setup subcommand fatals when cached sysroot_tag != pinned version."""
+        import json
+
+        write_manifest(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "0.14.0"\n'
+        )
+        (paths.nanvix_root() / "env.json").write_text(
+            json.dumps({"sysroot_tag": "v0.15.0"})
+        )
+
+        with (
+            patch("sys.argv", ["z.py", "lock", "--check"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main()
+
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+
+    def test_main_exits_missing_dep_on_latest_sysroot_drift(self) -> None:
+        """Non-setup subcommand fatals when pinned latest resolves != cached sysroot_tag."""
+        import json
+
+        write_manifest(
+            '[package]\nname = "test"\nversion = "0.1.0"\n'
+            'nanvix-version = "latest"\n'
+        )
+        (paths.nanvix_root() / "env.json").write_text(
+            json.dumps({"sysroot_tag": "v0.14.0"})
+        )
+
+        with (
+            patch("sys.argv", ["z.py", "lock", "--check"]),
+            patch(
+                "nanvix_zutil.script.resolve_release",
+                return_value={"tag_name": "v0.15.0"},
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            ZScript.main()
+
+        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+
+
 class TestZScriptSetupWithNanvix(unittest.TestCase):
     """setup() with --with-nanvix overlays local artifacts."""
 
