@@ -112,11 +112,11 @@ class TestDockerFlags(unittest.TestCase):
             parser.parse_args(["build", "--with-docker"])
         self.assertEqual(ctx.exception.code, 2)
 
-    def test_docker_flags_rejected_on_release(self) -> None:
-        """release subcommand does not accept Docker flags (moved to setup)."""
+    def test_release_subcommand_removed(self) -> None:
+        """release is no longer a consumer subcommand (moved to standalone)."""
         parser = build_parser()
         with self.assertRaises(SystemExit) as ctx:
-            parser.parse_args(["release", "--with-docker"])
+            parser.parse_args(["release"])
         self.assertEqual(ctx.exception.code, 2)
 
     def test_docker_flags_rejected_on_test(self) -> None:
