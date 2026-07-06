@@ -19,7 +19,7 @@ class TestLintCmd(unittest.TestCase):
         self.nanvix_dir = paths.nanvix_root()
 
     def test_runs_black_and_pyright(self) -> None:
-        """``lint`` invokes black --check then pyright on .nanvix/*.py."""
+        """``lint`` invokes pyright then black --check on .nanvix/*.py."""
         (self.nanvix_dir / "z.py").write_text("x = 1\n")
 
         calls: list[list[str]] = []
@@ -39,12 +39,12 @@ class TestLintCmd(unittest.TestCase):
 
         self.assertEqual(len(calls), 2)
         self.assertIn("-m", calls[0])
-        self.assertIn("black", calls[0])
-        self.assertIn("--config", calls[0])
-        self.assertIn("--check", calls[0])
+        self.assertIn("pyright", calls[0])
+        self.assertIn("--project", calls[0])
         self.assertIn("-m", calls[1])
-        self.assertIn("pyright", calls[1])
-        self.assertIn("--project", calls[1])
+        self.assertIn("black", calls[1])
+        self.assertIn("--config", calls[1])
+        self.assertIn("--check", calls[1])
 
     def test_no_py_files_warns(self) -> None:
         """Warns and returns when no .py files exist."""
@@ -78,6 +78,7 @@ class TestLintCmd(unittest.TestCase):
 
         with (
             patch("importlib.util.find_spec", return_value=None),
+            patch("nanvix_zutil.helpers.shutil.which", return_value=None),
             self.assertRaises(SystemExit) as ctx,
         ):
             lint()

@@ -101,6 +101,7 @@ class TestFormatCmd(unittest.TestCase):
 
         with (
             patch("importlib.util.find_spec", return_value=None),
+            patch("nanvix_zutil.helpers.shutil.which", return_value=None),
             self.assertRaises(SystemExit) as ctx,
         ):
             format()

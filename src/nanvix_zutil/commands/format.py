@@ -50,10 +50,10 @@ def format(check: bool = False) -> None:
     if not py_files:
         log.warning(f"No .py files found in {nanvix_root()} — nothing to format")
         return
-    ensure_tool_installed("black")
+    cmd = ensure_tool_installed("black")
     str_files = [str(f) for f in py_files]
     black_cfg = str(nanvix_root() / "black.toml")
-    cmd = [sys.executable, "-m", "black", "--config", black_cfg]
+    cmd.extend(["--config", black_cfg])
     if check:
         cmd.append("--check")
     cmd.extend(str_files)

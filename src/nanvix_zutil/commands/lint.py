@@ -15,6 +15,7 @@ import argparse
 import sys
 
 from nanvix_zutil import log
+from nanvix_zutil.commands.format import format
 from nanvix_zutil.exitcodes import EXIT_SUCCESS
 from nanvix_zutil.helpers import ensure_tool_installed, run
 from nanvix_zutil.paths import nanvix_root
@@ -46,29 +47,13 @@ def lint() -> None:
     if not py_files:
         log.warning(f"No .py files found in {nanvix_root()} — nothing to lint")
         return
-    for tool in ("black", "pyright"):
-        ensure_tool_installed(tool)
+    cmd = ensure_tool_installed("pyright")
 
     str_files = [str(f) for f in py_files]
-    black_cfg = str(nanvix_root() / "black.toml")
     pyright_cfg = str(nanvix_root() / "pyrightconfig.json")
-    run(
-        sys.executable,
-        "-m",
-        "black",
-        "--config",
-        black_cfg,
-        "--check",
-        *str_files,
-    )
-    run(
-        sys.executable,
-        "-m",
-        "pyright",
-        "--project",
-        pyright_cfg,
-        *str_files,
-    )
+    cmd.extend(["--project", pyright_cfg, *str_files])
+    run(*cmd)
+    format(check=True)
 
 
 def main() -> None:

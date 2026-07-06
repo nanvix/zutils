@@ -7,6 +7,7 @@ import importlib.resources
 import importlib.util
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -98,12 +99,20 @@ def check_docker(image: str) -> None:
             )
 
 
-def ensure_tool_installed(name: str):
-    if importlib.util.find_spec(name) is None:
+def ensure_tool_installed(name: str) -> list[str]:
+    """
+    Check that `name` can either be imported or is on path.
+    Will prefer the imported path.
+    """
+    if importlib.util.find_spec(name):
+        return [sys.executable, "-m", name]
+    elif shutil.which(name):
+        return [name]
+    else:
         log.fatal(
             f"{name} is not installed.",
             code=EXIT_MISSING_DEP,
-            hint="Run ./z setup before using this command.",
+            hint="Run ./z setup or manually install the executable before using this command.",
         )
 
 
