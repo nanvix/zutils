@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 
@@ -75,8 +76,20 @@ def discover_script_class() -> type[ZScript]:
             hint=f"Import error: {exc}",
         )
 
+    # Only match classes whose `class` statement lives in z.py itself,
+    # so mixin bases imported from other files are not picked up ahead
+    # of the real implementor.
+    z_py_resolved = z_py.resolve()
     for attr in vars(module).values():
-        if isinstance(attr, type) and issubclass(attr, ZScript) and attr is not ZScript:
+        if not (
+            isinstance(attr, type) and issubclass(attr, ZScript) and attr is not ZScript
+        ):
+            continue
+        try:
+            src = Path(inspect.getfile(attr)).resolve()
+        except (TypeError, OSError):
+            continue
+        if src == z_py_resolved:
             return attr
 
     log.fatal(

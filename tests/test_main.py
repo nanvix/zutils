@@ -210,6 +210,29 @@ class TestConsumerCommandWithZPy(unittest.TestCase):
         )
         self.assertEqual(cls.__name__, "MyBuild")
 
+    def test_discover_ignores_imported_mixin(self) -> None:
+        """Imported ZScript subclasses (mixins) are not picked up."""
+        from nanvix_zutil.__main__ import (
+            discover_script_class,
+        )
+
+        # Put a mixin module next to z.py so it can be imported by it.
+        (z_py_path().parent / "mixins.py").write_text(textwrap.dedent("""\
+            from nanvix_zutil.script import ZScript
+
+            class BuildMixin(ZScript):
+                def build(self):
+                    pass
+            """))
+        z_py_path().write_text(textwrap.dedent("""\
+            from mixins import BuildMixin
+
+            class MyBuild(BuildMixin):
+                pass
+            """))
+        cls = discover_script_class()
+        self.assertEqual(cls.__name__, "MyBuild")
+
     def test_no_subclass_exits(self) -> None:
         """discover_script_class exits with error if no subclass found."""
         from nanvix_zutil.__main__ import (
