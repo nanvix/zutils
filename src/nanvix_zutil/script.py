@@ -41,7 +41,7 @@ from nanvix_zutil.buildroot import (
     suffix_dep,
 )
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
+from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     SYSROOT_CONTAINER_PATH,
@@ -64,6 +64,7 @@ from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfi
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
+from nanvix_zutil.paths import sysroot as _sysroot_dir
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -265,11 +266,10 @@ class ZScript:
             ),
         ]
 
-        sysroot_str = self.config.get(CFG_SYSROOT)
-        if sysroot_str:
+        if _sysroot_dir().is_dir():
             mounts.append(
                 Mount(
-                    host_path=Path(sysroot_str),
+                    host_path=_sysroot_dir(),
                     container_path=SYSROOT_CONTAINER_PATH,
                     readonly=True,
                 )
@@ -345,7 +345,6 @@ class ZScript:
                 gh_token=self.config.get(CFG_GH_TOKEN),
                 config=self.config,
             )
-        self.config.set(CFG_SYSROOT, str(self.sysroot.path))
 
         # On Windows, download host-native binaries (nanvixd.exe, mkramfs.exe)
         # BEFORE verifying required files — the base sysroot from

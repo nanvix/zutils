@@ -6,14 +6,12 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
-    CFG_SYSROOT,
-    EXIT_BUILD_FAILURE,
     ZScript,
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import run
-from nanvix_zutil.paths import repo_root
+from nanvix_zutil.paths import repo_root, sysroot
 
 
 class Test:
@@ -69,14 +67,11 @@ class Test:
 
     def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
-        sysroot_str = self.script.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.script.docker.translate_path(host) if self.script.docker else host
+        return (
+            self.script.docker.translate_path(sysroot())
+            if self.script.docker
+            else sysroot()
+        )
 
     def _test_functional_docker(self, binary: Path) -> None:
         """Run functional tests inside a Docker container (Linux)."""
@@ -101,14 +96,7 @@ class Test:
     def _test_functional_windows(self, binary: Path) -> None:
         """Run functional tests natively on Windows using nanvixd.exe."""
         log.info("=== bin-hello functional tests (Windows) ===")
-        sysroot_str = self.script.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_TEST_FAILURE,
-            )
-        sysroot = Path(sysroot_str)  # type: ignore[arg-type]
-        nanvixd = sysroot / "bin" / "nanvixd.exe"
+        nanvixd = sysroot() / "bin" / "nanvixd.exe"
         if not nanvixd.exists():
             log.fatal(
                 f"{nanvixd} not found — run 'nanvix-zutil setup' to download it.",

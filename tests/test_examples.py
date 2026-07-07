@@ -130,14 +130,13 @@ def _pull_docker_image() -> None:
         subprocess.run(["docker", "pull", _DOCKER_IMAGE], check=True, timeout=_TIMEOUT)
 
 
-def _write_env_json(nanvix_dir: Path, sysroot: Path) -> None:
+def _write_env_json(nanvix_dir: Path) -> None:
     """Write env.json so nanvix-zutil build/test/clean can find paths."""
     cfg = {
         "NANVIX_TARGET": "x86",
         "NANVIX_MACHINE": "microvm",
         "NANVIX_DEPLOYMENT_MODE": "standalone",
         "NANVIX_MEMORY_SIZE": "256mb",
-        "NANVIX_SYSROOT": str(sysroot),
         "NANVIX_DOCKER_IMAGE": _DOCKER_IMAGE,
     }
     nanvix_dir.mkdir(parents=True, exist_ok=True)
@@ -163,49 +162,7 @@ def _setup_bin_hello_buildroot() -> None:
     shutil.copy2(_LIB_HELLO / "libhello.a", buildroot / "lib" / "libhello.a")
     shutil.copy2(_LIB_HELLO / "src" / "hello.h", buildroot / "include" / "hello.h")
 
-    _write_env_json(nanvix_dir, sysroot_src)
-
-
-def _setup_windows_sysroot() -> Path:
-    """Download sysroot and Windows host binaries for test-only runs.
-
-    On Windows CI, build artifacts are downloaded from the Linux job but
-    the sysroot is not included.  This helper downloads the sysroot and
-    Windows-native binaries (``nanvixd.exe``, etc.) so that functional
-    tests can run.
-
-    Returns the resolved sysroot path.
-    """
-    from nanvix_zutil import paths
-    from nanvix_zutil.sysroot import Sysroot
-
-    gh_token = os.environ.get("GH_TOKEN")
-
-    # `Sysroot.download` writes to `paths.sysroot()`, which resolves relative
-    # to the current `.nanvix/` root.  Ensure one exists under `_BIN_HELLO`
-    # and run the download from there.
-    (_BIN_HELLO / ".nanvix").mkdir(parents=True, exist_ok=True)
-    prev_cwd = Path.cwd()
-    os.chdir(_BIN_HELLO)
-    paths.nanvix_root.cache_clear()
-    try:
-        sysroot = Sysroot.download(
-            machine="microvm",
-            deployment_mode="standalone",
-            memory_size="256mb",
-            tag=f"v{_NANVIX_VERSION}",
-            gh_token=gh_token,
-        )
-        sysroot.download_windows_binaries(
-            machine="microvm",
-            deployment_mode="standalone",
-            memory_size="256mb",
-            gh_token=gh_token,
-        )
-        return sysroot.path.resolve()
-    finally:
-        os.chdir(prev_cwd)
-        paths.nanvix_root.cache_clear()
+    _write_env_json(nanvix_dir)
 
 
 # ===================================================================
@@ -339,8 +296,7 @@ class TestBinHelloTestOnly(unittest.TestCase):
             )
         # Download sysroot + Windows binaries so functional tests can run.
         if sys.platform == "win32":
-            sysroot = _setup_windows_sysroot()
-            _write_env_json(_BIN_HELLO / ".nanvix", sysroot)
+            _write_env_json(_BIN_HELLO / ".nanvix")
 
     def test_bin_hello(self) -> None:
         r = _run_z(_BIN_HELLO, "test")

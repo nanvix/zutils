@@ -17,7 +17,6 @@ import dataclasses
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
-    CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
     ZScript,
@@ -25,7 +24,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import run
-from nanvix_zutil.paths import repo_root
+from nanvix_zutil.paths import repo_root, sysroot
 
 
 class LibHello(ZScript):
@@ -46,14 +45,7 @@ class LibHello(ZScript):
 
     def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.docker.translate_path(host) if self.docker else host
+        return self.docker.translate_path(sysroot()) if self.docker else sysroot()
 
     # ------------------------------------------------------------------
     # Lifecycle hooks

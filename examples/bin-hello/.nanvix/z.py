@@ -20,15 +20,12 @@ import _test
 
 from nanvix_zutil import (
     BUILDROOT_CONTAINER_PATH,
-    CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
     ZScript,
-    log,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
-from nanvix_zutil.paths import bin_out, nanvix_root, repo_root
+from nanvix_zutil.paths import bin_out, nanvix_root, repo_root, sysroot
 
 
 class BinHello(ZScript):
@@ -49,14 +46,7 @@ class BinHello(ZScript):
 
     def _sysroot(self) -> PurePosixPath | Path:
         """Return the sysroot path, translated for Docker if active."""
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.docker.translate_path(host) if self.docker else host
+        return self.docker.translate_path(sysroot()) if self.docker else sysroot()
 
     def _buildroot_path(self) -> PurePosixPath | Path:
         """Return the effective buildroot path (translated for Docker if active)."""

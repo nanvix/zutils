@@ -60,11 +60,11 @@ class TestConfigPersistence(unittest.TestCase):
 
     def test_round_trip(self) -> None:
         cfg = Config()
-        cfg.set("NANVIX_SYSROOT", "/some/path")
+        cfg.set("NANVIX_CUSTOM", "/some/path")
         cfg.save()
 
         cfg2 = Config()
-        self.assertEqual(cfg2.get("NANVIX_SYSROOT"), "/some/path")
+        self.assertEqual(cfg2.get("NANVIX_CUSTOM"), "/some/path")
 
     def test_load_ignores_malformed_json(self) -> None:
         (nanvix_root() / "env.json").write_text("not json", encoding="utf-8")

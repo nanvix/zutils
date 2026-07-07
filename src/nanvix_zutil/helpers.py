@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from nanvix_zutil import log
-from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
 from nanvix_zutil.paths import nanvix_root
+from nanvix_zutil.paths import sysroot as sysroot_path
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -201,15 +201,13 @@ def make_initrd(
     if args.bin_dir is None:
         if instance.sysroot is not None:
             args.bin_dir = instance.sysroot.path / "bin"
+        elif sysroot_path().is_dir():
+            args.bin_dir = sysroot_path() / "bin"
         else:
-            sysroot_str = instance.config.get(CFG_SYSROOT)
-            if sysroot_str:
-                args.bin_dir = Path(sysroot_str) / "bin"
-            else:
-                log.fatal(
-                    "Sysroot not available; run setup first.",
-                    code=EXIT_MISSING_DEP,
-                )
+            log.fatal(
+                "Sysroot not available; run setup first.",
+                code=EXIT_MISSING_DEP,
+            )
 
     if is_windows():
         mkimage = args.bin_dir / "mkimage.exe"

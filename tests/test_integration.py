@@ -204,12 +204,12 @@ class TestIntegrationConfigPersistence(unittest.TestCase):
 
     def test_config_save_and_reload(self) -> None:
         script = _MockConsumer()
-        script.config.set("NANVIX_SYSROOT", "/tmp/sysroot")
+        script.config.set("NANVIX_CUSTOM", "/tmp/sysroot")
         script.config.save()
 
         # A fresh instance should see the persisted value.
         script2 = _MockConsumer()
-        self.assertEqual(script2.config.get("NANVIX_SYSROOT"), "/tmp/sysroot")
+        self.assertEqual(script2.config.get("NANVIX_CUSTOM"), "/tmp/sysroot")
 
 
 class TestIntegrationRunSubprocess(unittest.TestCase):

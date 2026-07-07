@@ -55,7 +55,6 @@ from nanvix_zutil.commands.info import NanvixInfo, get_nanvix_info
 from nanvix_zutil.config import (
     CFG_DOCKER_IMAGE,
     CFG_GH_TOKEN,
-    CFG_SYSROOT,
     DEFAULT_DEPLOYMENT_MODE,
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
@@ -109,7 +108,6 @@ __all__ = [
     "BUILDROOT_CONTAINER_PATH",
     "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",
-    "CFG_SYSROOT",
     "Config",
     "DEFAULT_DEPLOYMENT_MODE",
     "DEFAULT_FORMATS",

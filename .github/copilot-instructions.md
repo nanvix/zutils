@@ -101,7 +101,6 @@ nanvix/<project>/
 | `NANVIX_MACHINE` | `microvm` | Target machine |
 | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode (`single-process`, `multi-process`, `standalone`) |
 | `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
-| `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
 | `NANVIX_TOOLCHAIN` | *(set by setup)* | Path to cross-compilation toolchain |
 | `NANVIX_DOCKER_IMAGE` | *(set by setup)* | Docker image (set by `setup --with-docker`) |
 | `GH_TOKEN` | *(none)* | GitHub token for API rate limits |
