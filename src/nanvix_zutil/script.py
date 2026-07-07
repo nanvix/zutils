@@ -213,7 +213,6 @@ class ZScript:
         self._used_fallback: bool = False
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
-        self._cli_sysroot_path: str | None = None
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -318,24 +317,24 @@ class ZScript:
         """
         self._used_fallback = False
 
-        # Resolve sysroot: --sysroot-path takes precedence.
-        sysroot_path = self._cli_sysroot_path
+        # Resolve sysroot: --with-nanvix symlinks; manifest LOCAL symlinks;
+        # otherwise download from GitHub releases.
+        nanvix_local = self._with_nanvix_path
+        if self._offline and not nanvix_local:
+            log.fatal(
+                "Offline mode requires --with-nanvix to provide a local sysroot.",
+                code=EXIT_MISSING_DEP,
+            )
 
-        if sysroot_path:
+        if nanvix_local:
             self.sysroot = Sysroot.from_local(
-                Path(sysroot_path),
+                Path(nanvix_local),
                 config=self.config,
             )
         elif self.manifest.sysroot_ref.kind == RefKind.LOCAL:
             self.sysroot = Sysroot.from_local(
                 Path(str(self.manifest.sysroot_ref.value)),
                 config=self.config,
-            )
-        elif self._offline:
-            log.fatal(
-                "Offline mode requires a local sysroot."
-                " Set --sysroot-path to a directory.",
-                code=EXIT_MISSING_DEP,
             )
         else:
             self.sysroot = Sysroot.download(
@@ -359,18 +358,6 @@ class ZScript:
                 gh_token=self.config.get(CFG_GH_TOKEN),
                 config=self.config,
             )
-
-        # When --with-nanvix PATH is passed, overlay local build artifacts
-        # (nanvixd.elf, mkramfs.elf, uservm.elf, libposix.a, etc.) on top
-        # of the downloaded sysroot before verification.
-        nanvix_local = self._with_nanvix_path
-        if self._offline and not nanvix_local:
-            log.fatal(
-                "Offline mode requires --with-nanvix to" " provide local artifacts.",
-                code=EXIT_MISSING_DEP,
-            )
-        if nanvix_local:
-            self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
         self.sysroot.verify(self.sysroot_required_files())
 
@@ -640,14 +627,12 @@ class ZScript:
         args = parser.parse_args(framework_argv)
 
         # ------------------------------------------------------------------
-        # Handle --offline, --with-nanvix, --sysroot-path from CLI.
+        # Handle --offline, --with-nanvix from CLI.
         # ------------------------------------------------------------------
         if getattr(args, "offline", False):
             instance._offline = True
         if getattr(args, "with_nanvix", None):
             instance._with_nanvix_path = args.with_nanvix
-        if getattr(args, "sysroot_path", None):
-            instance._cli_sysroot_path = args.sysroot_path
 
         # ------------------------------------------------------------------
         # Docker: resolve image from CLI or persisted config, then check availability.

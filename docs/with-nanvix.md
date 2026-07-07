@@ -1,25 +1,27 @@
 # Using `--with-nanvix` for Local Development
 
-The `--with-nanvix PATH` flag allows you to override the Nanvix sysroot
-binaries with artifacts from a local build.  This is useful when developing
-Nanvix itself and testing changes against downstream consumers (zlib, bzip2,
-etc.) without publishing a release.
+The `--with-nanvix PATH` flag replaces the Nanvix sysroot with a local
+directory.  This is useful when developing Nanvix itself and testing
+changes against downstream consumers (zlib, bzip2, etc.) without
+publishing a release.
 
 ## How It Works
 
-1. `./z setup` downloads the sysroot from GitHub as usual.
-2. Files from `PATH/bin/` and `PATH/lib/` are copied on top of the
-   downloaded sysroot, replacing matching artifacts.
-3. Sysroot verification runs against the overlaid result.
-4. If `PATH/deps/<name>/` directories exist for any ported dependency
+1. `./z setup` symlinks `.nanvix/sysroot` to `PATH`.  No download.
+2. Sysroot verification runs against the symlink target.
+3. If `PATH/deps/<name>/` directories exist for any ported dependency
    (repos under the `nanvix/` organisation, such as `nanvix/zlib` or
    `nanvix/cpython`), those are installed from local files instead of
    downloading from GitHub.
 
+Because `.nanvix/sysroot` is a symlink, edits to `PATH` are picked up
+immediately with no re-copy step.
+
 ## Offline Mode
 
 The `--offline` flag skips the dependency resolver entirely and requires
-all artifacts to be available locally via `--with-nanvix`.  In offline mode:
+all artifacts to be available locally via `--with-nanvix`.  In offline
+mode:
 
 - `--with-nanvix PATH` is **required** — a fatal error is raised if it
   is not provided.
@@ -27,13 +29,6 @@ all artifacts to be available locally via `--with-nanvix`.  In offline mode:
   `PATH/deps/<name>/`.
 - Missing individual dependencies produce a warning rather than a fatal
   error, allowing the port's own build logic to handle fallbacks.
-- A local sysroot must be provided via `--sysroot-path`.
-
-## Sysroot Path Override
-
-The `--sysroot-path PATH` flag provides an explicit local sysroot
-directory, bypassing the GitHub download entirely.  This takes
-precedence over version-based resolution.
 
 ## Prerequisites
 
@@ -56,6 +51,8 @@ precedence over version-based resolution.
   `standalone` (default) and `single-process` require the same set.
   `multi-process` additionally requires `linuxd.elf` and `uservm.elf`.
 
+- On Windows, symlink creation requires **Developer Mode** (or running
+  the terminal as Administrator).
 - The feature-branch version of `nanvix-zutil` installed in the consumer's
   venv.
 
@@ -68,16 +65,16 @@ cd /path/to/consumer   # e.g. usr/lib/zlib
 ./z setup --with-docker nanvix/toolchain:latest-minimal
 .nanvix/venv/bin/pip install -e /path/to/zutils
 
-# Clean sysroot and re-run with local override
+# Point sysroot at the local build
 rm -rf .nanvix/sysroot .nanvix/env.json
 .nanvix/venv/bin/nanvix-zutil setup \
     --with-docker nanvix/toolchain:latest-minimal \
     --with-nanvix ~/src/nanvix/nanvix
 
 # Verify
-cmp .nanvix/sysroot/bin/nanvixd.elf ~/src/nanvix/nanvix/bin/nanvixd.elf
+readlink .nanvix/sysroot   # → ~/src/nanvix/nanvix
 
-# Build using the overlaid sysroot
+# Build using the local sysroot
 .nanvix/venv/bin/nanvix-zutil build
 ```
 
@@ -88,13 +85,12 @@ When building ports in a dependency chain without network access:
 ```bash
 cd /path/to/consumer
 
-# All deps pre-built, sysroot at build/sysroot/, deps at build/deps/
+# All artifacts pre-built under ~/nanvix/build (bin/, lib/, deps/*)
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
   python3 -m nanvix_zutil setup \
     --offline \
     --with-docker ghcr.io/nanvix/toolchain-gcc:latest \
-    --with-nanvix ~/nanvix/build \
-    --sysroot-path ~/nanvix/build/sysroot
+    --with-nanvix ~/nanvix/build
 
 # Then build
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
@@ -104,7 +100,7 @@ PYTHONPATH=~/nanvix/usr/lib/zutils/src \
 ## Using the Shell Wrapper
 
 The `z.sh` and `z.ps1` wrappers forward `--with-nanvix` directly to
-`nanvix-zutil`. Pass the flag to any subcommand that accepts it:
+`nanvix-zutil`.  Pass the flag to any subcommand that accepts it:
 
 ```bash
 ./z setup --with-docker nanvix/toolchain:latest-minimal \
@@ -112,7 +108,7 @@ The `z.sh` and `z.ps1` wrappers forward `--with-nanvix` directly to
 ./z build
 ```
 
-The CLI canonicalises the path to an absolute directory. Relative paths
+The CLI canonicalises the path to an absolute directory.  Relative paths
 and `~` are accepted; the path must exist and be a directory.
 
 ## Local Dependency Override
@@ -131,19 +127,20 @@ under `PATH/deps/<name>/`:
 ```
 
 When `--with-nanvix` is set and `deps/<name>/` exists, the dependency
-is installed from the local directory and the GitHub download is skipped.
+is installed from the local directory and the GitHub download is
+skipped.
 
 ## Notes
 
-- The overlay copies **all** files from `bin/` and `lib/` — not only the
-  ones required by the sysroot verification.  Extra files are harmless.
-- `--with-nanvix` has no effect on `build`, `test`, or other
-  subcommands — it only modifies behavior during `setup`.
-- To return to the normal (release-based) workflow, simply omit
-  `--with-nanvix` and delete `.nanvix/sysroot` before re-running setup.
-- In offline mode, missing individual dependencies produce a warning (not
-  a fatal error), allowing port-specific build logic to handle them.
-  However, `--with-nanvix` itself is required — omitting it is fatal.
+- `--with-nanvix` has no effect on `build`, `test`, or other subcommands
+  — it only modifies behavior during `setup`.
+- To return to the normal (release-based) workflow, omit `--with-nanvix`
+  and re-run `setup`.  The existing symlink is replaced with a fresh
+  download automatically.
+- In offline mode, missing individual dependencies produce a warning
+  (not a fatal error), allowing port-specific build logic to handle
+  them.  However, `--with-nanvix` itself is required — omitting it is
+  fatal.
 
 ## install Subcommand
 
@@ -154,5 +151,5 @@ artifacts (libraries, headers, binaries) to a target directory:
 nanvix-zutil install --output /path/to/output
 ```
 
-This creates `<output>/{lib,include,bin}/` subdirectories with the port's
-artifacts from `.nanvix/output/`.
+This creates `<output>/{lib,include,bin}/` subdirectories with the
+port's artifacts from `.nanvix/output/`.

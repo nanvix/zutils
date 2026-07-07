@@ -1117,7 +1117,7 @@ class TestZScriptSysrootDriftCheck(unittest.TestCase):
 
 
 class TestZScriptSetupWithNanvix(unittest.TestCase):
-    """setup() with --with-nanvix overlays local artifacts."""
+    """setup() with --with-nanvix symlinks the local sysroot."""
 
     def setUp(self) -> None:
         write_manifest()
@@ -1128,32 +1128,46 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         ):
             os.environ.pop(key, None)
 
-    def test_setup_calls_overlay_when_path_set(self) -> None:
-        """setup() calls sysroot.overlay_local_nanvix when --with-nanvix is set."""
+    def test_setup_calls_from_local_when_path_set(self) -> None:
+        """setup() calls Sysroot.from_local when --with-nanvix is set."""
         local_dir = Path.cwd() / "local-nanvix"
         local_dir.mkdir()
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
+        fake_sysroot.tag = ""
 
-        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+        with (
+            patch("nanvix_zutil.script.Sysroot.download") as mock_download,
+            patch(
+                "nanvix_zutil.script.Sysroot.from_local",
+                return_value=fake_sysroot,
+            ) as mock_from_local,
+        ):
             script = ZScript()
             script._with_nanvix_path = str(local_dir)
             script.setup()
 
-        fake_sysroot.overlay_local_nanvix.assert_called_once_with(local_dir)
+        mock_from_local.assert_called_once()
+        mock_download.assert_not_called()
         fake_sysroot.verify.assert_called_once()
 
-    def test_setup_no_overlay_without_path(self) -> None:
-        """setup() does not call overlay_local_nanvix when --with-nanvix is unset."""
+    def test_setup_downloads_without_path(self) -> None:
+        """setup() calls Sysroot.download when --with-nanvix is unset."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
-        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot
+            ) as mock_download,
+            patch("nanvix_zutil.script.Sysroot.from_local") as mock_from_local,
+        ):
             script = ZScript()
             script.setup()
 
-        fake_sysroot.overlay_local_nanvix.assert_not_called()
+        mock_download.assert_called_once()
+        mock_from_local.assert_not_called()
 
     def test_setup_local_deps_skips_github(self) -> None:
         """setup() skips GitHub download for deps found locally."""
@@ -1168,7 +1182,7 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         fake_sysroot.tag = "v0.1.0"
 
         with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.from_local", return_value=fake_sysroot),
             patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_resolve,
         ):
             script = ZScript()
@@ -1213,8 +1227,8 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
             mock_download.assert_not_called()
             mock_from_local.assert_called_once()
 
-    def test_local_sysroot_via_cli_sysroot_path(self) -> None:
-        """When --sysroot-path is provided, Sysroot.from_local is used."""
+    def test_local_sysroot_via_with_nanvix(self) -> None:
+        """When --with-nanvix is provided, Sysroot.from_local is used."""
         repo_root = paths.repo_root()
         local_sysroot = repo_root / "my-sysroot"
         local_sysroot.mkdir()
@@ -1222,7 +1236,7 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
         write_manifest()
 
         script = ZScript()
-        script._cli_sysroot_path = str(local_sysroot)
+        script._with_nanvix_path = str(local_sysroot)
 
         with (
             patch("nanvix_zutil.script.Sysroot.download") as mock_download,
@@ -1821,23 +1835,17 @@ class TestOfflineMode(unittest.TestCase):
         script = ZScript()
         self.assertIsNone(script._with_nanvix_path)
 
-    def test_cli_sysroot_path_initially_none(self) -> None:
-        """_cli_sysroot_path starts as None."""
-        script = ZScript()
-        self.assertIsNone(script._cli_sysroot_path)
-
-    def test_offline_with_sysroot_path_uses_from_local(self) -> None:
-        """In offline mode with --sysroot-path, Sysroot.from_local is used."""
-        sysroot_dir = paths.repo_root() / "my-sysroot"
-        sysroot_dir.mkdir()
+    def test_offline_with_nanvix_uses_from_local(self) -> None:
+        """In offline mode with --with-nanvix, Sysroot.from_local is used."""
+        build_dir = paths.repo_root() / "build"
+        build_dir.mkdir()
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
-        script._with_nanvix_path = str(paths.repo_root())
+        script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
-        fake_sysroot.path = sysroot_dir
+        fake_sysroot.path = build_dir
         fake_sysroot.tag = ""
 
         with (
@@ -1852,7 +1860,7 @@ class TestOfflineMode(unittest.TestCase):
             mock_from_local.assert_called_once()
 
     def test_offline_without_sysroot_exits(self) -> None:
-        """Offline mode without a local sysroot path exits fatally."""
+        """Offline mode without --with-nanvix exits fatally."""
         script = ZScript()
         script._offline = True
 
@@ -1861,47 +1869,17 @@ class TestOfflineMode(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
 
-    def test_offline_without_with_nanvix_exits(self) -> None:
-        """Offline mode with sysroot but no --with-nanvix exits fatally."""
-        repo_root = paths.repo_root()
-        sysroot_dir = repo_root / "my-sysroot"
-        sysroot_dir.mkdir()
-
-        script = ZScript()
-        script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
-
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = sysroot_dir
-        fake_sysroot.tag = ""
-
-        with (
-            patch(
-                "nanvix_zutil.script.Sysroot.from_local",
-                return_value=fake_sysroot,
-            ),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            script.setup()
-
-        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-
     def test_offline_missing_dep_warns_not_fatal(self) -> None:
         """Offline mode warns (not fatal) when a dep has no local artifacts."""
-        repo_root = paths.repo_root()
-        sysroot_dir = repo_root / "my-sysroot"
-        sysroot_dir.mkdir()
-        # Create --with-nanvix dir without deps
-        build_dir = repo_root / "build"
+        build_dir = paths.repo_root() / "build"
         build_dir.mkdir()
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
         script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
-        fake_sysroot.path = sysroot_dir
+        fake_sysroot.path = build_dir
         fake_sysroot.tag = ""
 
         with patch(
@@ -1913,20 +1891,16 @@ class TestOfflineMode(unittest.TestCase):
 
     def test_offline_with_local_dep_installs(self) -> None:
         """Offline mode installs dep from local path when artifacts exist."""
-        repo_root = paths.repo_root()
-        sysroot_dir = repo_root / "my-sysroot"
-        sysroot_dir.mkdir()
-        build_dir = repo_root / "build"
+        build_dir = paths.repo_root() / "build"
         (build_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
         (build_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"fake")
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
         script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
-        fake_sysroot.path = sysroot_dir
+        fake_sysroot.path = build_dir
         fake_sysroot.tag = ""
 
         with (

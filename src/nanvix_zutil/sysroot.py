@@ -81,7 +81,7 @@ class Sysroot:
             log.fatal(
                 f"Local sysroot path is not a directory: {local_path}",
                 code=EXIT_MISSING_DEP,
-                hint="Pass --sysroot-path with a valid sysroot directory.",
+                hint="Pass --with-nanvix with a valid sysroot directory.",
             )
         log.info(f"Using local sysroot at {resolved}")
         if config is not None:
@@ -96,7 +96,7 @@ class Sysroot:
             log.fatal(
                 f"Sysroot exists at {dest}, but is not a directory.",
                 code=EXIT_GENERAL_ERROR,
-                hint="Remove the blocking sysroot file and re-run with --sysroot-path.",
+                hint="Remove the blocking sysroot file and re-run with --with-nanvix.",
             )
         try:
             os.symlink(resolved, dest, target_is_directory=True)
@@ -321,57 +321,6 @@ class Sysroot:
                 config.set("windows_binaries_tag", tag)
                 config.save()
             log.success("Windows host binaries installed")
-
-    # ------------------------------------------------------------------
-    # Local overlay
-    # ------------------------------------------------------------------
-
-    def overlay_local_nanvix(self, local_path: Path) -> None:
-        """Overlay locally-built Nanvix artifacts on top of the sysroot.
-
-        Walks the local directory and copies any files that match the
-        sysroot layout (``bin/`` and ``lib/`` subdirectories) into the
-        sysroot, overriding downloaded artifacts.  This enables
-        development workflows where nanvixd, mkramfs, uservm, etc. are
-        built from a local checkout.
-
-        Args:
-            local_path: Absolute path to the local Nanvix build output
-                directory.  Expected to mirror the sysroot layout
-                (``bin/nanvixd.elf``, ``lib/libposix.a``, etc.).
-
-        Raises:
-            SystemExit: If *local_path* does not exist or is not a
-                directory.
-        """
-        if not local_path.is_dir():
-            log.fatal(
-                f"--with-nanvix path is not a directory: {local_path}",
-                code=EXIT_MISSING_DEP,
-            )
-
-        overlaid: list[str] = []
-        for subdir in ("bin", "lib"):
-            src_dir = local_path / subdir
-            if not src_dir.is_dir():
-                continue
-            dst_dir = self.path / subdir
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            for src_file in src_dir.iterdir():
-                if src_file.is_file():
-                    dst_file = dst_dir / src_file.name
-                    shutil.copy2(src_file, dst_file)
-                    overlaid.append(f"{subdir}/{src_file.name}")
-
-        if overlaid:
-            log.info(f"Overlaid {len(overlaid)} local artifact(s) from {local_path}")
-            for name in sorted(overlaid):
-                log.info(f"  → {name}")
-        else:
-            log.warning(
-                f"No bin/ or lib/ artifacts found in {local_path} — "
-                "sysroot unchanged"
-            )
 
     # ------------------------------------------------------------------
     # Verification

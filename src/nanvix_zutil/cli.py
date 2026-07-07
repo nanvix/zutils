@@ -177,21 +177,12 @@ def build_parser(
                 type=_abs_dir,
                 metavar="PATH",
                 dest="with_nanvix",
-                help="Path to a local build directory containing"
-                " deps/<name>/{lib,include}/ artifacts."
-                " Relative paths and ~ are accepted; the path is"
-                " canonicalised to an absolute directory.",
-            )
-            sub.add_argument(
-                "--sysroot-path",
-                type=str,
-                metavar="PATH",
-                dest="sysroot_path",
-                help="Explicit path to a local sysroot directory,"
-                " bypassing sysroot download/version resolution."
-                " The manifest's nanvix-version is still used for"
-                " dependency tag suffixing."
-                " This uses a symlink, so dev mode is expected to be enabled on Windows.",
+                help="Path to a local Nanvix build directory."
+                " ``.nanvix/sysroot`` is symlinked to it, so local"
+                " changes are picked up without rerunning setup."
+                " Dependencies under ``<PATH>/deps/<name>/`` are"
+                " installed into the buildroot."
+                " Requires Developer Mode on Windows.",
             )
         if name == "install":
             sub.add_argument(

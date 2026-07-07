@@ -236,29 +236,6 @@ class TestWithNanvixFlag(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
-class TestSysrootPathFlag(unittest.TestCase):
-    """Tests for the --sysroot-path flag on the setup subcommand."""
-
-    def test_sysroot_path_parsed(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(
-            ["setup", "--with-docker", "img:t", "--sysroot-path", "/my/sysroot"]
-        )
-        self.assertEqual(args.sysroot_path, "/my/sysroot")
-
-    def test_sysroot_path_default_none(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["setup", "--with-docker", "img:t"])
-        self.assertIsNone(args.sysroot_path)
-
-    def test_sysroot_path_rejected_on_test(self) -> None:
-        """--sysroot-path is only accepted on setup."""
-        parser = build_parser()
-        with self.assertRaises(SystemExit) as ctx:
-            parser.parse_args(["test", "--sysroot-path", "/p"])
-        self.assertEqual(ctx.exception.code, 2)
-
-
 class TestInstallArtifactsSubcommand(unittest.TestCase):
     """Tests for the install subcommand."""
 

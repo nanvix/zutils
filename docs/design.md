@@ -81,7 +81,7 @@ The buildroot contains everything that is needed to build the dependency. It sho
 
 ### .nanvix/sysroot/
 
-The sysroot contains everything that nanvix needs to run. It should _not_ include build dependencies. Currently this is extracted directly from github releases, or copied over from a local directory using the `--with-nanvix` flag at setup time.
+The sysroot contains everything that nanvix needs to run. It should _not_ include build dependencies. Currently this is extracted directly from github releases, or symlinked to a local directory using the `--with-nanvix` flag at setup time.
 
 ```
 .nanvix/sysroot/
