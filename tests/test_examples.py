@@ -176,26 +176,36 @@ def _setup_windows_sysroot() -> Path:
 
     Returns the resolved sysroot path.
     """
+    from nanvix_zutil import paths
     from nanvix_zutil.sysroot import Sysroot
 
-    sysroot_dir = _LIB_HELLO / ".nanvix" / "sysroot"
     gh_token = os.environ.get("GH_TOKEN")
 
-    sysroot = Sysroot.download(
-        machine="microvm",
-        deployment_mode="standalone",
-        memory_size="256mb",
-        tag=f"v{_NANVIX_VERSION}",
-        gh_token=gh_token,
-        dest=sysroot_dir,
-    )
-    sysroot.download_windows_binaries(
-        machine="microvm",
-        deployment_mode="standalone",
-        memory_size="256mb",
-        gh_token=gh_token,
-    )
-    return sysroot.path
+    # `Sysroot.download` writes to `paths.sysroot()`, which resolves relative
+    # to the current `.nanvix/` root.  Ensure one exists under `_BIN_HELLO`
+    # and run the download from there.
+    (_BIN_HELLO / ".nanvix").mkdir(parents=True, exist_ok=True)
+    prev_cwd = Path.cwd()
+    os.chdir(_BIN_HELLO)
+    paths.nanvix_root.cache_clear()
+    try:
+        sysroot = Sysroot.download(
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+            tag=f"v{_NANVIX_VERSION}",
+            gh_token=gh_token,
+        )
+        sysroot.download_windows_binaries(
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+            gh_token=gh_token,
+        )
+        return sysroot.path.resolve()
+    finally:
+        os.chdir(prev_cwd)
+        paths.nanvix_root.cache_clear()
 
 
 # ===================================================================

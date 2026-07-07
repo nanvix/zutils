@@ -102,8 +102,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
             self.assertEqual(kwargs["deployment_mode"], script.config.deployment_mode)
             self.assertEqual(kwargs["memory_size"], script.config.memory_size)
             self.assertEqual(kwargs["tag"], script.manifest.sysroot_ref.value)
-            self.assertIsInstance(kwargs["dest"], Path)
-            self.assertTrue(str(kwargs["dest"]).startswith(str(paths.nanvix_root())))
             self.assertIs(kwargs["config"], script.config)
         fake_sysroot.verify.assert_called_once()
         self.assertIs(script.sysroot, fake_sysroot)

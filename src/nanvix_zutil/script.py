@@ -64,7 +64,6 @@ from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfi
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
-from nanvix_zutil.paths import sysroot as _sysroot_dir
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -345,7 +344,6 @@ class ZScript:
                 memory_size=self.config.memory_size,
                 tag=self.manifest.sysroot_ref.value,
                 gh_token=self.config.get(CFG_GH_TOKEN),
-                dest=_sysroot_dir(),
                 config=self.config,
             )
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))

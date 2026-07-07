@@ -190,7 +190,8 @@ def build_parser(
                 help="Explicit path to a local sysroot directory,"
                 " bypassing sysroot download/version resolution."
                 " The manifest's nanvix-version is still used for"
-                " dependency tag suffixing.",
+                " dependency tag suffixing."
+                " This uses a symlink, so dev mode is expected to be enabled on Windows.",
             )
         if name == "install":
             sub.add_argument(

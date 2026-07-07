@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from nanvix_zutil.config import DEFAULT_TARGET, Config
+from nanvix_zutil.paths import sysroot as sysroot_path
 from nanvix_zutil.sysroot import WINDOWS_HOST_BINARIES, Sysroot
 
 
@@ -59,9 +60,7 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_skips_download_when_dest_exists(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
-
+        sysroot_path().mkdir()
         config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
@@ -78,12 +77,10 @@ class TestSysrootDownloadSkipsIfExists(unittest.TestCase):
                 deployment_mode="multi-process",
                 memory_size="128mb",
                 tag="v1.0.0",
-                dest=dest,
                 config=config,
             )
             mock_dl.assert_not_called()
 
-        self.assertEqual(sysroot.path, dest.resolve())
         self.assertEqual(sysroot.tag, "v1.0.0")
 
 
@@ -98,8 +95,8 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_redownloads_when_tag_mismatches(self) -> None:
         """If sysroot exists but cached tag != requested tag, re-download."""
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
+        dest = sysroot_path()
+        dest.mkdir(parents=True)
         (dest / "lib").mkdir()
         (dest / "lib" / "old.a").write_bytes(b"old")
 
@@ -126,7 +123,6 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
                 deployment_mode="standalone",
                 memory_size="256mb",
                 tag="v2.0.0",
-                dest=dest,
                 config=config,
             )
             mock_dl.assert_called_once()
@@ -136,9 +132,7 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_download_when_tag_matches(self) -> None:
         """If sysroot exists and cached tag == requested tag, skip download."""
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
-
+        sysroot_path().mkdir()
         config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
@@ -155,7 +149,6 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
                 deployment_mode="standalone",
                 memory_size="256mb",
                 tag="v1.0.0",
-                dest=dest,
                 config=config,
             )
             mock_dl.assert_not_called()
@@ -164,9 +157,7 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_when_bare_semver_resolves_to_cached_v_tag(self) -> None:
         """Requesting '1.0.0' that resolves to 'v1.0.0' should cache-hit."""
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
-
+        sysroot_path().mkdir()
         config = Config()
         config.set("sysroot_tag", "v1.0.0")
         config.save()
@@ -183,7 +174,6 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
                 deployment_mode="standalone",
                 memory_size="256mb",
                 tag="1.0.0",
-                dest=dest,
                 config=config,
             )
             mock_dl.assert_not_called()
@@ -192,9 +182,7 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
 
     def test_skips_when_latest_resolves_to_cached_tag(self) -> None:
         """Requesting 'latest' that resolves to the cached tag should cache-hit."""
-        dest = Path(self._tmpdir.name) / "sysroot"
-        dest.mkdir()
-
+        sysroot_path().mkdir()
         config = Config()
         config.set("sysroot_tag", "v0.12.410")
         config.save()
@@ -211,7 +199,6 @@ class TestSysrootDownloadStaleDetection(unittest.TestCase):
                 deployment_mode="standalone",
                 memory_size="256mb",
                 tag="latest",
-                dest=dest,
                 config=config,
             )
             mock_dl.assert_not_called()
@@ -232,7 +219,7 @@ class TestWindowsBinariesStaleDetection(unittest.TestCase):
         """If Windows binaries exist but persisted tag differs, re-download."""
         import zipfile
 
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         bin_dir = sysroot_dir / "bin"
         bin_dir.mkdir(parents=True)
         for b in WINDOWS_HOST_BINARIES:
@@ -242,7 +229,7 @@ class TestWindowsBinariesStaleDetection(unittest.TestCase):
         config.set("windows_binaries_tag", "v1.0.0")
         config.save()
 
-        sysroot = Sysroot(sysroot_dir, tag="v2.0.0")
+        sysroot = Sysroot(tag="v2.0.0")
 
         zip_path = Path(self._tmpdir.name) / "win.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
@@ -272,13 +259,13 @@ class TestWindowsBinariesStaleDetection(unittest.TestCase):
 
     def test_skips_without_config_when_files_present(self) -> None:
         """When config is None, skip based on file presence alone."""
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         bin_dir = sysroot_dir / "bin"
         bin_dir.mkdir(parents=True)
         for b in WINDOWS_HOST_BINARIES:
             (bin_dir / b).write_bytes(b"binary")
 
-        sysroot = Sysroot(sysroot_dir, tag="v1.0.0")
+        sysroot = Sysroot(tag="v1.0.0")
 
         with patch("nanvix_zutil.github.download_release_asset") as mock_dl:
             sysroot.download_windows_binaries(
@@ -305,7 +292,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_downloads_and_extracts(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
         archive = _make_tar_bz2({"lib/libposix.a": b"posix-lib"})
         archive_path = Path(self._tmpdir.name) / "nanvix.tar.bz2"
         archive_path.write_bytes(archive)
@@ -319,14 +305,12 @@ class TestSysrootDownloadFetches(unittest.TestCase):
                 deployment_mode="multi-process",
                 memory_size="128mb",
                 tag="v1.0.0",
-                dest=dest,
             )
 
         self.assertTrue(sysroot.path.is_dir())
         self.assertTrue((sysroot.path / "lib" / "libposix.a").exists())
 
     def test_asset_name_interpolated_correctly(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
         archive = _make_tar_bz2({})
         archive_path = Path(self._tmpdir.name) / "nanvix.tar.bz2"
         archive_path.write_bytes(archive)
@@ -358,7 +342,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
                 deployment_mode="standalone",
                 memory_size="256mb",
                 tag="v2.0.0",
-                dest=dest,
             )
 
         self.assertEqual(
@@ -368,7 +351,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
         self.assertTrue(captured_kwargs[0]["match_prefix"])
 
     def test_path_is_absolute(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
         archive = _make_tar_bz2({})
         archive_path = Path(self._tmpdir.name) / "nanvix.tar.bz2"
         archive_path.write_bytes(archive)
@@ -382,7 +364,6 @@ class TestSysrootDownloadFetches(unittest.TestCase):
                 deployment_mode="multi-process",
                 memory_size="128mb",
                 tag="v1.0.0",
-                dest=dest,
             )
 
         self.assertTrue(sysroot.path.is_absolute())
@@ -398,33 +379,33 @@ class TestSysrootVerify(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_verify_passes_when_files_present(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         sysroot_dir.mkdir()
         (sysroot_dir / "libposix.a").write_bytes(b"")
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         # Should not raise.
         sysroot.verify(required_files=["libposix.a"])
 
     def test_verify_exits_3_when_file_missing(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         sysroot_dir.mkdir()
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         with self.assertRaises(SystemExit) as ctx:
             sysroot.verify(required_files=["libposix.a"])
         self.assertEqual(ctx.exception.code, 3)
 
     def test_verify_nested_path(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         nested = sysroot_dir / "lib"
         nested.mkdir(parents=True)
         (nested / "libposix.a").write_bytes(b"")
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         sysroot.verify(required_files=["lib/libposix.a"])
 
     def test_verify_empty_list_passes(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         sysroot_dir.mkdir()
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         sysroot.verify(required_files=[])
 
 
@@ -438,7 +419,7 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_overlay_copies_bin_files(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         (sysroot_dir / "bin").mkdir(parents=True)
         (sysroot_dir / "bin" / "nanvixd.elf").write_bytes(b"old")
 
@@ -446,7 +427,7 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         (local_dir / "bin").mkdir(parents=True)
         (local_dir / "bin" / "nanvixd.elf").write_bytes(b"new-local")
 
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         sysroot.overlay_local_nanvix(local_dir)
 
         self.assertEqual(
@@ -454,7 +435,7 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         )
 
     def test_overlay_copies_lib_files(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         (sysroot_dir / "lib").mkdir(parents=True)
         (sysroot_dir / "lib" / "libposix.a").write_bytes(b"old-lib")
 
@@ -462,20 +443,20 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         (local_dir / "lib").mkdir(parents=True)
         (local_dir / "lib" / "libposix.a").write_bytes(b"new-lib")
 
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         sysroot.overlay_local_nanvix(local_dir)
 
         self.assertEqual((sysroot_dir / "lib" / "libposix.a").read_bytes(), b"new-lib")
 
     def test_overlay_adds_new_files(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         (sysroot_dir / "bin").mkdir(parents=True)
 
         local_dir = Path(self._tmpdir.name) / "local"
         (local_dir / "bin").mkdir(parents=True)
         (local_dir / "bin" / "uservm.elf").write_bytes(b"uservm-data")
 
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         sysroot.overlay_local_nanvix(local_dir)
 
         self.assertTrue((sysroot_dir / "bin" / "uservm.elf").exists())
@@ -484,21 +465,21 @@ class TestSysrootOverlayLocal(unittest.TestCase):
         )
 
     def test_overlay_no_artifacts_warns(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         sysroot_dir.mkdir()
 
         local_dir = Path(self._tmpdir.name) / "local"
         local_dir.mkdir()  # No bin/ or lib/ subdirs
 
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         # Should not raise, just warn.
         sysroot.overlay_local_nanvix(local_dir)
 
     def test_overlay_nonexistent_path_exits(self) -> None:
-        sysroot_dir = Path(self._tmpdir.name) / "sysroot"
+        sysroot_dir = sysroot_path()
         sysroot_dir.mkdir()
 
-        sysroot = Sysroot(sysroot_dir)
+        sysroot = Sysroot()
         with self.assertRaises(SystemExit) as ctx:
             sysroot.overlay_local_nanvix(Path("/nonexistent/path"))
         self.assertEqual(ctx.exception.code, 3)
@@ -519,7 +500,9 @@ class TestSysrootFromLocal(unittest.TestCase):
 
         sysroot = Sysroot.from_local(sysroot_dir)
 
-        self.assertEqual(sysroot.path, sysroot_dir.resolve())
+        self.assertEqual(sysroot.path, sysroot_path())
+        self.assertTrue(sysroot_path().is_symlink())
+        self.assertEqual(sysroot_path().resolve(), sysroot_dir.resolve())
         self.assertEqual(sysroot.tag, "")
 
     def test_does_not_call_github(self) -> None:
@@ -564,7 +547,6 @@ class TestSysrootDownloadZip(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_downloads_and_extracts_zip(self) -> None:
-        dest = Path(self._tmpdir.name) / "sysroot"
         archive = _make_zip({"lib/libposix.a": b"posix-lib"})
         archive_path = Path(self._tmpdir.name) / "nanvix.zip"
         archive_path.write_bytes(archive)
@@ -578,7 +560,6 @@ class TestSysrootDownloadZip(unittest.TestCase):
                 deployment_mode="multi-process",
                 memory_size="128mb",
                 tag="v1.0.0",
-                dest=dest,
             )
 
         self.assertTrue(sysroot.path.is_dir())
