@@ -122,7 +122,6 @@ ENV_VARS: dict[str, str] = {
     "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE}; one of: {', '.join(DeploymentMode)})",
     "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE}; one of: {', '.join(MemorySize)})",
     "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
-    "NANVIX_DOCKER_IMAGE": "Docker image override (set by setup --with-docker)",
     "GH_TOKEN": "GitHub token for API rate limits",
 }
 
