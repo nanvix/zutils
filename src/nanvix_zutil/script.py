@@ -698,6 +698,42 @@ class ZScript:
         # ------------------------------------------------------------------
         subcommand: str | None = args.subcommand
 
+        # Fail fast on env.json / nanvix.toml sysroot version drift so
+        # users don't build against a stale sysroot. `sysroot_ref` is
+        # always TAG (semver or "latest") or LOCAL; "latest" is
+        # resolved against GitHub so we can compare a concrete tag.
+        # See https://github.com/nanvix/zutils/issues/263.
+        if subcommand is not None and subcommand != "setup":
+            pinned = instance.manifest.sysroot_ref
+            if pinned.kind == RefKind.LOCAL:
+                log.warning(
+                    f"Using local sysroot at {pinned.value!r};"
+                    " skipping version drift check."
+                )
+            elif pinned.kind == RefKind.TAG and isinstance(pinned.value, str):
+                cached = instance.config.get("sysroot_tag")
+                if isinstance(cached, str) and cached:
+                    expected = pinned.value
+                    if expected == "latest" and not instance._offline:
+                        release = resolve_release(
+                            repo="nanvix/nanvix",
+                            version_specifier="latest",
+                            gh_token=instance.config.get(CFG_GH_TOKEN),
+                            semver=True,
+                        )
+                        tag_name = release.get("tag_name")
+                        if isinstance(tag_name, str):
+                            expected = tag_name
+                    if expected != "latest" and cached.removeprefix(
+                        "v"
+                    ) != expected.removeprefix("v"):
+                        log.fatal(
+                            f"Sysroot is stale: env.json={cached!r}, expected={expected!r}."
+                            f" (nanvix.toml={pinned.value!r})."
+                            " Run `./z setup` to refresh.",
+                            code=EXIT_MISSING_DEP,
+                        )
+
         # Special handling for lock subcommand (--check, --shallow flags).
         if subcommand == "lock":
             if args.check:
