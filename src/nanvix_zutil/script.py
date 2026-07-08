@@ -139,6 +139,14 @@ class ZScript:
     # Subcommands that always run inside Docker.
     DOCKER_COMMANDS: frozenset[str | None] = frozenset({"setup", "build", "clean"})
 
+    def required_files_for_release(self) -> list[Path]:
+        """
+        Used by `package()` to verify that the release directory contains the expected files.
+        Leave empty to skip release verification.
+        Expects paths relative to the package root.
+        """
+        return []
+
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current platform and mode.
 

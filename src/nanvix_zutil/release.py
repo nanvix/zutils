@@ -138,6 +138,50 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
     return dest
 
 
+def _archive_members(archive: Path, fmt: ArchiveFormat) -> set[str]:
+    """Return the set of member names inside *archive*.
+
+    Args:
+        archive: Path to the archive file.
+        fmt: Format of the archive.
+
+    Returns:
+        Set of member names (POSIX-style paths) as stored inside the archive.
+    """
+    if fmt is ArchiveFormat.ZIP:
+        with zipfile.ZipFile(archive, "r") as zf:
+            return set(zf.namelist())
+    mode: Literal["r:gz", "r:bz2"] = "r:gz" if fmt is ArchiveFormat.TAR_GZ else "r:bz2"
+    with tarfile.open(archive, mode) as tf:
+        return set(tf.getnames())
+
+
+def _verify_archive(archive: Path, fmt: ArchiveFormat, require: Sequence[Path]) -> None:
+    """Verify *archive* contains every entry in *require*.
+
+    Each entry must match an archive member exactly.  To require that a
+    directory be non-empty, list a representative file inside it.
+
+    Args:
+        archive: Path to the archive to inspect.
+        fmt: Format of *archive*.
+        require: Required member paths, relative to the archive root.
+
+    Raises:
+        SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
+            if any required entry is missing.
+    """
+    members = _archive_members(archive, fmt)
+    # POSIX separators: both zipfile and tarfile store members that way.
+    missing = [e.as_posix() for e in require if e.as_posix() not in members]
+    if missing:
+        log.fatal(
+            f"Archive {archive} missing required entries: {sorted(missing)}",
+            code=EXIT_GENERAL_ERROR,
+            hint="Check the build output and 'sources' passed to package().",
+        )
+
+
 def _build_zip(source: Path, dest: Path) -> Path:
     """Create a ZIP archive from *source* directory.
 
@@ -191,6 +235,7 @@ def package(
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
     staging: Path | None = None,
+    require: Sequence[Path] = (),
 ) -> list[Path]:
     """Package one or more sources into release archives.
 
@@ -215,6 +260,11 @@ def package(
             and the caller is responsible for its lifetime.  When omitted, a
             fresh temporary directory is created and removed automatically on
             return.
+        require: Optional list of archive member paths (relative to the
+            archive root) that must be present as exact members in every
+            produced archive.  To assert that a directory is non-empty, list
+            a representative file inside it.  Verification runs after each
+            archive is written.
 
     Returns:
         List of absolute paths to created archives, one per format, in
@@ -223,7 +273,8 @@ def package(
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
             if any entry in *sources* does not exist, if staging or copying
-            fails, or if archive creation fails.  With
+            fails, or if archive creation fails, or if a produced archive is
+            missing an entry listed in *require*.  With
             :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
             empty, whitespace-only, or contains path separators or parent
             directory traversal, or if an unknown format is encountered,
@@ -369,6 +420,9 @@ def package(
                     code=EXIT_GENERAL_ERROR,
                     hint="Check disk space and permissions.",
                 )
+
+            if require:
+                _verify_archive(out, fmt, require)
 
             log.info(f"Created {out}")
             created.append(out.resolve())

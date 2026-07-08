@@ -25,7 +25,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import Config, Host
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
-from nanvix_zutil.paths import dev_out, dist_dir, regular_out
+from nanvix_zutil.paths import dev_out, dist_dir, nanvix_root, regular_out
 from nanvix_zutil.release import ArchiveFormat, package
 
 HELP: str = "Package release archives from .nanvix/out/staging into .nanvix/out/dist"
@@ -54,6 +54,39 @@ def _is_non_empty_dir(path: Path) -> bool:
     return path.is_dir() and any(path.iterdir())
 
 
+def _consumer_instance() -> object | None:
+    """Instantiate the consumer's ``ZScript`` subclass if ``.nanvix/z.py`` defines one.
+
+    Returns ``None`` when ``z.py`` is absent.  Import errors on ``z.py``
+    propagate — a broken consumer script must fail loudly.
+    """
+    if not (nanvix_root() / "z.py").exists():
+        return None
+    # Lazy import: ``__main__`` imports this module at top level for HELP.
+    from nanvix_zutil.__main__ import discover_script_class
+
+    return discover_script_class()()
+
+
+def consumer_required_files() -> list[Path]:
+    """Return ``required_files_for_release()`` from ``.nanvix/z.py`` if defined.
+
+    Returns ``[]`` when ``z.py`` is absent or defines no override.  The
+    returned paths are archive-relative and are handed to :func:`package`
+    for post-write verification.
+    """
+    instance = _consumer_instance()
+    if instance is None:
+        return []
+    fn = getattr(instance, "required_files_for_release", None)
+    if not callable(fn):
+        return []
+    result = fn()
+    if not isinstance(result, list):
+        return []
+    return [Path(str(p)) for p in result]  # type: ignore[reportUnknownVariableType]
+
+
 def release() -> None:
     """Package release archives from ``.nanvix/out/staging``."""
     manifest = load_manifest()
@@ -68,6 +101,8 @@ def release() -> None:
         f"-{config.deployment_mode}"
         f"-{config.memory_size}"
     )
+
+    require = consumer_required_files()
 
     # (source, archive suffix): regular/ -> no suffix, dev/ -> "-dev".
     slots: list[tuple[Path, str]] = []
@@ -88,7 +123,9 @@ def release() -> None:
         )
 
     for source, suffix in slots:
-        package([source], dist_dir(), f"{base}{suffix}", formats=(fmt,))
+        package(
+            [source], dist_dir(), f"{base}{suffix}", formats=(fmt,), require=require
+        )
 
 
 def main() -> None:

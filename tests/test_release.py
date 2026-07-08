@@ -489,6 +489,40 @@ class TestPackage(unittest.TestCase):
                 package([src], dest, "test", formats=42)  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
+    def test_require_paths_present(self) -> None:
+        """package() succeeds when required paths are present in archives."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            out = package(
+                [src],
+                dest,
+                "test",
+                require=[Path("hello.txt"), Path("sub/data.bin")],
+            )
+            self.assertEqual(len(out), len(DEFAULT_FORMATS))
+
+    def test_require_missing_path_exits(self) -> None:
+        """package() exits when a required exact path is missing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([src], dest, "test", require=[Path("missing.txt")])
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
+    def test_require_missing_prefix_exits(self) -> None:
+        """package() exits when a required nested path is missing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([src], dest, "test", require=[Path("nope/x")])
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
 
 if __name__ == "__main__":
     unittest.main()
