@@ -126,6 +126,57 @@ def _build_tarball(source: Path, dest: Path, compression: Literal["gz", "bz2"]) 
     return dest
 
 
+def _archive_members(archive: Path, fmt: ArchiveFormat) -> set[str]:
+    """Return the set of member names inside *archive*.
+
+    Args:
+        archive: Path to the archive file.
+        fmt: Format of the archive.
+
+    Returns:
+        Set of member names (POSIX-style paths) as stored inside the archive.
+    """
+    if fmt is ArchiveFormat.ZIP:
+        with zipfile.ZipFile(archive, "r") as zf:
+            return set(zf.namelist())
+    mode: Literal["r:gz", "r:bz2"] = "r:gz" if fmt is ArchiveFormat.TAR_GZ else "r:bz2"
+    with tarfile.open(archive, mode) as tf:
+        return set(tf.getnames())
+
+
+def _verify_archive(archive: Path, fmt: ArchiveFormat, require: Sequence[str]) -> None:
+    """Verify *archive* contains every entry in *require*.
+
+    Entries ending in ``/`` are treated as prefix requirements: at least one
+    archive member must start with that prefix (and not equal it exactly, so
+    that an empty directory entry alone does not satisfy the requirement).
+    Other entries must match an archive member exactly.
+
+    Args:
+        archive: Path to the archive to inspect.
+        fmt: Format of *archive*.
+        require: Required member names or prefixes.
+
+    Raises:
+        SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
+            if any required entry is missing.
+    """
+    members = _archive_members(archive, fmt)
+    missing: list[str] = []
+    for entry in require:
+        if entry.endswith("/"):
+            if not any(m.startswith(entry) and m != entry.rstrip("/") for m in members):
+                missing.append(entry)
+        elif entry not in members:
+            missing.append(entry)
+    if missing:
+        log.fatal(
+            f"Archive {archive} missing required entries: {sorted(missing)}",
+            code=EXIT_GENERAL_ERROR,
+            hint="Check the build output and 'sources' passed to package().",
+        )
+
+
 def _build_zip(source: Path, dest: Path) -> Path:
     """Create a ZIP archive from *source* directory.
 
@@ -179,6 +230,7 @@ def package(
     name: str,
     formats: Sequence[ArchiveFormat] = DEFAULT_FORMATS,
     staging: Path | None = None,
+    require: Sequence[str] = (),
 ) -> list[Path]:
     """Package one or more sources into release archives.
 
@@ -203,6 +255,10 @@ def package(
             and the caller is responsible for its lifetime.  When omitted, a
             fresh temporary directory is created and removed automatically on
             return.
+        require: Optional list of archive member names that must be present
+            in every produced archive.  Entries ending in ``/`` are treated as
+            prefix requirements — at least one archive member must start with
+            the prefix.  Verification runs after each archive is written.
 
     Returns:
         List of absolute paths to created archives, one per format, in
@@ -211,7 +267,8 @@ def package(
     Raises:
         SystemExit: With :data:`~nanvix_zutil.exitcodes.EXIT_GENERAL_ERROR`
             if any entry in *sources* does not exist, if staging or copying
-            fails, or if archive creation fails.  With
+            fails, or if archive creation fails, or if a produced archive is
+            missing an entry listed in *require*.  With
             :data:`~nanvix_zutil.exitcodes.EXIT_INVALID_ARGS` if *name* is
             empty, whitespace-only, or contains path separators or parent
             directory traversal, or if an unknown format is encountered,
@@ -357,6 +414,9 @@ def package(
                     code=EXIT_GENERAL_ERROR,
                     hint="Check disk space and permissions.",
                 )
+
+            if require:
+                _verify_archive(out, fmt, require)
 
             log.info(f"Created {out}")
             created.append(out.resolve())

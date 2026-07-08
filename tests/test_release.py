@@ -489,6 +489,40 @@ class TestPackage(unittest.TestCase):
                 package([src], dest, "test", formats=42)  # type: ignore
             self.assertEqual(ctx.exception.code, EXIT_INVALID_ARGS)
 
+    def test_require_paths_present(self) -> None:
+        """package() succeeds when required paths are present in archives."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            out = package(
+                [src],
+                dest,
+                "test",
+                require=["hello.txt", "sub/"],
+            )
+            self.assertEqual(len(out), len(DEFAULT_FORMATS))
+
+    def test_require_missing_path_exits(self) -> None:
+        """package() exits when a required exact path is missing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([src], dest, "test", require=["missing.txt"])
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
+    def test_require_missing_prefix_exits(self) -> None:
+        """package() exits when no member matches a required prefix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            _make_source_tree(src)
+            dest = Path(tmp) / "dist"
+            with self.assertRaises(SystemExit) as ctx:
+                package([src], dest, "test", require=["nope/"])
+            self.assertEqual(ctx.exception.code, EXIT_GENERAL_ERROR)
+
 
 if __name__ == "__main__":
     unittest.main()
