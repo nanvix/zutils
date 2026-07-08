@@ -17,6 +17,7 @@ from nanvix_zutil.commands import (
     format,
     info,
     lint,
+    release,
     resolve,
 )
 from nanvix_zutil.config import ENV_VARS
@@ -35,6 +36,7 @@ _STANDALONE_HELP: dict[str, str] = {
     "format": format.HELP,
     "info": info.HELP,
     "lint": lint.HELP,
+    "release": release.HELP,
     "resolve": resolve.HELP,
 }
 
@@ -179,6 +181,13 @@ def main() -> None:
 
         sys.argv = ["nanvix-zutil format", *remaining]
         format_main()
+        return
+
+    if subcmd == "release":
+        from nanvix_zutil.commands.release import main as release_main
+
+        sys.argv = ["nanvix-zutil release", *remaining]
+        release_main()
         return
 
     if subcmd == "help":

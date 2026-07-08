@@ -4,9 +4,9 @@
 """Release artifact packaging.
 
 Produces release archives in multiple formats (``.tar.gz``, ``.tar.bz2``,
-``.zip``) from a source directory.  Consumer repositories call
-:func:`package` from their :meth:`~nanvix_zutil.ZScript.release` hook to
-generate distribution archives::
+``.zip``) from a source directory.  The standalone ``nanvix-zutil release``
+command (:mod:`nanvix_zutil.commands.release`) is the primary caller;
+consumers may also invoke :func:`package` directly for custom staging::
 
     from nanvix_zutil.release import ArchiveFormat, package
 

@@ -47,10 +47,6 @@ class _MockConsumer(ZScript):
         """Record benchmark hook invocation."""
         self.called.append("benchmark")
 
-    def release(self) -> None:
-        """Record release hook invocation."""
-        self.called.append("release")
-
     def clean(self) -> None:
         """Record clean hook invocation."""
         self.called.append("clean")
@@ -79,8 +75,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         if subcommand == "setup" and "--with-docker" not in argv:
             argv += ["--with-docker", "test/image:tag"]
 
-        # build/release/clean need a persisted Docker image.
-        _DOCKER_COMMANDS = {"build", "release", "clean"}
+        # build/clean need a persisted Docker image.
+        _DOCKER_COMMANDS = {"build", "clean"}
         if subcommand in _DOCKER_COMMANDS:
             nanvix_dir = nanvix_root()
             env_json = nanvix_dir / "env.json"
@@ -117,10 +113,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
     def test_benchmark_hook_called(self) -> None:
         instance = self._run_main("benchmark")
         self.assertIn("benchmark", instance.called)
-
-    def test_release_hook_called(self) -> None:
-        instance = self._run_main("release")
-        self.assertIn("release", instance.called)
 
     def test_clean_hook_called(self) -> None:
         instance = self._run_main("clean")

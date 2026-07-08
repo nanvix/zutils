@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -64,9 +63,8 @@ from nanvix_zutil.helpers import (
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
-from nanvix_zutil.paths import dist_dir, nanvix_root, out_dir, release_dir, repo_root
+from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
 from nanvix_zutil.paths import sysroot as _sysroot_dir
-from nanvix_zutil.release import package
 from nanvix_zutil.resolver import is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -80,8 +78,8 @@ class ZScript:
 
     The :meth:`setup` and :meth:`lock` hooks are *auto-implemented* in
     the base class and are always available in the CLI.
-    The remaining hooks (``build``, ``test``, ``benchmark``, ``release``,
-    ``clean``) only appear in the help menu when the subclass overrides them.
+    The remaining hooks (``build``, ``test``, ``benchmark``, ``clean``)
+    only appear in the help menu when the subclass overrides them.
 
     Attributes:
         SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot
@@ -146,7 +144,6 @@ class ZScript:
         "lock",
         "install",
         "help",
-        "release",
     )
 
     #: Consumer-defined hooks that appear in the CLI only when the
@@ -159,16 +156,15 @@ class ZScript:
     )
 
     # Subcommands that always run inside Docker.
-    DOCKER_COMMANDS: frozenset[str | None] = frozenset(
-        {"setup", "build", "release", "clean"}
-    )
+    DOCKER_COMMANDS: frozenset[str | None] = frozenset({"setup", "build", "clean"})
 
     def release_targets(self) -> dict[str, str]:
         """
-        Consumer-provided release targets.
-        By default, `./z release` will wrap everything in the `release_dir()`.
-        Specify this value to override.
-        This value maps from subdirectory names to release artifacts.
+        Consumer-provided release targets, consumed by the standalone
+        ``nanvix-zutil release`` command.
+        By default, ``release`` will wrap everything in ``release_dir()``.
+        Override to produce one archive per subdirectory.
+        This value maps from subdirectory names to release artifact names.
 
         Example usage:
         ```python
@@ -471,37 +467,6 @@ class ZScript:
         sync_configs()
         return self._used_fallback
 
-    def release(self) -> None:
-        """Package release archives from ``.nanvix/out/release``.
-
-        The resulting archives are written to ``.nanvix/out/dist`` under the
-        manifest package name.
-        """
-        manifest = load_manifest()
-
-        def check_target(target: str):
-            allowlist = re.compile(r"^[A-Za-z0-9_.-]+$")
-            if not allowlist.match(target) and target not in (".", ".."):
-                log.fatal(
-                    f"Invalid release target '{target}'."
-                    "Characters must be alphanumeric, underscore, hyphen, or dot.",
-                    code=EXIT_INVALID_ARGS,
-                )
-
-        if self.release_targets() == {}:
-            name = (
-                f"{manifest.name}"
-                f"-{self.config.machine}"
-                f"-{self.config.deployment_mode}"
-                f"-{self.config.memory_size}"
-            )
-            package([release_dir()], dist_dir(), name)
-        else:
-            for input, output in self.release_targets().items():
-                check_target(input)
-                check_target(output)
-                package([release_dir() / input], dist_dir(), output)
-
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.
 
@@ -753,7 +718,6 @@ class ZScript:
             "build": instance.build,
             "test": instance.test,
             "benchmark": instance.benchmark,
-            "release": instance.release,
             "clean": instance.clean,
         }
 

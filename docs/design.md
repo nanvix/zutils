@@ -103,7 +103,7 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 | Setup     | `./z setup --with-docker nanvix/toolchain:latest-minimal` | ❌          | ❌           | See below.                                                              |
 | Build     | `./z build`                                               | ❌          | ✅           | See below.                                                              |
 | Test      | `./z test`                                                | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts. |
-| Release   | `./z release`                                             | ❌          | ❌           | Packages build artefacts into tarballs and zip files for distribution.  |
+| Release   | `./z release`                                             | ✅          | ❌           | Packages build artefacts into tarballs and zip files for distribution. Honours a `release_targets()` override on the consumer's `ZScript` subclass when present. |
 | Benchmark | `./z benchmark`                                           | ❌          | ✅           | Runs benchmarks.                                                        |
 | Clean     | `./z clean`                                               | ❌          | ✅           | Cleans up build files.                                                  |
 | Distclean | `./z distclean`                                           | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.   |
@@ -143,17 +143,20 @@ Certain lifecycle stages will only be available if the implementor class overrid
 | Verb      | Requires override |
 | --------- | ----------------- |
 | setup     | ❌                |
+| release   | ❌                |
 | distclean | ❌                |
 | lint      | ❌                |
 | format    | ❌                |
+| info      | ❌                |
 | build     | ✅                |
 | test      | ✅                |
 | benchmark | ✅                |
-| release   | ✅                |
 | clean     | ✅                |
 
-Automatically available verbs are listed in the `AUTO_HOOKS` list, while opt-in
-verbs are listed in the `CONSUMER_HOOKS` array.
+Automatically available verbs are either standalone commands
+(``distclean``, ``format``, ``info``, ``lint``, ``release``) or listed in
+the ``AUTO_HOOKS`` list on ``ZScript`` (``setup``); opt-in verbs are
+listed in the ``CONSUMER_HOOKS`` array.
 
 ### Environment variables
 

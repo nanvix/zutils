@@ -55,7 +55,6 @@ SUBCOMMANDS: tuple[str, ...] = (
     "build",
     "test",
     "benchmark",
-    "release",
     "clean",
     "lock",
     "install",
@@ -65,8 +64,8 @@ SUBCOMMANDS: tuple[str, ...] = (
 #: Subcommands that accept the ``--with-docker`` flag.
 #:
 #: ``--with-docker IMAGE`` is required on ``setup`` to specify the Docker
-#: image.  ``build``, ``release``, and ``clean`` load the image from
-#: persisted config (set during ``setup``).
+#: image.  ``build`` and ``clean`` load the image from persisted config
+#: (set during ``setup``).
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.
@@ -75,7 +74,6 @@ SUBCOMMAND_HELP: dict[str, str] = {
     "build": "Build the project",
     "test": "Run tests",
     "benchmark": "Run benchmarks",
-    "release": "Package a release",
     "clean": "Remove build artifacts",
     "lock": "Resolve dependencies and write nanvix.lock",
     "install": "Export build artifacts to a target directory",
@@ -163,7 +161,7 @@ def build_parser(
                 dest="with_docker",
                 help="Docker image to use for containerised builds."
                 " The image is persisted to .nanvix/env.json so that"
-                " subsequent build/release/clean commands use it"
+                " subsequent build/clean commands use it"
                 " automatically. test and benchmark always run on"
                 " the host.",
             )
