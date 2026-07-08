@@ -140,8 +140,8 @@ class Config:
     1. Seed with built-in defaults.
     2. Override with values from the persisted ``.nanvix/env.json`` file,
        if it exists.
-    3. Override with environment variables (including extra ``NANVIX_*`` keys
-       and ``GH_TOKEN``), which always take precedence.
+    3. Override with environment variables for known keys listed in
+       :data:`ENV_VARS`, which always take precedence.
 
     Effective precedence (highest to lowest) is therefore:
 
@@ -181,16 +181,14 @@ class Config:
             # Never persist secrets such as GH_TOKEN; strip if present.
             self._data.pop("GH_TOKEN", None)
 
-        # Apply environment variable overrides.
-        for key in list(self._data.keys()):
+        # Apply environment variable overrides for known keys.
+        for key in ENV_VARS:
+            # Never persist secrets such as GH_TOKEN.
+            if key == CFG_GH_TOKEN:
+                continue
             env_val = os.environ.get(key)
             if env_val is not None:
                 self._data[key] = env_val
-
-        # Apply any extra env vars not in defaults.
-        for key, val in os.environ.items():
-            if key.startswith("NANVIX_"):
-                self._data[key] = val
 
         # Validate enum-typed keys; fatal on invalid.
         for key, enum_cls in _ENUMS.items():
@@ -252,7 +250,8 @@ class Config:
     def get(self, key: str, default: str | None = None) -> str | None:
         """Retrieve a configuration value.
 
-        Environment variables always take precedence.
+        Environment variables take precedence, but only for known keys
+        listed in :data:`ENV_VARS`.
 
         Args:
             key: The configuration key.
@@ -261,9 +260,10 @@ class Config:
         Returns:
             The configuration value or *default*.
         """
-        env_val = os.environ.get(key)
-        if env_val is not None:
-            return env_val
+        if key in ENV_VARS:
+            env_val = os.environ.get(key)
+            if env_val is not None:
+                return env_val
         return self._data.get(key, default)
 
     def set(self, key: str, value: str) -> None:
@@ -311,8 +311,9 @@ class Config:
             persisted = cast(dict[str, object], raw)
             for k, v in persisted.items():
                 if isinstance(v, str):
-                    # Environment variables still win.
-                    if os.environ.get(k) is None:
-                        self._data[k] = v
+                    # Environment variables still win for known keys.
+                    if k in ENV_VARS and os.environ.get(k) is not None:
+                        continue
+                    self._data[k] = v
         except (json.JSONDecodeError, OSError):
             pass
