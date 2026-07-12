@@ -157,6 +157,15 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _fsync_file(path: Path) -> None:
+    """Flush a file through a Windows-compatible read-write descriptor."""
+    descriptor = os.open(path, os.O_RDWR)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write_journal(journal: Path, data: dict[str, object]) -> None:
     """Crash-safely replace the transaction journal."""
     sidecar = journal.with_name(f".{journal.name}.{os.getpid()}.new")
@@ -189,8 +198,7 @@ def _remove_journal(journal: Path, data: dict[str, object]) -> None:
         payload = (json.dumps(data, sort_keys=True) + "\n").encode("utf-8")
         journal.write_bytes(payload)
         journal.chmod(0o600)
-        with journal.open("rb") as stream:
-            os.fsync(stream.fileno())
+        _fsync_file(journal)
         raise
 
 
@@ -208,8 +216,7 @@ def _restore_snapshot(
     sidecar.write_bytes(snapshot)
     sidecar.chmod(mode)
     try:
-        with sidecar.open("rb") as stream:
-            os.fsync(stream.fileno())
+        _fsync_file(sidecar)
         os.replace(sidecar, target)
         _fsync_directory(target.parent)
     finally:
@@ -458,8 +465,7 @@ def _atomic_write_candidates(
             sidecar = target.with_name(f".{target.name}.nanvix-zutil-{os.getpid()}")
             sidecar.write_bytes(normalized[relative])
             sidecar.chmod(modes[relative])
-            with sidecar.open("rb") as stream:
-                os.fsync(stream.fileno())
+            _fsync_file(sidecar)
             sidecars[relative] = sidecar
         for name in changed:
             relative = Path(name)

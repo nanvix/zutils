@@ -431,7 +431,10 @@ class TestSdkDockerSelection(unittest.TestCase):
             patch("nanvix_zutil.script.check_docker") as check,
         ):
             ZScript.main()
-        check.assert_called_once_with(self.image)
+        if sys.platform == "win32":
+            check.assert_not_called()
+        else:
+            check.assert_called_once_with(self.image)
         self.assertEqual(Config().get(CFG_DOCKER_IMAGE), self.image)
 
     def test_setup_prefers_dedicated_build_image(self) -> None:
@@ -448,7 +451,10 @@ class TestSdkDockerSelection(unittest.TestCase):
             patch("nanvix_zutil.script.check_docker") as check,
         ):
             ZScript.main()
-        check.assert_called_once_with(expected)
+        if sys.platform == "win32":
+            check.assert_not_called()
+        else:
+            check.assert_called_once_with(expected)
         self.assertEqual(Config().get(CFG_DOCKER_IMAGE), expected)
 
     def test_conflicting_cli_image_fails_without_override(self) -> None:

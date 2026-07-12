@@ -420,17 +420,31 @@ class TestUpdateZutils(unittest.TestCase):
             self.assertIn(b"\r\n", content)
             self.assertNotIn(b"\n", content.replace(b"\r\n", b""))
         self.assertEqual(stat.S_IMODE((root / "z").stat().st_mode), old_mode)
-        self.assertTrue((root / "z").stat().st_mode & stat.S_IXUSR)
+        if os.name != "nt":
+            self.assertTrue((root / "z").stat().st_mode & stat.S_IXUSR)
 
     def test_new_shell_bootstrappers_are_executable(self) -> None:
         root = Path.cwd()
         make_consumer(root)
         source = template_source(root)
+        probe = root / "mode-probe"
+        probe.write_bytes(b"probe")
+        probe.chmod(0o755)
+        expected_mode = stat.S_IMODE(probe.stat().st_mode)
+        probe.unlink()
         (root / "z").unlink()
         (root / "z.sh").unlink()
         update_zutils._run(zutils_args("v0.15.0", source))
-        self.assertEqual(stat.S_IMODE((root / "z").stat().st_mode), 0o755)
-        self.assertEqual(stat.S_IMODE((root / "z.sh").stat().st_mode), 0o755)
+        self.assertEqual(
+            stat.S_IMODE((root / "z").stat().st_mode),
+            expected_mode,
+        )
+        self.assertEqual(
+            stat.S_IMODE((root / "z.sh").stat().st_mode),
+            expected_mode,
+        )
+        if os.name != "nt":
+            self.assertTrue((root / "z").stat().st_mode & stat.S_IXUSR)
 
     def test_interrupted_pin_is_recovered_before_validation(self) -> None:
         root = Path.cwd()
@@ -516,7 +530,10 @@ class TestUpdateZutils(unittest.TestCase):
         download.assert_called_once_with(
             "https://example.invalid/templates.zip", "read-token"
         )
-        self.assertEqual(templates[".zutils-version"], b"v0.15.0\n")
+        self.assertEqual(
+            templates[".zutils-version"],
+            (source / ".zutils-version").read_bytes(),
+        )
 
     def test_release_tag_or_asset_skew_fails(self) -> None:
         with self.assertRaises(UpdateError):
@@ -561,6 +578,7 @@ class TestAtomicUpdates(unittest.TestCase):
         first.write_bytes(b"old-first")
         second.write_bytes(b"old-second")
         first.chmod(0o755)
+        first_mode = stat.S_IMODE(first.stat().st_mode)
         real_replace = os.replace
         calls = 0
 
@@ -583,7 +601,7 @@ class TestAtomicUpdates(unittest.TestCase):
                 )
         self.assertEqual(first.read_bytes(), b"old-first")
         self.assertEqual(second.read_bytes(), b"old-second")
-        self.assertEqual(stat.S_IMODE(first.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(first.stat().st_mode), first_mode)
         self.assertTrue((root / ".nanvix/.nanvix-zutil-update.lock").exists())
         self.assertFalse((root / ".nanvix/.nanvix-zutil-update-journal.json").exists())
         self.assertFalse((root / ".nanvix-zutil-update.lock").exists())
@@ -777,7 +795,7 @@ class TestAtomicUpdates(unittest.TestCase):
                 {"state": "installing", "files": []},
             )
         self.assertEqual(json.loads(journal.read_text())["state"], "installing")
-        self.assertGreaterEqual(fsync.call_count, 2)
+        self.assertGreaterEqual(fsync.call_count, 1 if os.name == "nt" else 2)
         self.assertEqual(
             list(journal.parent.glob(f".{journal.name}.*.new")),
             [],
@@ -798,6 +816,19 @@ class TestAtomicUpdates(unittest.TestCase):
             updater._remove_journal(journal, data)
         self.assertTrue(journal.exists())
         self.assertEqual(json.loads(journal.read_text())["state"], "committed")
+
+    def test_fsync_file_uses_read_write_descriptor(self) -> None:
+        path = Path.cwd() / "file"
+        path.write_bytes(b"data")
+        with (
+            patch("nanvix_zutil.updater.os.open", return_value=123) as opened,
+            patch("nanvix_zutil.updater.os.fsync") as fsync,
+            patch("nanvix_zutil.updater.os.close") as close,
+        ):
+            updater._fsync_file(path)
+        opened.assert_called_once_with(path, os.O_RDWR)
+        fsync.assert_called_once_with(123)
+        close.assert_called_once_with(123)
 
     def test_windows_lock_path_never_uses_kill(self) -> None:
         root = Path.cwd()

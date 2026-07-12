@@ -36,6 +36,15 @@ _HTTP_TIMEOUT = 30.0  # seconds
 _PER_PAGE = 100  # releases per API page
 
 
+def _fsync_file(path: Path) -> None:
+    """Flush a file through a Windows-compatible read-write descriptor."""
+    descriptor = os.open(path, os.O_RDWR)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -787,8 +796,7 @@ def download_release_asset(
                     encoding="utf-8",
                     newline="\n",
                 )
-                with metadata_tmp.open("rb") as metadata_fh:
-                    os.fsync(metadata_fh.fileno())
+                _fsync_file(metadata_tmp)
                 os.replace(metadata_tmp, metadata_path)
             log.success(f"Downloaded {resolved_name}")
             return out_path

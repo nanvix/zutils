@@ -7,6 +7,7 @@
 
 import collections.abc
 import json
+import os
 import tempfile
 import unittest
 import urllib.error
@@ -188,6 +189,19 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
         metadata = json.loads((dest / f".{asset_name}.release.json").read_text())
         self.assertEqual(metadata["release_id"], 102)
         self.assertEqual(metadata["asset_id"], 1002)
+
+    def test_metadata_fsync_uses_read_write_descriptor(self) -> None:
+        path = Path(self._tmpdir.name) / "metadata"
+        path.write_text("{}")
+        with (
+            patch("nanvix_zutil.github.os.open", return_value=77) as opened,
+            patch("nanvix_zutil.github.os.fsync") as fsync,
+            patch("nanvix_zutil.github.os.close") as close,
+        ):
+            github_mod._fsync_file(path)
+        opened.assert_called_once_with(path, os.O_RDWR)
+        fsync.assert_called_once_with(77)
+        close.assert_called_once_with(77)
 
 
 class TestDownloadReleaseAssetNotFound(unittest.TestCase):

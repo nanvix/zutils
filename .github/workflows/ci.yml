@@ -71,6 +71,8 @@ jobs:
   integration-tests:
     name: Integration Tests (ubuntu-24.04)
     runs-on: ubuntu-24.04
+    outputs:
+      artifacts-available: ${{ steps.artifacts.outputs.available }}
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
@@ -88,8 +90,18 @@ jobs:
       - name: Build & test examples
         run: uv run pytest tests/test_examples.py -v -k "not Cleanup"
 
+      - name: Detect integration artifacts
+        id: artifacts
+        run: |
+          if find examples -type f \( -name '*.elf' -o -name '*.a' \) -print -quit \
+            | grep -q .; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload build artifacts for Windows test
-        if: success()
+        if: steps.artifacts.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: integration-test-artifacts
@@ -107,6 +119,7 @@ jobs:
   integration-tests-windows:
     name: Integration Tests (windows-latest)
     needs: [integration-tests]
+    if: needs.integration-tests.outputs.artifacts-available == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     env:
