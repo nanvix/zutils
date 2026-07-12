@@ -63,9 +63,9 @@ SUBCOMMANDS: tuple[str, ...] = (
 
 #: Subcommands that accept the ``--with-docker`` flag.
 #:
-#: ``--with-docker IMAGE`` is required on ``setup`` to specify the Docker
-#: image.  ``build`` and ``clean`` load the image from persisted config
-#: (set during ``setup``).
+#: SDK manifests supply their immutable build image. Legacy manifests use
+#: ``--with-docker IMAGE`` on setup. ``build`` and ``clean`` load the persisted
+#: effective image.
 DOCKER_SUBCOMMANDS: tuple[str, ...] = ("setup",)
 
 #: Human-readable descriptions for each subcommand.
@@ -156,7 +156,7 @@ def build_parser(
             sub.add_argument(
                 "--with-docker",
                 type=str,
-                required=True,
+                required=False,
                 metavar="IMAGE",
                 dest="with_docker",
                 help="Docker image to use for containerised builds."
@@ -164,6 +164,13 @@ def build_parser(
                 " subsequent build/clean commands use it"
                 " automatically. test and benchmark always run on"
                 " the host.",
+            )
+            sub.add_argument(
+                "--allow-local-docker-override",
+                action="store_true",
+                default=False,
+                help="Explicitly allow --with-docker to override the immutable"
+                " SDK build image for local development.",
             )
             sub.add_argument(
                 "--offline",

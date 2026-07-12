@@ -10,7 +10,8 @@ string (``version`` specifier), or a table with one of ``version``,
 ``tag``, ``commitish``, or ``id``.
 
 Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
-are auto-suffixed with ``-nanvix-{sysroot_version}``.  ``tag``,
+are auto-suffixed with ``-nanvix-{sysroot_version}`` in legacy mode or
+``-nanvix-{runtime}-sdk.{revision}`` in SDK mode. ``tag``,
 ``commitish``, and ``id`` specifiers are exact-match and never suffixed.
 Refs that already contain ``-nanvix-`` are rejected to prevent accidental
 duplication.  When the sysroot is ``"latest"``, auto-suffixing is
@@ -22,17 +23,99 @@ from __future__ import annotations
 import re
 import tomllib
 from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import cast
 
 from nanvix_zutil import log
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
 from nanvix_zutil.paths import manifest_path
+from nanvix_zutil.sdk import SdkValidationError, parse_sdk_version
 from nanvix_zutil.utils import SEMVER_RE
 
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
+
+class ToolchainKind(Enum):
+    """Consumer toolchain selection mode."""
+
+    LEGACY = "legacy"
+    SDK = "nanvix-sdk"
+
+
+@dataclass(frozen=True)
+class SdkPin:
+    """Immutable SDK coordinate declared by a consumer manifest."""
+
+    version: str
+    provider_id: str
+    image: str
+    digest: str
+    build_image: str | None = None
+    build_digest: str | None = None
+
+    @property
+    def provider(self) -> str:
+        """Return the SDK provider identifier."""
+        return self.provider_id
+
+    @property
+    def sdk_image(self) -> str:
+        """Return the SDK provider image name."""
+        return self.image
+
+    @property
+    def sdk_digest(self) -> str:
+        """Return the SDK provider image digest."""
+        return self.digest
+
+    @property
+    def image_name(self) -> str:
+        """Return the image repository without its digest."""
+        return self.image.partition("@")[0]
+
+    @property
+    def image_ref(self) -> str:
+        """Return the canonical immutable image reference."""
+        return f"{self.image_name}@{self.digest}"
+
+    @property
+    def sdk_image_ref(self) -> str:
+        """Return the canonical immutable SDK provider reference."""
+        return self.image_ref
+
+    @property
+    def build_image_ref(self) -> str | None:
+        """Return the optional immutable build-image reference."""
+        if self.build_image is None or self.build_digest is None:
+            return None
+        return f"{self.build_image}@{self.build_digest}"
+
+    @property
+    def effective_build_ref(self) -> str:
+        """Return the image used for builds, falling back to the SDK image."""
+        return self.build_image_ref or self.sdk_image_ref
+
+
+@dataclass(frozen=True)
+class Toolchain:
+    """Typed manifest toolchain configuration."""
+
+    kind: ToolchainKind
+    sdk: SdkPin | None = None
+
+    @classmethod
+    def legacy(cls) -> Toolchain:
+        """Return the transitional legacy toolchain selection."""
+        return cls(kind=ToolchainKind.LEGACY)
+
+    @property
+    def effective_build_ref(self) -> str | None:
+        """Return the immutable build reference, if this is an SDK toolchain."""
+        return self.sdk.effective_build_ref if self.sdk is not None else None
 
 
 @dataclass
@@ -45,6 +128,7 @@ class Manifest:
         sysroot_ref: Nanvix sysroot version reference.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
+        toolchain: Typed legacy or immutable SDK toolchain selection.
     """
 
     name: str
@@ -52,6 +136,7 @@ class Manifest:
     sysroot_ref: Ref
     dependencies: list[Dependency] = field(default_factory=lambda: [])
     system_dependencies: list[Dependency] = field(default_factory=lambda: [])
+    toolchain: Toolchain = field(default_factory=Toolchain.legacy)
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +151,7 @@ _URL_UNSAFE = set("/\\#?%")
 _LOCAL_PATH_RE = re.compile(
     r"^(?:/|\./|\.\./|[A-Za-z]:[/\\])",
 )
+_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def is_local_path(value: str) -> bool:
@@ -272,12 +358,206 @@ def _parse_dependencies(
     return deps
 
 
+def _parse_toolchain(raw: object, nanvix_version: str) -> Toolchain:
+    """Parse the optional typed ``[toolchain]`` table.
+
+    The canonical form uses ``kind = "nanvix-sdk"`` with ``sdk-*`` fields.
+    Early ``type/version/image`` and ``[toolchain.sdk]`` forms remain readable
+    for one transition release.
+    """
+    if raw is None:
+        return Toolchain.legacy()
+    if not isinstance(raw, dict):
+        log.fatal(
+            f"{manifest_path()}: [toolchain] must be a TOML table",
+            code=EXIT_INVALID_ARGS,
+        )
+    table = cast("dict[str, object]", raw)
+    nested = table.get("sdk")
+    if nested is not None:
+        if not isinstance(nested, dict):
+            log.fatal(
+                f"{manifest_path()}: [toolchain.sdk] must be a TOML table",
+                code=EXIT_INVALID_ARGS,
+            )
+        values = cast("dict[str, object]", nested)
+        outer_keys = set(table) - {"type", "kind", "sdk"}
+        if outer_keys:
+            log.fatal(
+                f"{manifest_path()}: SDK pin fields must not be split between"
+                " [toolchain] and [toolchain.sdk]",
+                code=EXIT_INVALID_ARGS,
+            )
+    else:
+        values = {
+            key: value for key, value in table.items() if key not in {"type", "kind"}
+        }
+
+    if "type" in table and "kind" in table:
+        log.fatal(
+            f"{manifest_path()}: [toolchain] must not define both 'type' and 'kind'",
+            code=EXIT_INVALID_ARGS,
+        )
+    raw_kind = table.get("type", table.get("kind"))
+    if raw_kind is None:
+        kind = ToolchainKind.SDK if values else ToolchainKind.LEGACY
+    elif isinstance(raw_kind, str):
+        if raw_kind == "sdk":
+            raw_kind = ToolchainKind.SDK.value
+        try:
+            kind = ToolchainKind(raw_kind)
+        except ValueError:
+            log.fatal(
+                f"{manifest_path()}: unsupported toolchain type {raw_kind!r}",
+                code=EXIT_INVALID_ARGS,
+                hint="Use 'legacy' or 'nanvix-sdk'.",
+            )
+    else:
+        log.fatal(
+            f"{manifest_path()}: toolchain type must be a string",
+            code=EXIT_INVALID_ARGS,
+        )
+
+    if kind == ToolchainKind.LEGACY:
+        if values:
+            log.fatal(
+                f"{manifest_path()}: legacy [toolchain] must not contain SDK pin fields",
+                code=EXIT_INVALID_ARGS,
+            )
+        return Toolchain.legacy()
+
+    aliases = {
+        "version": "sdk-version",
+        "sdk_version": "sdk-version",
+        "provider": "provider_id",
+        "provider-id": "provider_id",
+        "provider_id": "provider_id",
+        "image": "sdk-image",
+        "digest": "sdk-digest",
+    }
+    normalized: dict[str, object] = {}
+    for key, value in values.items():
+        canonical = aliases.get(key, key)
+        if canonical in normalized:
+            log.fatal(
+                f"{manifest_path()}: duplicate SDK pin field {canonical!r}",
+                code=EXIT_INVALID_ARGS,
+            )
+        normalized[canonical] = value
+    allowed = {
+        "sdk-version",
+        "provider_id",
+        "sdk-image",
+        "sdk-digest",
+        "build-image",
+        "build-digest",
+    }
+    unexpected = sorted(set(normalized) - allowed)
+    if unexpected:
+        log.fatal(
+            f"{manifest_path()}: unexpected SDK pin fields: {', '.join(unexpected)}",
+            code=EXIT_INVALID_ARGS,
+        )
+
+    def required_string(key: str) -> str:
+        value = normalized.get(key)
+        if not isinstance(value, str) or not value:
+            log.fatal(
+                f"{manifest_path()}: SDK toolchain requires non-empty {key!r}",
+                code=EXIT_INVALID_ARGS,
+            )
+        return value
+
+    version = required_string("sdk-version")
+    provider_id = required_string("provider_id")
+    image = required_string("sdk-image")
+    digest_value = normalized.get("sdk-digest")
+    image_name, separator, embedded_digest = image.partition("@")
+    if separator:
+        if digest_value is not None and digest_value != embedded_digest:
+            log.fatal(
+                f"{manifest_path()}: SDK image digest and digest field disagree",
+                code=EXIT_INVALID_ARGS,
+            )
+        digest = embedded_digest
+    else:
+        digest = required_string("sdk-digest")
+    if _DIGEST_RE.fullmatch(digest) is None:
+        log.fatal(
+            f"{manifest_path()}: SDK digest must be sha256 followed by 64 lowercase hex digits",
+            code=EXIT_INVALID_ARGS,
+        )
+    expected_image = f"ghcr.io/nanvix/nanvix-sdk-{provider_id}"
+    if image_name != expected_image:
+        log.fatal(
+            f"{manifest_path()}: SDK image {image_name!r} does not match"
+            f" provider {provider_id!r} (expected {expected_image!r})",
+            code=EXIT_INVALID_ARGS,
+        )
+    try:
+        runtime, _revision = parse_sdk_version(version)
+    except SdkValidationError as exc:
+        log.fatal(f"{manifest_path()}: {exc}", code=EXIT_INVALID_ARGS)
+    if runtime != nanvix_version.removeprefix("v"):
+        log.fatal(
+            f"{manifest_path()}: SDK {version!r} targets Nanvix {runtime},"
+            f" but package.nanvix-version is {nanvix_version!r}",
+            code=EXIT_INVALID_ARGS,
+        )
+    if provider_id != "c-clang":
+        log.fatal(
+            f"{manifest_path()}: unsupported SDK provider {provider_id!r}",
+            code=EXIT_INVALID_ARGS,
+        )
+    build_image_value = normalized.get("build-image")
+    build_digest_value = normalized.get("build-digest")
+    if (build_image_value is None) != (build_digest_value is None):
+        log.fatal(
+            f"{manifest_path()}: build-image and build-digest must be specified together",
+            code=EXIT_INVALID_ARGS,
+        )
+    build_image: str | None = None
+    build_digest: str | None = None
+    if build_image_value is not None and build_digest_value is not None:
+        if not isinstance(build_image_value, str) or not build_image_value:
+            log.fatal(
+                f"{manifest_path()}: build-image must be a non-empty string",
+                code=EXIT_INVALID_ARGS,
+            )
+        if (
+            not isinstance(build_digest_value, str)
+            or _DIGEST_RE.fullmatch(build_digest_value) is None
+        ):
+            log.fatal(
+                f"{manifest_path()}: build-digest must be a SHA-256 digest",
+                code=EXIT_INVALID_ARGS,
+            )
+        if "@" in build_image_value:
+            log.fatal(
+                f"{manifest_path()}: canonical build-image must not include a digest",
+                code=EXIT_INVALID_ARGS,
+            )
+        build_image = build_image_value
+        build_digest = build_digest_value
+    return Toolchain(
+        kind=ToolchainKind.SDK,
+        sdk=SdkPin(
+            version=version,
+            provider_id=provider_id,
+            image=image_name,
+            digest=digest,
+            build_image=build_image,
+            build_digest=build_digest,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def load_manifest() -> Manifest:
+def load_manifest(path: Path | None = None) -> Manifest:
     """Parse a ``nanvix.toml`` manifest file.
 
     Reads the TOML file, validates required keys, enforces semver for
@@ -292,14 +572,15 @@ def load_manifest() -> Manifest:
         SystemExit: With exit code ``3`` if the file does not exist, or
             exit code ``2`` if the manifest is malformed.
     """
-    if not manifest_path().is_file():
+    source_path = path or manifest_path()
+    if not source_path.is_file():
         log.fatal(
-            f"Required file not found: {manifest_path()}",
+            f"Required file not found: {source_path}",
             code=EXIT_MISSING_DEP,
             hint="Create a nanvix.toml in the .nanvix/ directory.",
         )
 
-    raw_bytes = manifest_path().read_bytes()
+    raw_bytes = source_path.read_bytes()
     try:
         data: dict[str, object] = tomllib.loads(raw_bytes.decode("utf-8"))
     except tomllib.TOMLDecodeError as exc:
@@ -345,6 +626,8 @@ def load_manifest() -> Manifest:
         )
 
     sysroot_ref = _parse_nanvix_version(raw_nanvix_version)
+    assert isinstance(sysroot_ref.value, str)
+    toolchain = _parse_toolchain(data.get("toolchain"), sysroot_ref.value)
 
     # --- [dependencies] (optional) ---
     deps_raw: object = data.get("dependencies", {})
@@ -373,12 +656,12 @@ def load_manifest() -> Manifest:
     # (which resolves the sysroot first and knows the actual version).
     # Strip the leading "v" from the sysroot version to match the release
     # tag format used by nanvix-zutil (e.g. "1.3.1-nanvix-0.12.291").
-    if (
-        sysroot_ref.value != "latest"
-        and isinstance(sysroot_ref.value, str)
-        and sysroot_ref.kind != RefKind.LOCAL
-    ):
-        version_suffix = sysroot_ref.value.removeprefix("v")
+    if sysroot_ref.value != "latest" and sysroot_ref.kind != RefKind.LOCAL:
+        version_suffix = (
+            toolchain.sdk.version.removeprefix("v")
+            if toolchain.kind == ToolchainKind.SDK and toolchain.sdk is not None
+            else sysroot_ref.value.removeprefix("v")
+        )
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
                 if "-nanvix-" in dep.ref.value:
@@ -394,4 +677,5 @@ def load_manifest() -> Manifest:
         sysroot_ref=sysroot_ref,
         dependencies=dependencies,
         system_dependencies=system_dependencies,
+        toolchain=toolchain,
     )

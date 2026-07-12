@@ -7,7 +7,7 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
 ``--help`` to see available subcommands and Docker flags::
 
     nanvix-zutil setup                     # download sysroot + lib-hello (Docker auto-enabled)
-    nanvix-zutil setup --with-docker IMG   # download sysroot + lib-hello (custom Docker image)
+    nanvix-zutil setup                     # use immutable manifest SDK image
     nanvix-zutil build                     # cross-compile inside Docker container (auto)
     nanvix-zutil test                      # run tests (smoke + integration + functional)
     nanvix-zutil clean                     # remove build artifacts (host)
@@ -85,19 +85,10 @@ class BinHello(ZScript):
     def build(self) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
         tc = TOOLCHAIN_CONTAINER_PATH
-        sysroot = self._sysroot()
         buildroot = self._buildroot_path()
-        cc = str(tc / "bin" / "i686-nanvix-gcc")
+        cc = f"{tc}/bin/clang --target=i686-unknown-nanvix --sysroot={tc}"
         cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{buildroot}/include"
-        ldflags = f"-T{sysroot}/lib/user.ld -static -Wl,-z,noexecstack"
-        libs = (
-            f"-Wl,--start-group"
-            f" {buildroot}/lib/libhello.a"
-            f" {sysroot}/lib/libposix.a"
-            f" {tc}/i686-nanvix/lib/libc.a"
-            f" {tc}/i686-nanvix/lib/libm.a"
-            f" -Wl,--end-group"
-        )
+        libs = f"{buildroot}/lib/libhello.a"
 
         # Single shell invocation so intermediate .o survives across
         # compile and link steps inside the same Docker container.
@@ -105,7 +96,7 @@ class BinHello(ZScript):
             "sh",
             "-c",
             f"{cc} {cflags} -c -o main.o src/main.c"
-            f" && {cc} {cflags} {ldflags} -o hello.elf main.o {libs}",
+            f" && {cc} {cflags} -o hello.elf main.o {libs}",
             cwd=repo_root(),
             docker=self.docker,
         )

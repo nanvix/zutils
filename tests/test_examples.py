@@ -29,13 +29,15 @@ import shutil
 import subprocess
 import sys
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB_HELLO = _REPO_ROOT / "examples" / "lib-hello"
 _BIN_HELLO = _REPO_ROOT / "examples" / "bin-hello"
-_DOCKER_IMAGE = "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"
-_NANVIX_VERSION = "0.13.19"
+_DOCKER_IMAGE = "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
+_NANVIX_VERSION = "0.20.0"
 _TIMEOUT = 300
 
 
@@ -78,8 +80,26 @@ def _can_run_docker_lifecycle() -> bool:
     return _has_docker()
 
 
-_CAN_LIFECYCLE = _can_run_docker_lifecycle()
-_SKIP_NO_DOCKER = "Docker lifecycle not available (no daemon or Windows host)"
+def _has_authoritative_sdk_release() -> bool:
+    """Return whether the pinned SDK completion release is published."""
+    request = urllib.request.Request(
+        "https://api.github.com/repos/nanvix/sdk/releases/tags/v0.20.0-sdk.1",
+        headers={"Accept": "application/vnd.github+json"},
+    )
+    token = os.environ.get("GH_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request, timeout=10):
+            return True
+    except (urllib.error.URLError, TimeoutError):
+        return False
+
+
+_CAN_LIFECYCLE = _can_run_docker_lifecycle() and _has_authoritative_sdk_release()
+_SKIP_NO_DOCKER = (
+    "SDK lifecycle unavailable (Docker or authoritative SDK Release missing)"
+)
 
 
 # ---------------------------------------------------------------------------

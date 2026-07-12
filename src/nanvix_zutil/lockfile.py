@@ -27,6 +27,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
+from nanvix_zutil.sdk import SdkImage, SdkProvenance
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -53,6 +54,7 @@ class ResolvedAsset:
 
     name: str
     url: str
+    asset_id: int | None = None
 
 
 @dataclass
@@ -96,10 +98,15 @@ class LockfileMetadata:
             (e.g. ``"sha256:a1b2c3d4..."``).
         nanvix_zutil_version: Version of ``nanvix-zutil`` that
             generated this lockfile.
+        sdk: Verified SDK provenance, or ``None`` for a legacy lock.
+        shallow: Whether transitive dependency discovery was intentionally
+            omitted when this lock was generated.
     """
 
     manifest_hash: str
     nanvix_zutil_version: str
+    sdk: SdkProvenance | None = None
+    shallow: bool = False
 
 
 @dataclass
@@ -140,8 +147,8 @@ def get_zutil_version() -> str:
 # ---------------------------------------------------------------------------
 
 
-def write_lockfile(lockfile: Lockfile, path: Path) -> None:
-    """Serialize a :class:`Lockfile` to TOML and write it to *path*.
+def serialize_lockfile(lockfile: Lockfile) -> bytes:
+    """Serialize a :class:`Lockfile` to canonical UTF-8 TOML bytes.
 
     The output starts with the standard lockfile header comment and
     includes a blank line before each ``[[package]]`` block for
@@ -149,18 +156,47 @@ def write_lockfile(lockfile: Lockfile, path: Path) -> None:
 
     Args:
         lockfile: The lockfile to serialize.
-        path: Destination file path.
+    Returns:
+        Canonical lockfile bytes with LF line endings.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-
     lines: list[str] = [_LOCKFILE_HEADER, ""]
 
     # [metadata]
-    meta_dict: dict[str, str] = {
+    meta_dict: dict[str, object] = {
         "manifest-hash": lockfile.metadata.manifest_hash,
         "nanvix-zutil-version": lockfile.metadata.nanvix_zutil_version,
     }
+    if lockfile.metadata.shallow:
+        meta_dict["shallow"] = True
     lines.append(tomli_w.dumps({"metadata": meta_dict}).rstrip())
+    if lockfile.metadata.sdk is not None:
+        sdk = lockfile.metadata.sdk
+        sdk_dict: dict[str, object] = {
+            "schema-version": sdk.schema_version,
+            "sdk-version": sdk.sdk_version,
+            "provider-id": sdk.provider_id,
+            "provider": sdk.provider,
+            "role": sdk.role,
+            "image-name": sdk.image.name,
+            "image-digest": sdk.image.digest,
+            "image-ref": sdk.image.ref,
+            "nanvix-tag": sdk.nanvix_tag,
+            "nanvix-version": sdk.nanvix_version,
+            "nanvix-commit": sdk.nanvix_commit,
+            "sysroot-sha256": sdk.sysroot_sha256,
+        }
+        lines.append("")
+        lines.append("[metadata.sdk]")
+        lines.append(tomli_w.dumps(sdk_dict).rstrip())
+        for name, values in (
+            ("target", sdk.target),
+            ("toolchain", sdk.toolchain),
+            ("compat", sdk.compat),
+            ("features", sdk.features),
+        ):
+            lines.append("")
+            lines.append(f"[metadata.sdk.{name}]")
+            lines.append(tomli_w.dumps(values).rstrip())
     lines.append("")
 
     # [[package]] blocks
@@ -193,14 +229,28 @@ def write_lockfile(lockfile: Lockfile, path: Path) -> None:
             lines.append(tomli_w.dumps({key: value}).rstrip())
 
         # Serialize assets as [[package.assets]] sub-tables
-        for asset_dict in asset_dicts:
+        for index, asset_dict in enumerate(asset_dicts):
             lines.append("")
             lines.append("[[package.assets]]")
             lines.append(tomli_w.dumps({"name": asset_dict["name"]}).rstrip())
             lines.append(tomli_w.dumps({"url": asset_dict["url"]}).rstrip())
+            asset_id = pkg.assets[index].asset_id
+            if asset_id is not None:
+                lines.append(tomli_w.dumps({"id": asset_id}).rstrip())
 
     lines.append("")
-    path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    return "\n".join(lines).encode("utf-8")
+
+
+def write_lockfile(lockfile: Lockfile, path: Path) -> None:
+    """Serialize a :class:`Lockfile` and write it to *path*.
+
+    Args:
+        lockfile: The lockfile to serialize.
+        path: Destination file path.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(serialize_lockfile(lockfile))
 
 
 # ---------------------------------------------------------------------------
@@ -260,9 +310,33 @@ def read_lockfile(path: Path) -> Lockfile:
             code=EXIT_INVALID_ARGS,
         )
 
+    shallow_value = meta.get("shallow", False)
+    # Transitional writer 0.15.0 accidentally emitted shallow as a string;
+    # accept it when reading while all new writes use a TOML boolean.
+    if shallow_value == "true":
+        shallow_value = True
+    if not isinstance(shallow_value, bool):
+        log.fatal(
+            f"Lockfile {path}: invalid metadata 'shallow'",
+            code=EXIT_INVALID_ARGS,
+        )
+    raw_sdk = meta.get("sdk")
+    sdk = (
+        _parse_sdk_provenance(cast("dict[str, object]", raw_sdk), path)
+        if isinstance(raw_sdk, dict)
+        else None
+    )
+    if raw_sdk is not None and sdk is None:
+        log.fatal(
+            f"Lockfile {path}: metadata.sdk must be a table",
+            code=EXIT_INVALID_ARGS,
+        )
+
     metadata = LockfileMetadata(
         manifest_hash=manifest_hash,
         nanvix_zutil_version=zutil_version,
+        sdk=sdk,
+        shallow=shallow_value,
     )
 
     # Parse packages
@@ -284,6 +358,71 @@ def read_lockfile(path: Path) -> Lockfile:
         packages.append(_parse_package(pkg_data, path))
 
     return Lockfile(metadata=metadata, packages=packages)
+
+
+def _parse_sdk_provenance(
+    data: dict[str, object],
+    path: Path,
+) -> SdkProvenance:
+    """Parse verified SDK provenance from lockfile metadata."""
+
+    def text(key: str) -> str:
+        value = data.get(key)
+        if not isinstance(value, str) or not value:
+            log.fatal(
+                f"Lockfile {path}: metadata.sdk missing or invalid {key!r}",
+                code=EXIT_INVALID_ARGS,
+            )
+        return value
+
+    def object_table(key: str, *, required: bool = False) -> dict[str, object]:
+        value = data.get(key)
+        if value is None and not required:
+            return {}
+        if not isinstance(value, dict):
+            log.fatal(
+                f"Lockfile {path}: metadata.sdk {key!r} must be a table",
+                code=EXIT_INVALID_ARGS,
+            )
+        return dict(cast("dict[str, object]", value))
+
+    raw_compat = object_table("compat", required=True)
+    schema_version = data.get("schema-version", 1)
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != 1
+    ):
+        log.fatal(
+            f"Lockfile {path}: unsupported metadata.sdk schema-version",
+            code=EXIT_INVALID_ARGS,
+        )
+    image = SdkImage(
+        name=text("image-name"),
+        digest=text("image-digest"),
+        ref=text("image-ref"),
+    )
+    if image.ref != f"{image.name}@{image.digest}":
+        log.fatal(
+            f"Lockfile {path}: metadata.sdk image coordinate is inconsistent",
+            code=EXIT_INVALID_ARGS,
+        )
+    return SdkProvenance(
+        sdk_version=text("sdk-version"),
+        provider_id=text("provider-id"),
+        provider=text("provider"),
+        role=text("role"),
+        image=image,
+        nanvix_tag=text("nanvix-tag"),
+        nanvix_version=text("nanvix-version"),
+        nanvix_commit=text("nanvix-commit"),
+        sysroot_sha256=text("sysroot-sha256"),
+        compat=raw_compat,
+        schema_version=1,
+        target=object_table("target"),
+        toolchain=object_table("toolchain"),
+        features=object_table("features"),
+    )
 
 
 def _parse_package(data: dict[str, object], path: Path) -> ResolvedPackage:
@@ -402,12 +541,18 @@ def _parse_package(data: dict[str, object], path: Path) -> ResolvedPackage:
         asset_data = cast("dict[str, object]", raw_asset_item)
         a_name = asset_data.get("name")
         a_url = asset_data.get("url")
+        a_id = asset_data.get("id")
         if not isinstance(a_name, str) or not isinstance(a_url, str):
             log.fatal(
                 f"Lockfile {path}: package '{name}' asset missing 'name' or 'url'",
                 code=EXIT_INVALID_ARGS,
             )
-        assets.append(ResolvedAsset(name=a_name, url=a_url))
+        if a_id is not None and not isinstance(a_id, int):
+            log.fatal(
+                f"Lockfile {path}: package '{name}' asset id must be an integer",
+                code=EXIT_INVALID_ARGS,
+            )
+        assets.append(ResolvedAsset(name=a_name, url=a_url, asset_id=a_id))
 
     return ResolvedPackage(
         name=name,
@@ -516,6 +661,11 @@ def compute_manifest_hash(path: Path) -> str:
             code=EXIT_MISSING_DEP,
             hint="Ensure nanvix.toml exists in .nanvix/.",
         )
-    raw_bytes = path.read_bytes().replace(b"\r\n", b"\n")
+    return compute_manifest_hash_bytes(path.read_bytes())
+
+
+def compute_manifest_hash_bytes(raw_bytes: bytes) -> str:
+    """Compute the normalized manifest hash from in-memory bytes."""
+    raw_bytes = raw_bytes.replace(b"\r\n", b"\n")
     digest = hashlib.sha256(raw_bytes).hexdigest()
     return f"sha256:{digest}"

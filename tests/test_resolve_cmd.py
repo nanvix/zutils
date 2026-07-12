@@ -13,7 +13,8 @@ from nanvix_zutil import paths
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.commands.resolve import main
 from nanvix_zutil.lockfile import Lockfile, LockfileMetadata, ResolvedPackage
-from nanvix_zutil.manifest import Manifest
+from nanvix_zutil.manifest import Manifest, SdkPin, Toolchain, ToolchainKind
+from nanvix_zutil.sdk import SdkImage, SdkProvenance
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,6 +67,49 @@ def _make_lockfile_no_sysroot() -> Lockfile:
     )
 
 
+def _make_sdk_manifest() -> Manifest:
+    """Return a fake canonical SDK manifest."""
+    digest = f"sha256:{'a' * 64}"
+    return Manifest(
+        name=_NAME,
+        version=_VERSION,
+        sysroot_ref=Ref(kind=RefKind.TAG, value="0.20.0"),
+        toolchain=Toolchain(
+            ToolchainKind.SDK,
+            SdkPin(
+                version="v0.20.0-sdk.1",
+                provider_id="c-clang",
+                image="ghcr.io/nanvix/nanvix-sdk-c-clang",
+                digest=digest,
+            ),
+        ),
+    )
+
+
+def _make_sdk_lockfile() -> Lockfile:
+    """Return a lockfile carrying verified SDK provenance."""
+    image = SdkImage(
+        name="ghcr.io/nanvix/nanvix-sdk-c-clang",
+        digest=f"sha256:{'a' * 64}",
+        ref=("ghcr.io/nanvix/nanvix-sdk-c-clang@" f"sha256:{'a' * 64}"),
+    )
+    provenance = SdkProvenance(
+        sdk_version="v0.20.0-sdk.1",
+        provider_id="c-clang",
+        provider="clang",
+        role="c",
+        image=image,
+        nanvix_tag="v0.20.0",
+        nanvix_version="0.20.0",
+        nanvix_commit="b" * 40,
+        sysroot_sha256="c" * 64,
+        compat={"c_abi": "i686-nanvix-sysv-1"},
+    )
+    lockfile = _make_lockfile()
+    lockfile.metadata.sdk = provenance
+    return lockfile
+
+
 def _write_manifest() -> None:
     """Write a minimal manifest into the autouse-fixture .nanvix/ dir."""
     (paths.manifest_path()).write_text('[package]\nname="zlib"\nversion="1.3.1"\n')
@@ -107,6 +151,56 @@ class TestDefaultOutput(unittest.TestCase):
         self.assertIn(f"nanvix_version={_TAG.lstrip('v')}", output)
         self.assertIn(f"package_name={_NAME}", output)
         self.assertIn(f"package_version={_VERSION}", output)
+        self.assertEqual(
+            output.splitlines(),
+            [
+                f"nanvix_tag={_TAG}",
+                f"nanvix_sha={_SHA[:7]}",
+                f"nanvix_version={_TAG.lstrip('v')}",
+                f"package_name={_NAME}",
+                f"package_version={_VERSION}",
+            ],
+        )
+
+    @patch("nanvix_zutil.commands.resolve.resolve")
+    @patch("nanvix_zutil.commands.resolve.load_manifest")
+    def test_sdk_key_value_output(
+        self,
+        mock_load: MagicMock,
+        mock_resolve: MagicMock,
+    ) -> None:
+        mock_load.return_value = _make_sdk_manifest()
+        mock_resolve.return_value = _make_sdk_lockfile()
+        _write_manifest()
+
+        output = StringIO()
+        with (
+            patch("sys.argv", ["nanvix-zutil resolve"]),
+            patch("sys.stdout", output),
+            self.assertRaises(SystemExit) as context,
+        ):
+            main()
+
+        self.assertEqual(context.exception.code, 0)
+        values = dict(
+            line.split("=", maxsplit=1) for line in output.getvalue().splitlines()
+        )
+        self.assertEqual(values["sdk_version"], "v0.20.0-sdk.1")
+        self.assertEqual(values["sdk_provider_id"], "c-clang")
+        self.assertEqual(values["sdk_provider"], "clang")
+        self.assertEqual(
+            values["sdk_image"],
+            "ghcr.io/nanvix/nanvix-sdk-c-clang",
+        )
+        self.assertEqual(values["sdk_digest"], f"sha256:{'a' * 64}")
+        self.assertEqual(
+            values["sdk_image_ref"],
+            "ghcr.io/nanvix/nanvix-sdk-c-clang@" f"sha256:{'a' * 64}",
+        )
+        self.assertEqual(values["sdk_c_abi"], "i686-nanvix-sysv-1")
+        self.assertEqual(values["sdk_libc_tag"], "v0.20.0")
+        self.assertEqual(values["sdk_libc_commit"], "b" * 40)
+        self.assertEqual(values["sdk_sysroot_sha256"], "c" * 64)
 
 
 class TestShallowFlag(unittest.TestCase):

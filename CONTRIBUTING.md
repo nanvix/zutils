@@ -34,7 +34,7 @@ All code must pass before merging:
 - **Formatting** — `black` with no configuration overrides.
 - **Type checking** — `pyright` in strict mode. Every public function
   needs a complete type signature.
-- **Tests** — `pytest`. Functional tests require the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641`
+- **Tests** — `pytest`. Functional tests require the immutable Nanvix C/Clang SDK
   Docker image.
 - **Docstrings** — all public functions must have docstrings.
 

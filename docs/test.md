@@ -68,7 +68,7 @@ filesystem, Docker). These run quickly without network access or Docker.
 projects. It may require:
 
 - Network access (for GitHub API calls)
-- Docker with the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image
+- Docker with the immutable Nanvix C/Clang SDK image
 
 `test_integration.py` is mock-based and runs without Docker or network
 access.

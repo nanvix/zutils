@@ -61,11 +61,11 @@ from nanvix_zutil.helpers import (
     sync_configs,
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
-from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.manifest import Manifest, ToolchainKind, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
 from nanvix_zutil.paths import sysroot as _sysroot_dir
-from nanvix_zutil.resolver import is_stale, resolve
+from nanvix_zutil.resolver import BlockedResolution, is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
 
@@ -113,6 +113,18 @@ class ZScript:
     SYSROOT_REQUIRED_FILES_WINDOWS: tuple[str, ...] = (
         "lib/libposix.a",
         "lib/user.ld",
+        "bin/nanvixd.exe",
+        "bin/kernel.elf",
+        "bin/mkramfs.exe",
+    )
+
+    SDK_RUNTIME_REQUIRED_FILES: tuple[str, ...] = (
+        "bin/nanvixd.elf",
+        "bin/kernel.elf",
+        "bin/mkramfs.elf",
+    )
+
+    SDK_RUNTIME_REQUIRED_FILES_WINDOWS: tuple[str, ...] = (
         "bin/nanvixd.exe",
         "bin/kernel.elf",
         "bin/mkramfs.exe",
@@ -190,7 +202,11 @@ class ZScript:
         Subclasses can extend by overriding the class attributes or
         this method.
         """
-        if is_windows():
+        if self.manifest.toolchain.kind == ToolchainKind.SDK and is_windows():
+            files = list(self.SDK_RUNTIME_REQUIRED_FILES_WINDOWS)
+        elif self.manifest.toolchain.kind == ToolchainKind.SDK:
+            files = list(self.SDK_RUNTIME_REQUIRED_FILES)
+        elif is_windows():
             files = list(self.SYSROOT_REQUIRED_FILES_WINDOWS)
         else:
             files = list(self.SYSROOT_REQUIRED_FILES)
@@ -395,13 +411,68 @@ class ZScript:
             # This is acceptable because offline resolution uses local
             # paths (deps/<name>/) which are version-agnostic.
 
+        sdk_releases: dict[str, dict[str, object]] = {}
+        sdk_mode = self.manifest.toolchain.kind == ToolchainKind.SDK
+        if sdk_mode and not self._offline:
+            resolution = resolve(
+                self.manifest,
+                gh_token=self.config.get(CFG_GH_TOKEN),
+                strict=True,
+            )
+            if isinstance(resolution, BlockedResolution):
+                log.fatal(
+                    f"SDK dependency resolution blocked: {resolution.package}"
+                    f" requires {resolution.requested_tag}",
+                    code=EXIT_MISSING_DEP,
+                    hint=resolution.reason,
+                )
+            packages = {pkg.name: pkg for pkg in resolution.packages}
+            selected: list[str] = []
+            pending = [dep.name for dep in deps]
+            while pending:
+                name = pending.pop(0)
+                if name in selected:
+                    continue
+                package = packages.get(name)
+                if package is None:
+                    log.fatal(
+                        f"Strict SDK lock has no package '{name}'",
+                        code=EXIT_MISSING_DEP,
+                    )
+                selected.append(name)
+                pending.extend(package.dependencies)
+            direct = {dep.name for dep in deps}
+            for name in selected:
+                package = packages[name]
+                sdk_releases[name] = {
+                    "tag_name": package.resolved_tag,
+                    "target_commitish": package.resolved_commitish,
+                    "id": package.release_id,
+                    "assets": [
+                        {
+                            "id": asset.asset_id,
+                            "name": asset.name,
+                            "browser_download_url": asset.url,
+                        }
+                        for asset in package.assets
+                    ],
+                }
+                if name not in direct:
+                    deps.append(
+                        Dependency(
+                            name=package.name,
+                            repo=package.repo,
+                            ref=package.ref,
+                        )
+                    )
+
         if deps:
             self.buildroot = Buildroot.create()
             for dep in deps:
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
-                if nanvix_local:
+                if nanvix_local and (self._offline or not sdk_mode):
                     should_try_local = self._offline or dep.repo.startswith("nanvix/")
                     if should_try_local and self.buildroot.install_local_nanvix(
                         dep, Path(nanvix_local)
@@ -423,7 +494,14 @@ class ZScript:
                     # cross-mode asset fallback in install_dep().
                     release: dict[str, object] | None = None
                     base_version = extract_nanvix_version_base(str(dep.ref.value))
-                    if base_version is not None:
+                    if sdk_mode:
+                        release = sdk_releases.get(dep.name)
+                        if release is None:
+                            log.fatal(
+                                f"Strict SDK release missing for '{dep.name}'",
+                                code=EXIT_MISSING_DEP,
+                            )
+                    elif base_version is not None:
                         release, fb_ver = resolve_release_with_fallback(
                             repo=dep.repo,
                             version_specifier=str(dep.ref.value),
@@ -509,7 +587,15 @@ class ZScript:
             self.manifest,
             gh_token=self.config.get(CFG_GH_TOKEN),
             shallow=shallow,
+            strict=self.manifest.toolchain.kind == ToolchainKind.SDK,
         )
+        if isinstance(lockfile, BlockedResolution):
+            log.fatal(
+                f"SDK dependency resolution blocked: {lockfile.package}"
+                f" requires exact tag {lockfile.requested_tag}",
+                code=EXIT_MISSING_DEP,
+                hint=lockfile.reason,
+            )
         lock_path = nanvix_root() / "nanvix.lock"
         write_lockfile(lockfile, lock_path)
         log.success(f"Wrote {lock_path}")
@@ -662,26 +748,42 @@ class ZScript:
         # but we do not require Docker to be installed or the image to
         # exist locally.
         if args.subcommand in ZScript.DOCKER_COMMANDS:
-            image: str | None = getattr(args, "with_docker", None)
+            requested_image: str | None = getattr(args, "with_docker", None)
             persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
+            manifest_image = instance.manifest.toolchain.effective_build_ref
+            allow_override = bool(getattr(args, "allow_local_docker_override", False))
+
+            if args.subcommand == "setup":
+                if (
+                    requested_image is not None
+                    and manifest_image is not None
+                    and requested_image != manifest_image
+                    and not allow_override
+                ):
+                    log.fatal(
+                        f"--with-docker {requested_image!r} conflicts with the"
+                        f" manifest build image {manifest_image!r}",
+                        code=EXIT_INVALID_ARGS,
+                        hint="Omit --with-docker, or use"
+                        " --allow-local-docker-override for an intentional"
+                        " local-development override.",
+                    )
+                image = requested_image or manifest_image or persisted_image
+            else:
+                image = persisted_image
 
             if image is None:
-                if not persisted_image:
-                    log.fatal(
-                        "No Docker image configured — run 'setup --with-docker IMAGE' first.",
-                        code=EXIT_INVALID_ARGS,
-                    )
-                image = persisted_image
+                log.fatal(
+                    "No Docker image configured. SDK manifests must define an"
+                    " immutable build image; legacy manifests must run"
+                    " 'setup --with-docker IMAGE'.",
+                    code=EXIT_INVALID_ARGS,
+                )
 
             # TODO: Move into setup()
             # https://github.com/nanvix/zutils/issues/187
             # https://github.com/nanvix/zutils/issues/190
             if args.subcommand == "setup":
-                if persisted_image is not None and persisted_image != image:
-                    log.warning(
-                        f"Overriding previously configured Docker image '{persisted_image}'"
-                        f" with '{image}'."
-                    )
                 instance.config.set(CFG_DOCKER_IMAGE, image)
                 instance.config.save()
 

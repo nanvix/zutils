@@ -23,8 +23,8 @@ bin-hello/
 
 One of:
 
-- **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
-- **Docker** with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image (pass via `./z setup --with-docker IMAGE`)
+- **Native SDK** — Clang targeting `i686-unknown-nanvix` (default prefix: `/opt/nanvix/`)
+- **Docker** with the immutable `ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f` image
 
 ## Running
 

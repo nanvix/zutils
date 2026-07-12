@@ -12,15 +12,27 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from nanvix_zutil import helpers, paths
-from nanvix_zutil.buildroot import RefKind
+from nanvix_zutil.buildroot import Ref, RefKind
+from nanvix_zutil.config import CFG_DOCKER_IMAGE, Config
 from nanvix_zutil.docker import (
     BUILDROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
+from nanvix_zutil.exitcodes import (
+    EXIT_BUILD_FAILURE,
+    EXIT_INVALID_ARGS,
+    EXIT_MISSING_DEP,
+)
 from nanvix_zutil.helpers import InitRdArgs
+from nanvix_zutil.lockfile import (
+    Lockfile,
+    LockfileMetadata,
+    ResolvedAsset,
+    ResolvedPackage,
+)
+from nanvix_zutil.resolver import BlockedResolution
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_LATEST_WITH_DEPS,
@@ -258,6 +270,8 @@ class TestZScriptSyncConfigs(unittest.TestCase):
         nanvix_dir = paths.nanvix_root()
         content = (nanvix_dir / ".gitignore").read_text()
         self.assertNotIn("nanvix.lock", content)
+        self.assertIn(".nanvix-zutil-update.lock", content)
+        self.assertIn(".nanvix-zutil-update-journal.json", content)
 
     def test_setup_skips_identical_configs(self) -> None:
         """setup() is a no-op for configs when content already matches."""
@@ -391,6 +405,172 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
             self.assertIn(hook, available)
 
 
+class TestSdkDockerSelection(unittest.TestCase):
+    """SDK manifests provide and protect the effective build image."""
+
+    def setUp(self) -> None:
+        digest = f"sha256:{'a' * 64}"
+        paths.manifest_path().write_text(
+            "[package]\n"
+            'name = "test"\n'
+            'version = "1.0.0"\n'
+            'nanvix-version = "0.20.0"\n'
+            "\n[toolchain]\n"
+            'kind = "nanvix-sdk"\n'
+            'provider = "c-clang"\n'
+            'sdk-version = "v0.20.0-sdk.1"\n'
+            'sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"\n'
+            f'sdk-digest = "{digest}"\n'
+        )
+        self.image = f"ghcr.io/nanvix/nanvix-sdk-c-clang@{digest}"
+
+    def test_setup_defaults_to_manifest_image(self) -> None:
+        with (
+            patch("sys.argv", ["z.py", "setup"]),
+            patch.object(ZScript, "setup", return_value=False),
+            patch("nanvix_zutil.script.check_docker") as check,
+        ):
+            ZScript.main()
+        if sys.platform == "win32":
+            check.assert_not_called()
+        else:
+            check.assert_called_once_with(self.image)
+        self.assertEqual(Config().get(CFG_DOCKER_IMAGE), self.image)
+
+    def test_setup_prefers_dedicated_build_image(self) -> None:
+        build_digest = f"sha256:{'b' * 64}"
+        with paths.manifest_path().open("a", encoding="utf-8") as manifest:
+            manifest.write(
+                'build-image = "ghcr.io/nanvix/port-builder"\n'
+                f'build-digest = "{build_digest}"\n'
+            )
+        expected = f"ghcr.io/nanvix/port-builder@{build_digest}"
+        with (
+            patch("sys.argv", ["z.py", "setup"]),
+            patch.object(ZScript, "setup", return_value=False),
+            patch("nanvix_zutil.script.check_docker") as check,
+        ):
+            ZScript.main()
+        if sys.platform == "win32":
+            check.assert_not_called()
+        else:
+            check.assert_called_once_with(expected)
+        self.assertEqual(Config().get(CFG_DOCKER_IMAGE), expected)
+
+    def test_conflicting_cli_image_fails_without_override(self) -> None:
+        with (
+            patch(
+                "sys.argv",
+                ["z.py", "setup", "--with-docker", "local/image:dev"],
+            ),
+            patch("nanvix_zutil.script.check_docker"),
+            self.assertRaises(SystemExit) as context,
+        ):
+            ZScript.main()
+        self.assertEqual(context.exception.code, EXIT_INVALID_ARGS)
+
+    def test_explicit_local_override_is_persisted(self) -> None:
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "z.py",
+                    "setup",
+                    "--with-docker",
+                    "local/image:dev",
+                    "--allow-local-docker-override",
+                ],
+            ),
+            patch.object(ZScript, "setup", return_value=False),
+            patch("nanvix_zutil.script.check_docker"),
+        ):
+            ZScript.main()
+        self.assertEqual(Config().get(CFG_DOCKER_IMAGE), "local/image:dev")
+
+    def test_sdk_setup_installs_only_strict_resolved_release(self) -> None:
+        with paths.manifest_path().open("a", encoding="utf-8") as manifest:
+            manifest.write('\n[dependencies]\nzlib = "1.3.1"\n')
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = paths.nanvix_root() / "sysroot"
+        fake_sysroot.tag = "v0.20.0"
+        package = ResolvedPackage(
+            name="zlib",
+            repo="nanvix/zlib",
+            kind="dependency",
+            ref=Ref(
+                RefKind.VERSION,
+                "1.3.1-nanvix-0.20.0-sdk.1",
+            ),
+            resolved_tag="1.3.1-nanvix-0.20.0-sdk.1",
+            resolved_commitish="d" * 40,
+            release_id=42,
+            assets=[
+                ResolvedAsset(
+                    "zlib-microvm-standalone-256mb.tar.gz",
+                    "https://example.invalid/zlib.tar.gz",
+                )
+            ],
+        )
+        lock = Lockfile(
+            LockfileMetadata("sha256:x", "0.15.0"),
+            packages=[package],
+        )
+        fake_buildroot = MagicMock()
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.download",
+                return_value=fake_sysroot,
+            ),
+            patch(
+                "nanvix_zutil.script.Buildroot.create",
+                return_value=fake_buildroot,
+            ),
+            patch("nanvix_zutil.script.resolve", return_value=lock) as resolver,
+            patch("nanvix_zutil.script.resolve_release_with_fallback") as fallback,
+        ):
+            script = ZScript()
+            used_fallback = script.setup()
+        self.assertFalse(used_fallback)
+        resolver.assert_called_once()
+        self.assertTrue(resolver.call_args.kwargs["strict"])
+        fallback.assert_not_called()
+        fake_buildroot.install_dep.assert_called_once()
+        release = fake_buildroot.install_dep.call_args.kwargs["_release"]
+        self.assertEqual(
+            release["tag_name"],
+            "1.3.1-nanvix-0.20.0-sdk.1",
+        )
+
+    def test_sdk_setup_blocked_dependency_writes_no_buildroot(self) -> None:
+        with paths.manifest_path().open("a", encoding="utf-8") as manifest:
+            manifest.write('\n[dependencies]\nzlib = "1.3.1"\n')
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = paths.nanvix_root() / "sysroot"
+        fake_sysroot.tag = "v0.20.0"
+        blocked = BlockedResolution(
+            status="blocked",
+            package="zlib",
+            repo="nanvix/zlib",
+            requested_tag="1.3.1-nanvix-0.20.0-sdk.1",
+            sdk_version="v0.20.0-sdk.1",
+            reason="exact-sdk-release-missing",
+        )
+        with (
+            patch(
+                "nanvix_zutil.script.Sysroot.download",
+                return_value=fake_sysroot,
+            ),
+            patch("nanvix_zutil.script.resolve", return_value=blocked),
+            patch("nanvix_zutil.script.Buildroot.create") as create,
+            patch("nanvix_zutil.script.resolve_release_with_fallback") as fallback,
+            self.assertRaises(SystemExit) as context,
+        ):
+            ZScript().setup()
+        self.assertEqual(context.exception.code, EXIT_MISSING_DEP)
+        create.assert_not_called()
+        fallback.assert_not_called()
+
+
 class TestHelpersRun(unittest.TestCase):
     """helpers.run() executes subprocesses correctly."""
 
@@ -418,7 +598,7 @@ class TestHelpersRun(unittest.TestCase):
 
     def _make_docker(self, repo_root: Path) -> DockerConfig:
         return DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[
                 Mount(
                     host_path=repo_root,
@@ -454,7 +634,7 @@ class TestHelpersRun(unittest.TestCase):
         (empty) output_files — the dispatch no longer requires
         these fields to be populated."""
         docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[
                 Mount(
                     host_path=Path.cwd(),
@@ -527,7 +707,7 @@ class TestHelpersRun(unittest.TestCase):
     def test_run_env_forwarded_into_container(self, *_mocks: object) -> None:
         """env vars passed to run() are forwarded as -e flags in Docker mode."""
         docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[],
             uid=1000,
             gid=1000,
@@ -550,7 +730,7 @@ class TestHelpersRun(unittest.TestCase):
     def test_run_env_forwarded_into_container_as_flags(self, *_mocks: object) -> None:
         """env vars appear as -e KEY=VAL in the docker run command."""
         docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[],
             uid=1000,
             gid=1000,
@@ -582,7 +762,7 @@ class TestHelpersRun(unittest.TestCase):
         (PATH/HOME/USER/...) into the container, including mixed-case
         variants.  Non-blocklisted keys still pass through."""
         docker = DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[],
             uid=1000,
             gid=1000,
@@ -804,7 +984,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         # Pre-persist Docker image so build can find it.
         nanvix_dir = paths.nanvix_root()
         (nanvix_dir / "env.json").write_text(
-            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
+            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"}'
         )
 
         with (
@@ -833,7 +1013,7 @@ class TestZScriptAutoDocker(unittest.TestCase):
         # Pre-persist Docker image so build can find it.
         nanvix_dir = paths.nanvix_root()
         (nanvix_dir / "env.json").write_text(
-            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/toolchain-gcc:sha-34a3641"}'
+            '{"NANVIX_DOCKER_IMAGE": "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"}'
         )
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:

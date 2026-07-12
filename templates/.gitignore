@@ -3,5 +3,7 @@ cache
 sysroot
 buildroot
 env.json
-nanvix.lock
 __pycache__
+.nanvix-zutil-update.lock
+.nanvix-zutil-update-journal.json
+.*.nanvix-zutil-*

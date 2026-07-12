@@ -7,7 +7,7 @@ Demonstrates the full lifecycle with a real Nanvix build.  Run with
 ``--help`` to see available subcommands and Docker flags::
 
     nanvix-zutil setup                     # download sysroot (Docker auto-enabled)
-    nanvix-zutil setup --with-docker IMG   # download sysroot (custom Docker image)
+    nanvix-zutil setup                     # use immutable manifest SDK image
     nanvix-zutil build                     # cross-compile inside Docker container (auto)
     nanvix-zutil test                      # run tests (verifies libhello.a)
     nanvix-zutil clean                     # remove build artifacts (host)
@@ -62,8 +62,8 @@ class LibHello(ZScript):
     def build(self) -> None:
         """Cross-compile hello.c into libhello.a for Nanvix."""
         tc = TOOLCHAIN_CONTAINER_PATH
-        cc = str(tc / "bin" / "i686-nanvix-gcc")
-        ar = str(tc / "bin" / "i686-nanvix-ar")
+        cc = f"{tc}/bin/clang --target=i686-unknown-nanvix --sysroot={tc}"
+        ar = str(tc / "bin" / "llvm-ar")
         cflags = "-O2 -Wall -msse2 -mfpmath=sse"
 
         # Single shell invocation so intermediate .o survives across

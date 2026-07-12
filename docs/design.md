@@ -22,6 +22,7 @@ nanvix/<project>/
 └── .nanvix/
     ├── z.py       # ZScript subclass implementing hooks
     ├── nanvix.toml # Declarative dependencies
+    ├── nanvix.lock # Committed exact dependency/SDK provenance
     ├── env.json   # Persistent config (generated)
     ├── venv/      # Auto-created virtualenv
     ├── dist/      # Bundled release artifacts
@@ -29,8 +30,9 @@ nanvix/<project>/
     └── buildroot/ # Downloaded build-time deps
 ```
 
-`nanvix_zutil` creates no files outside `.nanvix/` in consumer repos.
-All artifacts live under `.nanvix/`.
+Build orchestration and update transaction state create no transient files
+outside `.nanvix/` in consumer repositories. The maintenance commands mutate
+only their documented, validated tracked-file allowlists.
 
 ### bootstrappers
 
@@ -51,6 +53,7 @@ The entrypoint for the zutils build system. Contains the following key files:
 | File         | Staged? | What it does                                                                                                       |
 | ------------ | ------- | ------------------------------------------------------------------------------------------------------------------ |
 | nanvix.toml  | ✅      | Hosts the dependencies and valid toolchains for this build. The manifest, similar to Cargo.toml or pyproject.toml. |
+| nanvix.lock  | ✅      | Canonical exact dependency graph and SDK provenance; generated atomically and committed.                         |
 | z.py         | ✅      | Entrypoint for the zutils library. Hosts an implementation of the `ZScript` class in Python.                       |
 | NANVIX.md    | ✅      | (Optional) Information about the port.                                                                             |
 | .gitignore   | ✅      | Ignores transient items - all items listed as "not staged."                                                        |
@@ -100,7 +103,7 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 | Stage     | Example call                                              | Standalone? | Overridable? | What it does                                                            |
 | --------- | --------------------------------------------------------- | ----------- | ------------ | ----------------------------------------------------------------------- |
 | Bootstrap | `./z`                                                     | ⭐          | ❌           | Bootstraps the nanvix_zutil virtual environment.                        |
-| Setup     | `./z setup --with-docker nanvix/toolchain:latest-minimal` | ❌          | ❌           | See below.                                                              |
+| Setup     | `./z setup`                                               | ❌          | ❌           | Uses the manifest's immutable SDK build image.                           |
 | Build     | `./z build`                                               | ❌          | ✅           | See below.                                                              |
 | Test      | `./z test`                                                | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts. |
 | Release   | `./z release`                                             | ✅          | ❌           | Packages build artefacts into tarballs and zip files for distribution. Honours a `release_targets()` override on the consumer's `ZScript` subclass when present. |
@@ -110,6 +113,8 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 | Format    | `./z format [--check]`                                    | ✅          | ❌           | Formats python files in `.nanvix` with black. Pass `--check` to verify without modifying (non-zero on diff). |
 | Lint      | `./z lint`                                                | ✅          | ❌           | Lints python files in `.nanvix` with pyright.                           |
 | Info      | `./z info`                                                | ✅          | ❌           | Standalone command that queries GitHub for the relevant release files.  |
+| Update Nanvix | `nanvix-zutil update-nanvix`                           | ✅          | ❌           | Verifies SDK metadata and atomically updates manifest plus lock.         |
+| Update zutils | `nanvix-zutil update-zutils --to vX.Y.Z`                | ✅          | ❌           | Atomically replaces the pin, wrappers, and Nanvix gitignore.             |
 
 #### Bootstrap
 
@@ -131,6 +136,15 @@ Sets up the build environment. By default, this will download the correct nanvix
 1. Download and verify nanvix artefacts (or source locally if `--with-nanvix`)
 2. Resolve and download dependencies against latest release matching the nanvix version.
 3. Persist configuration for `.nanvix/env.json`.
+
+SDK manifests use strict resolution instead: zutils verifies the authoritative
+`sdk-release.json` GitHub Release asset against the immutable Docker digest,
+embedded `/opt/nanvix/nanvix-sdk.json`, and OCI labels. Dependency coordinates
+are exact `<version>-nanvix-<runtime>-sdk.<revision>` tags. Missing exact
+releases return a machine-readable blocked result; fallback is disabled.
+Setup derives Docker from `build-image@build-digest`, or from the SDK image when
+no dedicated build image is present. A conflicting `--with-docker` is rejected
+unless `--allow-local-docker-override` explicitly opts into local development.
 
 #### Build
 
@@ -196,8 +210,11 @@ The Docker build implementation expects certain paths. They are mounted as speci
 
 ## CI and Distribution
 
-Nanvix artefacts, meaning the OS itself alongside all ported libraries and binaries, are hosted on GitHub. Docker containers may be created for toolchains as well, hosted on ghcr.io. Example toolchains are `nanvix/toolchain:latest-minimal`, `nanvix/toolchain-gcc`, `nanvix/toolchain-python`.
+Nanvix artefacts, meaning the OS itself alongside all ported libraries and binaries, are hosted on GitHub. Versioned SDK images are hosted on ghcr.io and consumers pin immutable provider digests such as `ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:…`.
 
-In addition, zutils releases trigger automated downstream pull requests to fully replace the bootstrap scripts. This usually just bumps the zutils version. The workflow for this is `nanvix-update-zutils.yml`.
+In addition, zutils releases trigger `update-zutils`, which verifies the exact
+template archive and replaces `.zutils-version`, `z`, `z.sh`, `z.ps1`, and
+`.nanvix/.gitignore` together. The automation workflow is
+`nanvix-update-zutils.yml`.
 
 Downstream consumers of zutils are enumerated at [workflows/consumer-repos.json](https://github.com/nanvix/workflows/blob/main/consumer-repos.json).

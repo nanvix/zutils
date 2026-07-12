@@ -7,6 +7,7 @@
 
 import collections.abc
 import json
+import os
 import tempfile
 import unittest
 import urllib.error
@@ -140,6 +141,67 @@ class TestDownloadReleaseAssetSuccess(unittest.TestCase):
         self.assertIsInstance(first_req, urllib.request.Request)
         assert isinstance(first_req, urllib.request.Request)
         self.assertIn("Authorization", first_req.headers)
+
+    def test_exact_release_identity_prevents_stale_flat_cache_reuse(self) -> None:
+        dest = Path(self._tmpdir.name)
+        asset_name = "zlib-microvm-standalone-256mb.tar.gz"
+        release_one: dict[str, object] = {
+            "tag_name": "1.3.1-nanvix-0.20.0-sdk.1",
+            "id": 101,
+            "assets": [
+                {
+                    "id": 1001,
+                    "name": asset_name,
+                    "browser_download_url": "https://example.com/one",
+                }
+            ],
+        }
+        release_two: dict[str, object] = {
+            "tag_name": "1.3.1-nanvix-0.20.0-sdk.2",
+            "id": 102,
+            "assets": [
+                {
+                    "id": 1002,
+                    "name": asset_name,
+                    "browser_download_url": "https://example.com/two",
+                }
+            ],
+        }
+        first = _make_urlopen_response(b"first-release", chunked=True)
+        second = _make_urlopen_response(b"second-release", chunked=True)
+        with patch("urllib.request.urlopen", side_effect=[first, second]) as opened:
+            github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                version_specifier="1.3.1-nanvix-0.20.0-sdk.1",
+                asset_name=asset_name,
+                dest=dest,
+                _release=release_one,
+            )
+            result = github_mod.download_release_asset(
+                repo="nanvix/zlib",
+                version_specifier="1.3.1-nanvix-0.20.0-sdk.2",
+                asset_name=asset_name,
+                dest=dest,
+                _release=release_two,
+            )
+        self.assertEqual(opened.call_count, 2)
+        self.assertEqual(result.read_bytes(), b"second-release")
+        metadata = json.loads((dest / f".{asset_name}.release.json").read_text())
+        self.assertEqual(metadata["release_id"], 102)
+        self.assertEqual(metadata["asset_id"], 1002)
+
+    def test_metadata_fsync_uses_read_write_descriptor(self) -> None:
+        path = Path(self._tmpdir.name) / "metadata"
+        path.write_text("{}")
+        with (
+            patch("nanvix_zutil.github.os.open", return_value=77) as opened,
+            patch("nanvix_zutil.github.os.fsync") as fsync,
+            patch("nanvix_zutil.github.os.close") as close,
+        ):
+            github_mod._fsync_file(path)
+        opened.assert_called_once_with(path, os.O_RDWR)
+        fsync.assert_called_once_with(77)
+        close.assert_called_once_with(77)
 
 
 class TestDownloadReleaseAssetNotFound(unittest.TestCase):

@@ -11,7 +11,7 @@ fails immediately.  ``test`` and ``benchmark`` run natively on the host.
 
 Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 
-    ./z setup --with-docker ghcr.io/nanvix/toolchain-gcc:sha-34a3641
+    ./z setup --with-docker ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:<digest>
 """
 
 from __future__ import annotations
@@ -134,7 +134,8 @@ class DockerConfig:
     ``docker run`` invocation.
 
     Attributes:
-        image: Docker image name (e.g. ``"ghcr.io/nanvix/toolchain-gcc:sha-34a3641"``).
+        image: Immutable Docker image reference (for example,
+            ``"ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:<digest>"``).
         mounts: Ordered list of volume mounts.
         uid: User ID passed to ``--user``.  Defaults to the current process UID,
             or ``0`` on platforms where ``os.getuid`` is unavailable (e.g. Windows).
