@@ -31,6 +31,15 @@ from typing import Literal, Sequence
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
+from nanvix_zutil.sdk import consumer_release_tag, sdk_consumer_release_tag
+
+__all__ = [
+    "ArchiveFormat",
+    "DEFAULT_FORMATS",
+    "consumer_release_tag",
+    "package",
+    "sdk_consumer_release_tag",
+]
 
 # ---------------------------------------------------------------------------
 # Archive format enum

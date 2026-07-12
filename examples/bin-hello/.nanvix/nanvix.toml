@@ -1,7 +1,14 @@
 [package]
 name = "bin-hello"
 version = "0.1.0"
-nanvix-version = "0.13.19"
+nanvix-version = "0.20.0"
+
+[toolchain]
+kind = "nanvix-sdk"
+provider = "c-clang"
+sdk-version = "v0.20.0-sdk.1"
+sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"
+sdk-digest = "sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
 
 [dependencies]
 lib-hello = { commitish = "HEAD" }

@@ -10,7 +10,14 @@ build-time / runtime dependencies.
 [package]
 name = "hello-world"
 version = "0.1.0"
-nanvix-version = "0.12.257"
+nanvix-version = "0.20.0"
+
+[toolchain]
+kind = "nanvix-sdk"
+provider = "c-clang"
+sdk-version = "v0.20.0-sdk.1"
+sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"
+sdk-digest = "sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
 ```
 
 ## `[package]`
@@ -24,6 +31,26 @@ nanvix-version = "0.12.257"
 `nanvix-version` is validated at parse time.  Tables and non-semver
 strings are rejected, with the exception of the literal `"latest"`,
 which resolves to the newest available sysroot release.
+
+## `[toolchain]`
+
+The preferred SDK mode pins the release version, provider, and immutable image
+as one typed coordinate:
+
+```toml
+[toolchain]
+kind = "nanvix-sdk"
+provider = "c-clang"
+sdk-version = "v0.20.0-sdk.1"
+sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"
+sdk-digest = "sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
+```
+
+The SDK version's runtime must equal `package.nanvix-version`. Optional
+`build-image` and `build-digest` fields select a different immutable image for
+builds; otherwise the SDK image is the effective build image. The early
+`type/version/image/digest` spelling remains readable for one transition
+release. Omitting `[toolchain]` selects legacy resolution.
 
 ## `[dependencies]` and `[system-dependencies]`
 
@@ -54,9 +81,12 @@ zlib = "1.2.3"
 # → resolves tag "1.2.3-nanvix-0.12.257"
 ```
 
-If that exact tag is not found, the resolver scans the repo for the
-newest release matching `1.2.3-nanvix-*` and uses it instead (e.g.
-`1.2.3-nanvix-0.12.291`).
+Legacy mode retains its existing fallback behavior. SDK mode derives the exact
+tag `1.2.3-nanvix-0.20.0-sdk.1`; it never falls back. A missing release yields
+a machine-readable blocked result.
+
+The generated `.nanvix/nanvix.lock` is canonical provenance and must be
+committed. Update lock/journal files are transient and remain ignored.
 
 `TAG`, `COMMITISH`, `ID`, and `LOCAL` refs are never suffixed — they
 resolve exactly as written.
@@ -72,7 +102,14 @@ The `nanvix/cpython` consumer manifest:
 [package]
 name = "cpython"
 version = "3.12.3"
-nanvix-version = "0.12.257"
+nanvix-version = "0.20.0"
+
+[toolchain]
+kind = "nanvix-sdk"
+provider = "c-clang"
+sdk-version = "v0.20.0-sdk.1"
+sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"
+sdk-digest = "sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
 
 [dependencies]
 zlib = "1.2.3"

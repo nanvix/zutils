@@ -11,9 +11,11 @@ avoid being rate-limited on public repositories.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
@@ -454,6 +456,35 @@ def resolve_release(
     return result
 
 
+def resolve_commit(
+    repo: str,
+    ref: str,
+    gh_token: str | None = None,
+) -> str:
+    """Resolve a GitHub ref to its immutable 40-character commit SHA."""
+    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+    encoded_ref = urllib.parse.quote(ref, safe="")
+    raw = _fetch_json(
+        f"{_GITHUB_API_BASE}/repos/{repo}/commits/{encoded_ref}",
+        headers,
+        f"{repo} commit {ref}",
+    )
+    if not isinstance(raw, dict):
+        log.fatal(
+            f"Unexpected commit response for {repo}@{ref}",
+            code=EXIT_NETWORK_ERROR,
+        )
+    sha = cast("dict[str, object]", raw).get("sha")
+    if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+        log.fatal(
+            f"GitHub returned an invalid commit SHA for {repo}@{ref}",
+            code=EXIT_NETWORK_ERROR,
+        )
+    return sha
+
+
 def resolve_release_with_fallback(
     repo: str,
     version_specifier: str,
@@ -601,8 +632,9 @@ def download_release_asset(
     """
     dest.mkdir(parents=True, exist_ok=True)
 
-    # Fast path: check cache.
-    if match_prefix:
+    # Preserve legacy flat-cache reuse when no exact pre-resolved release was
+    # supplied. Exact callers validate release/asset identity below.
+    if _release is None and match_prefix:
         # Collect all matching cached files and select deterministically to
         # avoid relying on filesystem iteration order.
         matches = [
@@ -620,7 +652,7 @@ def download_release_asset(
             cached = matches[0]
             log.info(f"Asset already present: {cached}")
             return cached
-    else:
+    elif _release is None:
         out_path = dest / asset_name
         if out_path.exists():
             log.info(f"Asset already present: {out_path}")
@@ -651,7 +683,8 @@ def download_release_asset(
     # pick deterministically (prefer .tar.bz2 over .tar.gz over .zip).
     _PREFIX_PREFERENCE = (".tar.bz2", ".tar.gz", ".zip")
 
-    prefix_candidates: list[tuple[str, str]] = []  # (name, url)
+    prefix_candidates: list[tuple[str, str, int | None]] = []
+    asset_id: int | None = None
 
     for item in assets:
         if not isinstance(item, dict):
@@ -663,16 +696,20 @@ def download_release_asset(
         if match_prefix:
             if name.startswith(asset_name):
                 raw_url = asset.get("browser_download_url")
+                raw_id = asset.get("id")
                 if not isinstance(raw_url, str) or not raw_url:
                     log.fatal(
                         f"Malformed asset entry for {repo}@{version_specifier}: missing or invalid browser_download_url",
                         code=EXIT_NETWORK_ERROR,
                         hint="GitHub returned an asset without a usable browser_download_url; this may indicate an API change or a corrupted release.",
                     )
-                prefix_candidates.append((name, raw_url))
+                if raw_id is not None and not isinstance(raw_id, int):
+                    continue
+                prefix_candidates.append((name, raw_url, raw_id))
         else:
             if name == asset_name:
                 raw_url = asset.get("browser_download_url")
+                raw_id = asset.get("id")
                 if not isinstance(raw_url, str) or not raw_url:
                     log.fatal(
                         f"Malformed asset entry for {repo}@{version_specifier}: missing or invalid browser_download_url",
@@ -681,6 +718,7 @@ def download_release_asset(
                     )
                 resolved_name = name
                 asset_url = raw_url
+                asset_id = raw_id if isinstance(raw_id, int) else None
                 break
 
     # When prefix-matching, pick the best candidate by preferred extension.
@@ -693,7 +731,7 @@ def download_release_asset(
             return len(_PREFIX_PREFERENCE)
 
         prefix_candidates.sort(key=lambda c: (_ext_rank(c[0]), c[0]))
-        resolved_name, asset_url = prefix_candidates[0]
+        resolved_name, asset_url, asset_id = prefix_candidates[0]
 
     if asset_url is None:
         if allow_missing:
@@ -705,19 +743,53 @@ def download_release_asset(
         )
 
     out_path = dest / resolved_name
+    metadata_path = dest / f".{resolved_name}.release.json"
+    release_tag = release.get("tag_name")
+    release_id = release.get("id")
+    identity: dict[str, object] = {
+        "repo": repo,
+        "release_tag": release_tag if isinstance(release_tag, str) else "",
+        "release_id": release_id if isinstance(release_id, int) else 0,
+        "asset_id": asset_id if asset_id is not None else 0,
+        "asset_name": resolved_name,
+        "asset_url": asset_url,
+    }
+    if _release is not None and out_path.is_file() and metadata_path.is_file():
+        try:
+            cached_identity: object = json.loads(metadata_path.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached_identity = None
+        if cached_identity == identity:
+            log.info(f"Verified asset already present: {out_path}")
+            return out_path
+
     log.info(f"Downloading {resolved_name} from {repo}@{version_specifier}…")
     for attempt in range(1, _MAX_RETRIES + 1):
+        download_path = dest / f".{resolved_name}.download-{os.getpid()}"
+        metadata_tmp = dest / f".{resolved_name}.metadata-{os.getpid()}"
         try:
             dl_req = urllib.request.Request(asset_url, headers=headers)
             with (
                 urllib.request.urlopen(dl_req, timeout=_HTTP_TIMEOUT) as resp,
-                out_path.open("wb") as out_fh,
+                download_path.open("wb") as out_fh,
             ):
                 while True:
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
                         break
                     out_fh.write(chunk)
+                out_fh.flush()
+                os.fsync(out_fh.fileno())
+            os.replace(download_path, out_path)
+            if _release is not None:
+                metadata_tmp.write_text(
+                    json.dumps(identity, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                with metadata_tmp.open("rb") as metadata_fh:
+                    os.fsync(metadata_fh.fileno())
+                os.replace(metadata_tmp, metadata_path)
             log.success(f"Downloaded {resolved_name}")
             return out_path
         except urllib.error.URLError as exc:
@@ -730,6 +802,9 @@ def download_release_asset(
             wait = _BACKOFF_BASE**attempt
             log.warning(f"Download attempt {attempt} failed; retrying in {wait:.0f}s…")
             time.sleep(wait)
+        finally:
+            download_path.unlink(missing_ok=True)
+            metadata_tmp.unlink(missing_ok=True)
 
     # Unreachable — log.fatal exits. Satisfy type checker.
     return out_path  # pragma: no cover

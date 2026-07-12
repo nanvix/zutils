@@ -20,6 +20,8 @@ from nanvix_zutil.commands import (
     lint,
     release,
     resolve,
+    update_nanvix,
+    update_zutils,
 )
 from nanvix_zutil.config import ENV_VARS
 from nanvix_zutil.exitcodes import (
@@ -39,6 +41,8 @@ _STANDALONE_HELP: dict[str, str] = {
     "lint": lint.HELP,
     "release": release.HELP,
     "resolve": resolve.HELP,
+    "update-nanvix": update_nanvix.HELP,
+    "update-zutils": update_zutils.HELP,
 }
 
 
@@ -201,6 +205,20 @@ def main() -> None:
 
         sys.argv = ["nanvix-zutil release", *remaining]
         release_main()
+        return
+
+    if subcmd == "update-nanvix":
+        from nanvix_zutil.commands.update_nanvix import main as update_nanvix_main
+
+        sys.argv = ["nanvix-zutil update-nanvix", *remaining]
+        update_nanvix_main()
+        return
+
+    if subcmd == "update-zutils":
+        from nanvix_zutil.commands.update_zutils import main as update_zutils_main
+
+        sys.argv = ["nanvix-zutil update-zutils", *remaining]
+        update_zutils_main()
         return
 
     if subcmd == "help":

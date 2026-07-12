@@ -65,13 +65,14 @@ precedence over version-based resolution.
 cd /path/to/consumer   # e.g. usr/lib/zlib
 
 # Bootstrap venv and install feature-branch zutils
-./z setup --with-docker nanvix/toolchain:latest-minimal
+./z setup
 .nanvix/venv/bin/pip install -e /path/to/zutils
 
 # Clean sysroot and re-run with local override
 rm -rf .nanvix/sysroot .nanvix/env.json
 .nanvix/venv/bin/nanvix-zutil setup \
     --with-docker nanvix/toolchain:latest-minimal \
+    --allow-local-docker-override \
     --with-nanvix ~/src/nanvix/nanvix
 
 # Verify
@@ -92,7 +93,8 @@ cd /path/to/consumer
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
   python3 -m nanvix_zutil setup \
     --offline \
-    --with-docker ghcr.io/nanvix/toolchain-gcc:latest \
+    --with-docker ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f \
+    --allow-local-docker-override \
     --with-nanvix ~/nanvix/build \
     --sysroot-path ~/nanvix/build/sysroot
 
@@ -108,6 +110,7 @@ The `z.sh` and `z.ps1` wrappers forward `--with-nanvix` directly to
 
 ```bash
 ./z setup --with-docker nanvix/toolchain:latest-minimal \
+    --allow-local-docker-override \
     --with-nanvix ~/src/nanvix/nanvix
 ./z build
 ```

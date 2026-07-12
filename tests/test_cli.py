@@ -98,12 +98,24 @@ class TestDockerFlags(unittest.TestCase):
         args = parser.parse_args(["setup", "--with-docker", "my/image:tag"])
         self.assertEqual(args.with_docker, "my/image:tag")
 
-    def test_setup_requires_with_docker(self) -> None:
-        """setup without --with-docker is rejected."""
+    def test_setup_allows_manifest_default_image(self) -> None:
+        """setup may derive its image from an SDK manifest."""
         parser = build_parser()
-        with self.assertRaises(SystemExit) as ctx:
-            parser.parse_args(["setup"])
-        self.assertEqual(ctx.exception.code, 2)
+        args = parser.parse_args(["setup"])
+        self.assertIsNone(args.with_docker)
+        self.assertFalse(args.allow_local_docker_override)
+
+    def test_explicit_local_override_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "setup",
+                "--with-docker",
+                "local/image:dev",
+                "--allow-local-docker-override",
+            ]
+        )
+        self.assertTrue(args.allow_local_docker_override)
 
     def test_docker_flags_rejected_on_build(self) -> None:
         """build subcommand does not accept Docker flags (moved to setup)."""

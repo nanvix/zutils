@@ -133,7 +133,7 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
 
     def _make_config(self) -> DockerConfig:
         return DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[
                 Mount(
                     host_path=self._workspace,
@@ -158,7 +158,10 @@ class TestDockerConfigBuildRunCmd(unittest.TestCase):
     def test_contains_image(self, _mock: object) -> None:
         cfg = self._make_config()
         cmd = cfg.build_run_cmd("make", "all")
-        self.assertIn("ghcr.io/nanvix/toolchain-gcc:sha-34a3641", cmd)
+        self.assertIn(
+            "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
+            cmd,
+        )
 
     def test_contains_user(self, _mock: object) -> None:
         cfg = self._make_config()
@@ -336,7 +339,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         output_files: list[str] | None = None,
     ) -> DockerConfig:
         return DockerConfig(
-            image="ghcr.io/nanvix/toolchain-gcc:sha-34a3641",
+            image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
             mounts=[
                 Mount(
                     host_path=self._workspace,

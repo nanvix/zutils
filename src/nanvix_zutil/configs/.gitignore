@@ -8,3 +8,6 @@ out
 black.toml
 env.json
 pyrightconfig.json
+.nanvix-zutil-update.lock
+.nanvix-zutil-update-journal.json
+.*.nanvix-zutil-*

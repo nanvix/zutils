@@ -11,6 +11,10 @@ Public re-exports:
 - :class:`~nanvix_zutil.buildroot.Dependency` — library dependency descriptor
 - :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot management
 - :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
+- :class:`~nanvix_zutil.manifest.Toolchain` — typed legacy/SDK selection
+- :class:`~nanvix_zutil.manifest.SdkPin` — immutable manifest SDK coordinate
+- :class:`~nanvix_zutil.sdk.SdkRelease` — verified SDK release contract
+- :class:`~nanvix_zutil.sdk.SdkProvenance` — lockfile SDK provenance
 - :func:`~nanvix_zutil.manifest.load_manifest` — parse nanvix.toml
 - :class:`~nanvix_zutil.lockfile.Lockfile` — resolved dependency graph
 - :class:`~nanvix_zutil.lockfile.ResolvedPackage` — a resolved dependency
@@ -81,7 +85,11 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
 )
-from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
+from nanvix_zutil.github import (
+    resolve_commit,
+    resolve_release,
+    resolve_release_with_fallback,
+)
 from nanvix_zutil.helpers import (
     InitRdArgs,
     ensure_tool_installed,
@@ -95,17 +103,39 @@ from nanvix_zutil.lockfile import (
     ResolvedAsset,
     ResolvedPackage,
     read_lockfile,
+    serialize_lockfile,
     write_lockfile,
 )
-from nanvix_zutil.manifest import Manifest, load_manifest
+from nanvix_zutil.manifest import (
+    Manifest,
+    SdkPin,
+    Toolchain,
+    ToolchainKind,
+    load_manifest,
+)
 from nanvix_zutil.release import DEFAULT_FORMATS, ArchiveFormat, package
-from nanvix_zutil.resolver import is_stale, resolve
+from nanvix_zutil.resolver import BlockedResolution, is_stale, resolve
+from nanvix_zutil.sdk import (
+    SDK_RELEASE_ASSET,
+    SdkImage,
+    SdkProvenance,
+    SdkRelease,
+    SdkValidationError,
+    consumer_release_tag,
+    parse_sdk_version,
+    resolve_sdk_release,
+    sdk_consumer_release_tag,
+    validate_sdk_release,
+    verify_sdk_image,
+    verify_sdk_metadata,
+)
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
 
 __all__ = [
     "ArchiveFormat",
     "Buildroot",
+    "BlockedResolution",
     "BUILDROOT_CONTAINER_PATH",
     "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",
@@ -135,15 +165,24 @@ __all__ = [
     "RefKind",
     "ResolvedAsset",
     "ResolvedPackage",
+    "SDK_RELEASE_ASSET",
+    "SdkImage",
+    "SdkPin",
+    "SdkProvenance",
+    "SdkRelease",
+    "SdkValidationError",
     "SYSROOT_CONTAINER_PATH",
     "TOOLCHAIN_CONTAINER_PATH",
     "WORKSPACE_CONTAINER_PATH",
     "Sysroot",
+    "Toolchain",
+    "ToolchainKind",
     "ZScript",
     "is_windows",
     "ensure_tool_installed",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
+    "consumer_release_tag",
     "get_nanvix_info",
     "is_stale",
     "load_manifest",
@@ -151,12 +190,20 @@ __all__ = [
     "package",
     "parse_semver_tuple",
     "read_lockfile",
+    "serialize_lockfile",
     "resolve",
+    "resolve_commit",
     "resolve_release",
     "resolve_release_with_fallback",
+    "resolve_sdk_release",
     "run",
     "suffix_dep",
+    "sdk_consumer_release_tag",
     "sync_configs",
     "write_lockfile",
     "InitRdArgs",
+    "parse_sdk_version",
+    "validate_sdk_release",
+    "verify_sdk_metadata",
+    "verify_sdk_image",
 ]

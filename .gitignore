@@ -53,6 +53,11 @@ htmlcov/
 /.zed/
 .idea/
 *.swp
+
+# Persistent source-checkout update lock and crash-recovery state.
+/.nanvix-zutil-update.lock
+/.nanvix-zutil-update-journal.json
+/.*.nanvix-zutil-*
 *~
 
 # Downstream test artifacts (generated per-user)

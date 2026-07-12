@@ -48,6 +48,8 @@ nanvix-zutil test    # run tests
 nanvix-zutil lint            # lint .nanvix/*.py
 nanvix-zutil format          # format .nanvix/*.py
 nanvix-zutil format --check  # verify formatting (non-zero on diff)
+nanvix-zutil update-nanvix --check  # latest verified SDK release
+nanvix-zutil update-zutils --to v0.15.0 --templates-dir /path/to/templates --dry-run
 ```
 
 ## Installation
@@ -107,6 +109,23 @@ Additional references:
 | [Manifest Reference](docs/manifest.md) | `nanvix.toml` format and options |
 | [Local Development (`--with-nanvix`)](docs/with-nanvix.md) | Using local Nanvix builds |
 | [Contributing](CONTRIBUTING.md) | Contribution guidelines and release process |
+
+SDK manifests pin a verified GitHub Release contract and immutable OCI digest.
+`update-nanvix` resolves the latest authoritative release by default (or an
+exact tag/contract with `--to`), verifies its image, strictly resolves exact
+dependency releases, and atomically writes `nanvix.toml` plus the
+provenance-bearing `nanvix.lock`. Missing dependency provenance emits a blocked
+JSON result and writes nothing. Transitional Python/workflow image markers are
+updated only when present.
+
+Canonical `.nanvix/nanvix.lock` files are committed. Only update transaction
+state (`.nanvix-zutil-update.lock` and its journal/sidecars) is ignored.
+
+`update-zutils` verifies the exact release template archive, or a local source
+passed with `--templates-dir`, then atomically replaces `.zutils-version`, all
+three bootstrap scripts, and `.nanvix/.gitignore` while preserving modes and
+line endings. Both commands support `--dry-run`, `--check`,
+`--output-format json`, and `--output`; neither invokes Git.
 
 ## Examples
 

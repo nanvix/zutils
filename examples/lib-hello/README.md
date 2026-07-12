@@ -22,8 +22,8 @@ lib-hello/
 ## Prerequisites
 
 One of:
-- **Native toolchain** — `i686-nanvix-gcc` (default path: `/opt/nanvix/`)
-- **Docker** with `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` image (pass via `./z setup --with-docker IMAGE`)
+- **Native SDK** — Clang targeting `i686-unknown-nanvix` (default prefix: `/opt/nanvix/`)
+- **Docker** with the immutable `ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f` image
 
 If you built the Nanvix toolchain locally (e.g. from `nanvix/nanvix`), point
 `NANVIX_TOOLCHAIN` at it:
@@ -32,7 +32,7 @@ If you built the Nanvix toolchain locally (e.g. from `nanvix/nanvix`), point
 export NANVIX_TOOLCHAIN=~/repos/nanvix/nanvix/toolchain
 ```
 
-In CI, the workflow runs inside the `ghcr.io/nanvix/toolchain-gcc:sha-34a3641` Docker
+In CI, the workflow runs inside the pinned Nanvix C/Clang SDK Docker
 container where the toolchain is pre-installed at `/opt/nanvix`.
 
 ## Running
@@ -58,7 +58,7 @@ container where the toolchain is pre-installed at `/opt/nanvix`.
 
 1. **`./z setup`** downloads the Nanvix runtime sysroot from
    `nanvix/nanvix` GitHub releases.
-2. **`./z build`** cross-compiles `src/hello.c` using `i686-nanvix-gcc`
+2. **`./z build`** cross-compiles `src/hello.c` using the SDK's Clang
    and archives the object into `libhello.a`.
 3. **`./z test`** runs smoke tests (archive exists) and integration tests
    (valid ar archive magic).

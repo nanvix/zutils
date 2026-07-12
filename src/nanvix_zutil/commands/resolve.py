@@ -6,14 +6,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_SUCCESS
-from nanvix_zutil.manifest import load_manifest
+from nanvix_zutil.manifest import ToolchainKind, load_manifest
 from nanvix_zutil.paths import manifest_path
-from nanvix_zutil.resolver import resolve
+from nanvix_zutil.resolver import BlockedResolution, resolve
 
 HELP: str = "Resolve manifest and emit CI-ready metadata"
 """One-line description surfaced in ``nanvix-zutil --help``."""
@@ -67,7 +68,11 @@ def main() -> None:
         manifest,
         gh_token=gh_token,
         shallow=args.shallow,
+        strict=manifest.toolchain.kind == ToolchainKind.SDK,
     )
+    if isinstance(lockfile, BlockedResolution):
+        print(json.dumps(lockfile.to_dict(), sort_keys=True))
+        sys.exit(EXIT_MISSING_DEP)
 
     sysroot = next(
         (p for p in lockfile.packages if p.kind == "sysroot"),
