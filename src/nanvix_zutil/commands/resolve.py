@@ -92,6 +92,22 @@ def main() -> None:
         "package_name": manifest.name,
         "package_version": manifest.version,
     }
+    sdk = lockfile.metadata.sdk
+    if sdk is not None:
+        result.update(
+            {
+                "sdk_version": sdk.sdk_version,
+                "sdk_provider_id": sdk.provider_id,
+                "sdk_provider": sdk.provider,
+                "sdk_image": sdk.image.name,
+                "sdk_digest": sdk.image.digest,
+                "sdk_image_ref": sdk.image.ref,
+                "sdk_c_abi": str(sdk.compat["c_abi"]),
+                "sdk_libc_tag": sdk.nanvix_tag,
+                "sdk_libc_commit": sdk.nanvix_commit,
+                "sdk_sysroot_sha256": sdk.sysroot_sha256,
+            }
+        )
 
     for key, value in result.items():
         print(f"{key}={value}")

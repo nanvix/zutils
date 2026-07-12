@@ -88,6 +88,28 @@ a machine-readable blocked result.
 The generated `.nanvix/nanvix.lock` is canonical provenance and must be
 committed. Update lock/journal files are transient and remain ignored.
 
+## CI resolver output
+
+`nanvix-zutil resolve` emits stable `key=value` lines. Legacy manifests retain
+the existing `nanvix_*` and `package_*` output exactly. SDK locks additionally
+emit:
+
+```text
+sdk_version
+sdk_provider_id
+sdk_provider
+sdk_image
+sdk_digest
+sdk_image_ref
+sdk_c_abi
+sdk_libc_tag
+sdk_libc_commit
+sdk_sysroot_sha256
+```
+
+These values come from verified lockfile provenance and are suitable for
+appending directly to `$GITHUB_OUTPUT`.
+
 `TAG`, `COMMITISH`, `ID`, and `LOCAL` refs are never suffixed — they
 resolve exactly as written.
 
