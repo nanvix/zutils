@@ -21,12 +21,15 @@ from pathlib import Path
 from nanvix_zutil import github, log
 from nanvix_zutil.config import (
     DEFAULT_DEPLOYMENT_MODE,
+    DEFAULT_HOST,
     DEFAULT_MACHINE,
     DEFAULT_MEMORY_SIZE,
+    DEFAULT_TARGET,
 )
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root
+from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 
 # ---------------------------------------------------------------------------
 # Tarball path helpers
@@ -103,8 +106,10 @@ class Dependency:
             (e.g. ``"nanvix/zlib"``).
         ref: Version reference — one of tag, commitish, ID, or version.
         artifact_pattern: ``str.format``-style template for the asset file
-            name.  Interpolated keys: ``{name}``, ``{machine}``,
-            ``{mode}``, ``{mem}``.
+            name.  Interpolated keys: ``{name}``, ``{host}``, ``{arch}``,
+            ``{machine}``, ``{mode}``, ``{mem}``.  Default targets the
+            standardised ``-dev`` archive produced by
+            ``nanvix-zutil release``.
         install_libs: List of ``.a`` file names to copy into
             ``<buildroot>/lib/``.  ``None`` copies all ``.a`` files found.
         install_headers: List of header file names to copy into
@@ -114,7 +119,9 @@ class Dependency:
     name: str
     repo: str
     ref: Ref
-    artifact_pattern: str = "{name}-{machine}-{mode}-{mem}"
+    artifact_pattern: str = (
+        "{name}-{host}-{arch}-{machine}-{mode}-{mem}" + DEV_ARCHIVE_SUFFIX
+    )
     install_libs: list[str] | None = None
     install_headers: list[str] | None = None
 
@@ -234,11 +241,13 @@ class Buildroot:
     def install_dep(
         self,
         dep: Dependency,
+        *,
+        host: str = DEFAULT_HOST,
+        target: str = DEFAULT_TARGET,
         machine: str = DEFAULT_MACHINE,
         deployment_mode: str = DEFAULT_DEPLOYMENT_MODE,
         memory_size: str = DEFAULT_MEMORY_SIZE,
         gh_token: str | None = None,
-        *,
         _release: dict[str, object] | None = None,
     ) -> None:
         """Download a dependency release and install its libraries and headers.
@@ -247,8 +256,14 @@ class Buildroot:
         extracted.  Selected ``.a`` and ``.h`` files are copied into
         ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
 
+        Dependencies are assumed to publish a standardised ``-dev`` archive.
+        A missing archive is fatal — no fallback to the legacy
+        naming.
+
         Args:
             dep: The :class:`Dependency` descriptor.
+            host: Development host operating system.
+            target: Target CPU architecture.
             machine: Target machine identifier.
             deployment_mode: Deployment mode string.
             memory_size: Memory size string.
@@ -260,6 +275,8 @@ class Buildroot:
         """
         asset_name = dep.artifact_pattern.format(
             name=dep.name,
+            host=host,
+            arch=target,
             machine=machine,
             mode=deployment_mode,
             mem=memory_size,
