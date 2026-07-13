@@ -377,6 +377,14 @@ class TestUpdateNanvix(unittest.TestCase):
 class TestUpdateZutils(unittest.TestCase):
     """Verified template updates preserve policies and exact allowlists."""
 
+    def test_shipped_gitignore_matches_canonical_config(self) -> None:
+        """Bootstrap updates must preserve every generated-artifact pattern."""
+        root = Path(__file__).resolve().parent.parent
+        self.assertEqual(
+            (root / "templates/.gitignore").read_bytes(),
+            (root / "src/nanvix_zutil/configs/.gitignore").read_bytes(),
+        )
+
     def test_update_and_noop_exact_allowlist(self) -> None:
         root = Path.cwd()
         make_consumer(root)
