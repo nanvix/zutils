@@ -24,7 +24,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_MISSING_DEP,
     EXIT_SUCCESS,
 )
-from nanvix_zutil.lockfile import serialize_lockfile
+from nanvix_zutil.lockfile import read_lockfile, serialize_lockfile
 from nanvix_zutil.manifest import (
     Manifest,
     SdkPin,
@@ -352,6 +352,18 @@ def _run_locked(
             return result, EXIT_MISSING_DEP
         lock_relative = relative.with_name("nanvix.lock")
         lock_bytes = serialize_lockfile(lock)
+        existing_lock_path = root / lock_relative
+        if manifest_bytes == path.read_bytes() and existing_lock_path.is_file():
+            existing_lock = read_lockfile(existing_lock_path)
+            existing_metadata = replace(
+                existing_lock.metadata,
+                nanvix_zutil_version=lock.metadata.nanvix_zutil_version,
+            )
+            if (
+                existing_metadata == lock.metadata
+                and existing_lock.packages == lock.packages
+            ):
+                lock_bytes = existing_lock_path.read_bytes()
         candidates[relative] = manifest_bytes
         candidates[lock_relative] = lock_bytes
 

@@ -201,6 +201,26 @@ class TestUpdateNanvix(unittest.TestCase):
         self.assertEqual((root / ".nanvix/nanvix.toml").read_bytes(), original)
         self.assertFalse((root / ".nanvix/nanvix.lock").exists())
 
+    def test_generator_version_only_does_not_trigger_update(self) -> None:
+        root = Path.cwd()
+        contract = make_consumer(root)
+        update_nanvix._run(nanvix_args(contract.name))
+        lock_path = root / ".nanvix/nanvix.lock"
+        lock_path.write_text(
+            lock_path.read_text().replace(
+                'nanvix-zutil-version = "0.15.0"',
+                'nanvix-zutil-version = "0.14.0"',
+            )
+        )
+
+        result, code = update_nanvix._run(nanvix_args(contract.name))
+
+        self.assertEqual((result.status, code), ("up-to-date", 0))
+        self.assertIn(
+            'nanvix-zutil-version = "0.14.0"',
+            lock_path.read_text(),
+        )
+
     def test_crlf_manifest_and_workflow_are_preserved(self) -> None:
         root = Path.cwd()
         contract = make_consumer(root, newline="\r\n")
