@@ -18,6 +18,16 @@ from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
 from nanvix_zutil.script import ZScript
 from tests.testutils import write_manifest
 
+# Pin every config-level knob so archive names are deterministic
+# regardless of the developer's ambient environment.
+_PINNED_ENV = {
+    "NANVIX_HOST": "linux",
+    "NANVIX_TARGET": "x86",
+    "NANVIX_MACHINE": "microvm",
+    "NANVIX_DEPLOYMENT_MODE": "standalone",
+    "NANVIX_MEMORY_SIZE": "256mb",
+}
+
 
 class TestReleaseDefault(unittest.TestCase):
     """Default packaging path — no ``.nanvix/z.py`` override.
@@ -30,6 +40,9 @@ class TestReleaseDefault(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()  # manifest name = "test"
+        env_patch = patch.dict("os.environ", _PINNED_ENV, clear=False)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def _populate_release_dir(self) -> Path:
         rel = paths.release_dir()
@@ -47,8 +60,8 @@ class TestReleaseDefault(unittest.TestCase):
         self.assertEqual(
             produced,
             {
-                "test-microvm-standalone-256mb.tar.gz",
-                "test-microvm-standalone-256mb.zip",
+                "test-linux-x86-microvm-standalone-256mb.tar.gz",
+                "test-linux-x86-microvm-standalone-256mb.zip",
             },
         )
         for p in dist.iterdir():
@@ -68,7 +81,8 @@ class TestReleaseDefault(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("success:", output)
         self.assertIn(
-            "Packaged 2 archive(s) for 'test-microvm-standalone-256mb'", output
+            "Packaged 2 archive(s) for 'test-linux-x86-microvm-standalone-256mb'",
+            output,
         )
         self.assertIn(str(paths.dist_dir()), output)
 
@@ -109,6 +123,9 @@ class TestReleaseTargetsOverride(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()
+        env_patch = patch.dict("os.environ", _PINNED_ENV, clear=False)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def _populate(self, *subdirs: str) -> None:
         for sub in subdirs:
@@ -157,7 +174,7 @@ class TestReleaseTargetsOverride(unittest.TestCase):
         mock_pkg.assert_called_once()
         args, _ = mock_pkg.call_args
         self.assertEqual(args[0], [rel])
-        self.assertEqual(args[2], "test-microvm-standalone-256mb")
+        self.assertEqual(args[2], "test-linux-x86-microvm-standalone-256mb")
 
 
 class TestConsumerReleaseTargets(unittest.TestCase):
