@@ -93,7 +93,7 @@ cd /path/to/consumer
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \
   python3 -m nanvix_zutil setup \
     --offline \
-    --with-docker ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f \
+    --with-docker ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:880ed7e6a20fe9bf2536b1b3ba9bdbbd067a48f043ec9131d3dd398c65f11f35 \
     --allow-local-docker-override \
     --with-nanvix ~/nanvix/build \
     --sysroot-path ~/nanvix/build/sysroot

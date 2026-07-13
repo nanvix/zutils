@@ -36,7 +36,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB_HELLO = _REPO_ROOT / "examples" / "lib-hello"
 _BIN_HELLO = _REPO_ROOT / "examples" / "bin-hello"
-_DOCKER_IMAGE = "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
+_DOCKER_IMAGE = "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:880ed7e6a20fe9bf2536b1b3ba9bdbbd067a48f043ec9131d3dd398c65f11f35"
 _NANVIX_VERSION = "0.20.0"
 _TIMEOUT = 300
 
@@ -83,7 +83,7 @@ def _can_run_docker_lifecycle() -> bool:
 def _has_authoritative_sdk_release() -> bool:
     """Return whether the pinned SDK completion release is published."""
     request = urllib.request.Request(
-        "https://api.github.com/repos/nanvix/sdk/releases/tags/v0.20.0-sdk.1",
+        "https://api.github.com/repos/nanvix/sdk/releases/tags/v0.20.0-sdk.2",
         headers={"Accept": "application/vnd.github+json"},
     )
     token = os.environ.get("GH_TOKEN")
