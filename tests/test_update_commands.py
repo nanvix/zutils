@@ -420,6 +420,13 @@ class TestUpdateZutils(unittest.TestCase):
             (root / "src/nanvix_zutil/configs/.gitignore").read_bytes(),
         )
 
+    def test_shipped_workflow_has_no_removed_inputs(self) -> None:
+        """New consumers must use only the canonical workflows v3 API."""
+        root = Path(__file__).resolve().parent.parent
+        workflow = (root / "templates/nanvix-ci.yml").read_text()
+        self.assertNotIn("docker-image:", workflow)
+        self.assertNotIn("nanvix-version-source:", workflow)
+
     def test_update_and_noop_exact_allowlist(self) -> None:
         root = Path.cwd()
         make_consumer(root)
