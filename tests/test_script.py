@@ -533,6 +533,10 @@ class TestSdkDockerSelection(unittest.TestCase):
         self.assertFalse(used_fallback)
         resolver.assert_called_once()
         self.assertTrue(resolver.call_args.kwargs["strict"])
+        self.assertEqual(
+            resolver.call_args.kwargs["verify_sdk_image"],
+            sys.platform != "win32",
+        )
         fallback.assert_not_called()
         fake_buildroot.install_dep.assert_called_once()
         release = fake_buildroot.install_dep.call_args.kwargs["_release"]

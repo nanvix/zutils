@@ -414,10 +414,13 @@ class ZScript:
         sdk_releases: dict[str, dict[str, object]] = {}
         sdk_mode = self.manifest.toolchain.kind == ToolchainKind.SDK
         if sdk_mode and not self._offline:
+            # Windows resolves the digest-bound release tuple but cannot execute the
+            # Linux provider image; CI verifies that image on its Linux job.
             resolution = resolve(
                 self.manifest,
                 gh_token=self.config.get(CFG_GH_TOKEN),
                 strict=True,
+                verify_sdk_image=not is_windows(),
             )
             if isinstance(resolution, BlockedResolution):
                 log.fatal(
