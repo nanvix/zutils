@@ -169,22 +169,6 @@ def sdk_consumer_release_tag(package_version: str, sdk_version: str) -> str:
     return f"{package_version}-nanvix-{runtime}-sdk.{revision}"
 
 
-def consumer_release_tag(
-    package_version: str,
-    nanvix_version: str,
-    sdk_version: str | None = None,
-) -> str:
-    """Build a legacy or SDK-aware consumer dependency release tag."""
-    if sdk_version is None:
-        return f"{package_version}-nanvix-{nanvix_version.removeprefix('v')}"
-    runtime, _revision = parse_sdk_version(sdk_version)
-    if runtime != nanvix_version.removeprefix("v"):
-        raise SdkValidationError(
-            f"SDK runtime {runtime} does not match Nanvix {nanvix_version}"
-        )
-    return sdk_consumer_release_tag(package_version, sdk_version)
-
-
 def _object(value: object, path: str) -> dict[str, object]:
     """Return *value* as an object or raise a path-specific validation error."""
     if not isinstance(value, dict):

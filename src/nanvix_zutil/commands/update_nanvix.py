@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
 import re
@@ -52,13 +51,6 @@ _VERSION_LINE = re.compile(
     r'^(?P<prefix>\s*nanvix-version\s*=\s*")[^"]*(?P<suffix>".*)$',
     re.MULTILINE,
 )
-_SDK_ASSIGNMENT = re.compile(
-    r'^(?P<prefix>\s*NANVIX_SDK_IMAGE\s*(?::\s*str\s*)?=\s*")[^"]*(?P<suffix>".*)$',
-    re.MULTILINE,
-)
-_DOCKER_IMAGE_KEY = re.compile(
-    r"^(?P<indent>[ \t]*)docker-image[ \t]*:[ \t]*(?P<value>.*)$",
-)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -83,25 +75,14 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _paths(root: Path) -> tuple[list[Path], list[Path], list[Path]]:
-    """Return exact manifest and optional transitional-marker paths."""
+def _paths(root: Path) -> list[Path]:
+    """Return the canonical consumer manifest paths."""
     if is_zutils_source(root):
-        return (
-            [
-                Path("examples/bin-hello/.nanvix/nanvix.toml"),
-                Path("examples/lib-hello/.nanvix/nanvix.toml"),
-            ],
-            [
-                Path("examples/bin-hello/.nanvix/z.py"),
-                Path("examples/lib-hello/.nanvix/z.py"),
-            ],
-            [Path("templates/nanvix-ci.yml")],
-        )
-    return (
-        [Path(".nanvix/nanvix.toml")],
-        [Path(".nanvix/z.py")],
-        [Path(".github/workflows/nanvix-ci.yml")],
-    )
+        return [
+            Path("examples/bin-hello/.nanvix/nanvix.toml"),
+            Path("examples/lib-hello/.nanvix/nanvix.toml"),
+        ]
+    return [Path(".nanvix/nanvix.toml")]
 
 
 def _replace_exact(
@@ -123,51 +104,12 @@ def _replace_exact(
     )
 
 
-def _remove_docker_image_inputs(text: str) -> str | None:
-    """Remove inline or block-scalar caller image inputs from workflow YAML."""
-    lines = text.splitlines(keepends=True)
-    rendered: list[str] = []
-    removed = False
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        match = _DOCKER_IMAGE_KEY.match(line.rstrip("\r\n"))
-        if match is None:
-            rendered.append(line)
-            index += 1
-            continue
-
-        marker = match.group("value").split("#", maxsplit=1)[0].strip()
-        if not marker:
-            rendered.append(line)
-            index += 1
-            continue
-
-        removed = True
-        base_indent = len(match.group("indent").expandtabs(8))
-        index += 1
-        if marker.startswith((">", "|")):
-            while index < len(lines):
-                candidate = lines[index].rstrip("\r\n")
-                if not candidate.strip():
-                    rendered.append(lines[index])
-                    index += 1
-                    continue
-                prefix_length = len(candidate) - len(candidate.lstrip(" \t"))
-                indent = len(candidate[:prefix_length].expandtabs(8))
-                if indent <= base_indent:
-                    break
-                index += 1
-
-    return "".join(rendered) if removed else None
-
-
 def _canonical_toolchain_block(
     text: str,
     sdk: SdkRelease,
-    existing_pin: SdkPin | None = None,
+    existing_pin: SdkPin,
 ) -> str:
-    """Replace or append the canonical ``[toolchain]`` SDK table."""
+    """Replace the canonical ``[toolchain]`` SDK table."""
     newline = "\r\n" if "\r\n" in text else "\n"
     lines = text.splitlines(keepends=True)
     header = re.compile(r"^\s*\[([^\]]+)\]\s*(?:#.*)?(?:\r?\n)?$")
@@ -193,18 +135,13 @@ def _canonical_toolchain_block(
         f'sdk-image = "{sdk.image.name}"{newline}'
         f'sdk-digest = "{sdk.image.digest}"{newline}'
     )
-    if (
-        existing_pin is not None
-        and existing_pin.build_image is not None
-        and existing_pin.build_digest is not None
-    ):
+    if existing_pin.build_image is not None and existing_pin.build_digest is not None:
         block += (
             f'build-image = "{existing_pin.build_image}"{newline}'
             f'build-digest = "{existing_pin.build_digest}"{newline}'
         )
     if start is None:
-        separator = "" if text.endswith(("\n", "\r")) else newline
-        return f"{text}{separator}{newline}{block}"
+        raise UpdateError("nanvix.toml is missing its canonical [toolchain] table")
     if end < len(lines):
         block += newline
     lines[start:end] = [block]
@@ -214,7 +151,7 @@ def _canonical_toolchain_block(
 def _update_manifest(
     content: bytes,
     sdk: SdkRelease,
-    existing_pin: SdkPin | None = None,
+    existing_pin: SdkPin,
 ) -> bytes:
     """Create the complete canonical manifest candidate."""
     try:
@@ -232,7 +169,7 @@ def _update_manifest(
 
 def _sdk_pin(
     sdk: SdkRelease,
-    existing_pin: SdkPin | None = None,
+    existing_pin: SdkPin,
 ) -> SdkPin:
     """Build the typed manifest pin for a verified release."""
     return SdkPin(
@@ -240,8 +177,8 @@ def _sdk_pin(
         provider_id=sdk.provider_id,
         image=sdk.image.name,
         digest=sdk.image.digest,
-        build_image=existing_pin.build_image if existing_pin is not None else None,
-        build_digest=(existing_pin.build_digest if existing_pin is not None else None),
+        build_image=existing_pin.build_image,
+        build_digest=existing_pin.build_digest,
     )
 
 
@@ -281,7 +218,7 @@ def _candidate_manifest(
 def _validate_manifest_candidate(
     content: bytes,
     sdk: SdkRelease,
-    pin: SdkPin | None = None,
+    pin: SdkPin,
 ) -> None:
     """Validate the canonical manifest table before any target write."""
     try:
@@ -302,7 +239,7 @@ def _validate_manifest_candidate(
         "sdk-image": sdk.image.name,
         "sdk-digest": sdk.image.digest,
     }
-    if pin is not None and pin.build_image is not None and pin.build_digest is not None:
+    if pin.build_image is not None and pin.build_digest is not None:
         expected["build-image"] = pin.build_image
         expected["build-digest"] = pin.build_digest
     if data.get("toolchain") != expected:
@@ -314,9 +251,9 @@ def _tuple_from_manifest(manifest: Manifest) -> dict[str, object]:
     pin = manifest.toolchain.sdk
     return {
         "nanvix_version": str(manifest.sysroot_ref.value).removeprefix("v"),
-        "sdk_version": pin.version if pin is not None else None,
-        "sdk_image": pin.image_ref if pin is not None else None,
-        "build_image": pin.effective_build_ref if pin is not None else None,
+        "sdk_version": pin.version,
+        "sdk_image": pin.image_ref,
+        "build_image": pin.effective_build_ref,
     }
 
 
@@ -346,83 +283,6 @@ def _resolve_target(value: str | None, root: Path, gh_token: str | None) -> SdkR
     )
 
 
-def _optional_marker_candidates(
-    root: Path,
-    scripts: list[Path],
-    workflows: list[Path],
-    old_images: set[str],
-    new_image: str,
-) -> tuple[dict[Path, bytes], dict[Path, Callable[[bytes], None]]]:
-    """Update transitional image markers only where they already exist."""
-    candidates: dict[Path, bytes] = {}
-    validators: dict[Path, Callable[[bytes], None]] = {}
-    for relative in scripts:
-        path = root / relative
-        if not path.is_file():
-            continue
-        text = path.read_bytes().decode("utf-8")
-        try:
-            ast.parse(text, filename=relative.as_posix())
-        except SyntaxError as exc:
-            raise UpdateError(f"{relative}: invalid Python: {exc}") from exc
-        matches = list(_SDK_ASSIGNMENT.finditer(text))
-        if len(matches) > 1:
-            raise UpdateError(f"{relative}: multiple transitional SDK markers")
-        if not matches:
-            continue
-        current = matches[0].group(0)
-        prefix = len(matches[0].group("prefix"))
-        suffix = len(matches[0].group("suffix"))
-        current_image = current[prefix : len(current) - suffix]
-        if old_images and current_image not in old_images:
-            raise UpdateError(f"{relative}: SDK marker disagrees with the manifest")
-        candidate = _replace_exact(
-            _SDK_ASSIGNMENT,
-            text,
-            new_image,
-            relative.as_posix(),
-        ).encode("utf-8")
-        candidates[relative] = candidate
-
-        def validate_script(
-            value: bytes,
-            label: str = relative.as_posix(),
-            expected: str = new_image,
-        ) -> None:
-            rendered = value.decode("utf-8")
-            ast.parse(rendered, filename=label)
-            matches = list(_SDK_ASSIGNMENT.finditer(rendered))
-            if len(matches) != 1 or expected not in matches[0].group(0):
-                raise UpdateError(f"{label}: invalid transitional SDK marker")
-
-        validators[relative] = validate_script
-
-    for relative in workflows:
-        path = root / relative
-        if not path.is_file():
-            continue
-        text = path.read_bytes().decode("utf-8")
-        candidate_text = _remove_docker_image_inputs(text)
-        if candidate_text is None:
-            continue
-        candidate = candidate_text.encode("utf-8")
-        candidates[relative] = candidate
-
-        def validate_workflow(
-            value: bytes,
-            label: str = relative.as_posix(),
-        ) -> None:
-            rendered = value.decode("utf-8")
-            if any(
-                _DOCKER_IMAGE_KEY.match(line) is not None
-                for line in rendered.splitlines()
-            ):
-                raise UpdateError(f"{label}: redundant docker-image input remains")
-
-        validators[relative] = validate_workflow
-    return candidates, validators
-
-
 def _run_locked(
     args: argparse.Namespace,
     root: Path,
@@ -431,11 +291,10 @@ def _run_locked(
     """Resolve and apply an SDK update under a recovered transaction lock."""
     gh_token = os.environ.get("GH_TOKEN")
     sdk = _resolve_target(args.to, root, gh_token)
-    manifests, scripts, workflows = _paths(root)
+    manifests = _paths(root)
     candidates: dict[Path, bytes] = {}
     validators: dict[Path, Callable[[bytes], None]] = {}
     old_tuples: list[dict[str, object]] = []
-    old_images: set[str] = set()
     new_build_images: set[str] = set()
     new_tuple = _tuple_from_sdk(sdk)
 
@@ -445,8 +304,7 @@ def _run_locked(
         old_tuples.append(_tuple_from_manifest(current))
         current_pin = current.toolchain.sdk
         if (
-            current_pin is not None
-            and current_pin.build_image is not None
+            current_pin.build_image is not None
             and current_pin.version != sdk.sdk_version
         ):
             return (
@@ -465,8 +323,6 @@ def _run_locked(
                 ),
                 EXIT_MISSING_DEP,
             )
-        if current.toolchain.sdk is not None:
-            old_images.add(current.toolchain.sdk.effective_build_ref)
         manifest_bytes = _update_manifest(path.read_bytes(), sdk, current_pin)
         candidate_pin = _sdk_pin(sdk, current_pin)
         new_build_images.add(candidate_pin.effective_build_ref)
@@ -478,7 +334,6 @@ def _run_locked(
                 candidate_manifest,
                 gh_token=gh_token,
                 cache_dir=cache_dir,
-                strict=True,
                 verified_sdk_release=sdk,
                 manifest_content=manifest_bytes,
             )
@@ -533,16 +388,6 @@ def _run_locked(
         raise UpdateError("candidate manifests disagree on the effective build image")
     new_build_image = next(iter(new_build_images))
     new_tuple["build_image"] = new_build_image
-    marker_candidates, marker_validators = _optional_marker_candidates(
-        root,
-        scripts,
-        workflows,
-        old_images,
-        new_build_image,
-    )
-    candidates.update(marker_candidates)
-    validators.update(marker_validators)
-
     if args.dry_run or args.check:
         changed = tuple(
             sorted(

@@ -134,10 +134,10 @@ Bootstraps the nanvix_zutil environment by installing a python venv.
 Sets up the build environment. By default, this will download the correct nanvix distribution (sourced from `nanvix.toml`) and build dependencies to `sysroot` and `buildroot`. The particular nanvix distribution parameters (target, machine, deployment mode, and memory size) can be overridden by supplying environment variables (listed below). The settings created here are stored at `.nanvix/env.json`.
 
 1. Download and verify nanvix artefacts (or source locally if `--with-nanvix`)
-2. Resolve and download dependencies against latest release matching the nanvix version.
+2. Strictly resolve and download exact SDK-revision dependency releases.
 3. Persist configuration for `.nanvix/env.json`.
 
-SDK manifests use strict resolution instead: zutils verifies the authoritative
+All manifests use strict SDK resolution: zutils verifies the authoritative
 `sdk-release.json` GitHub Release asset against the immutable Docker digest,
 embedded `/opt/nanvix/nanvix-sdk.json`, and OCI labels. Dependency coordinates
 are exact `<version>-nanvix-<runtime>-sdk.<revision>` tags. Missing exact
@@ -195,7 +195,6 @@ In addition to flags, which modify behaviors, certain operational values can be 
 | 4    | `EXIT_NETWORK_ERROR`  | Network operation failed           |
 | 5    | `EXIT_BUILD_FAILURE`  | Build step failed                  |
 | 6    | `EXIT_TEST_FAILURE`   | Tests failed                       |
-| 7    | `EXIT_DEGRADED_SETUP` | Setup completed with fallback deps |
 
 ### Container Paths
 

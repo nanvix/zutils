@@ -30,10 +30,9 @@ class _MockConsumer(ZScript):
         super().__init__()
         self.called: list[str] = []
 
-    def setup(self) -> bool:
+    def setup(self) -> None:
         """Record setup hook invocation."""
         self.called.append("setup")
-        return False
 
     def build(self) -> None:
         """Record build hook invocation."""
@@ -70,10 +69,6 @@ class TestIntegrationLifecycle(unittest.TestCase):
         """Run _MockConsumer.main() with *subcommand* and return the instance."""
         fake_script = str(repo_root() / ".nanvix" / "z.py")
         argv = [fake_script, subcommand] + (extra_argv or [])
-
-        # setup requires --with-docker IMAGE on the CLI.
-        if subcommand == "setup" and "--with-docker" not in argv:
-            argv += ["--with-docker", "test/image:tag"]
 
         # build/clean need a persisted Docker image.
         _DOCKER_COMMANDS = {"build", "clean"}

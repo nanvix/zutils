@@ -11,7 +11,7 @@ Public re-exports:
 - :class:`~nanvix_zutil.buildroot.Dependency` — library dependency descriptor
 - :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot management
 - :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
-- :class:`~nanvix_zutil.manifest.Toolchain` — typed legacy/SDK selection
+- :class:`~nanvix_zutil.manifest.Toolchain` — immutable SDK selection
 - :class:`~nanvix_zutil.manifest.SdkPin` — immutable manifest SDK coordinate
 - :class:`~nanvix_zutil.sdk.SdkRelease` — verified SDK release contract
 - :class:`~nanvix_zutil.sdk.SdkProvenance` — lockfile SDK provenance
@@ -29,7 +29,6 @@ Public re-exports:
 - :class:`~nanvix_zutil.commands.info.NanvixInfo` — resolved Nanvix release information
 - :func:`~nanvix_zutil.commands.info.get_nanvix_info` — query Nanvix release info
 - :func:`~nanvix_zutil.github.resolve_release` — resolve a release by version specifier
-- :func:`~nanvix_zutil.github.resolve_release_with_fallback` — resolve a release with fallback to best available
 - :func:`~nanvix_zutil.buildroot.suffix_dep` — suffix a dep's VERSION ref with a nanvix version
 - :func:`~nanvix_zutil.buildroot.extract_nanvix_version` — extract nanvix version from a suffixed tag
 - :func:`~nanvix_zutil.buildroot.extract_nanvix_version_base` — extract base version from a suffixed tag
@@ -77,7 +76,6 @@ from nanvix_zutil.docker import (
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
-    EXIT_DEGRADED_SETUP,
     EXIT_GENERAL_ERROR,
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
@@ -85,11 +83,7 @@ from nanvix_zutil.exitcodes import (
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
 )
-from nanvix_zutil.github import (
-    resolve_commit,
-    resolve_release,
-    resolve_release_with_fallback,
-)
+from nanvix_zutil.github import resolve_commit, resolve_release
 from nanvix_zutil.helpers import (
     InitRdArgs,
     ensure_tool_installed,
@@ -121,7 +115,6 @@ from nanvix_zutil.sdk import (
     SdkProvenance,
     SdkRelease,
     SdkValidationError,
-    consumer_release_tag,
     parse_sdk_version,
     resolve_sdk_release,
     sdk_consumer_release_tag,
@@ -149,7 +142,6 @@ __all__ = [
     "Dependency",
     "DockerConfig",
     "EXIT_BUILD_FAILURE",
-    "EXIT_DEGRADED_SETUP",
     "EXIT_GENERAL_ERROR",
     "EXIT_INVALID_ARGS",
     "EXIT_MISSING_DEP",
@@ -182,7 +174,6 @@ __all__ = [
     "ensure_tool_installed",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
-    "consumer_release_tag",
     "get_nanvix_info",
     "is_stale",
     "load_manifest",
@@ -194,7 +185,6 @@ __all__ = [
     "resolve",
     "resolve_commit",
     "resolve_release",
-    "resolve_release_with_fallback",
     "resolve_sdk_release",
     "run",
     "suffix_dep",

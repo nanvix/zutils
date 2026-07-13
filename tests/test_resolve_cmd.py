@@ -15,6 +15,7 @@ from nanvix_zutil.commands.resolve import main
 from nanvix_zutil.lockfile import Lockfile, LockfileMetadata, ResolvedPackage
 from nanvix_zutil.manifest import Manifest, SdkPin, Toolchain, ToolchainKind
 from nanvix_zutil.sdk import SdkImage, SdkProvenance
+from tests.testutils import make_sdk_provenance
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,11 +29,7 @@ _VERSION = "1.3.1"
 
 def _make_manifest() -> Manifest:
     """Return a minimal fake Manifest."""
-    return Manifest(
-        name=_NAME,
-        version=_VERSION,
-        sysroot_ref=Ref(kind=RefKind.TAG, value="0.12.266"),
-    )
+    return _make_sdk_manifest()
 
 
 def _make_lockfile() -> Lockfile:
@@ -41,6 +38,7 @@ def _make_lockfile() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
+            sdk=make_sdk_provenance("0.20.0"),
         ),
         packages=[
             ResolvedPackage(
@@ -62,6 +60,7 @@ def _make_lockfile_no_sysroot() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.3.0",
+            sdk=make_sdk_provenance("0.20.0"),
         ),
         packages=[],
     )
@@ -151,16 +150,7 @@ class TestDefaultOutput(unittest.TestCase):
         self.assertIn(f"nanvix_version={_TAG.lstrip('v')}", output)
         self.assertIn(f"package_name={_NAME}", output)
         self.assertIn(f"package_version={_VERSION}", output)
-        self.assertEqual(
-            output.splitlines(),
-            [
-                f"nanvix_tag={_TAG}",
-                f"nanvix_sha={_SHA[:7]}",
-                f"nanvix_version={_TAG.lstrip('v')}",
-                f"package_name={_NAME}",
-                f"package_version={_VERSION}",
-            ],
-        )
+        self.assertIn("sdk_version=v0.20.0-sdk.1", output)
 
     @patch("nanvix_zutil.commands.resolve.resolve")
     @patch("nanvix_zutil.commands.resolve.load_manifest")

@@ -115,8 +115,8 @@ SDK manifests pin a verified GitHub Release contract and immutable OCI digest.
 exact tag/contract with `--to`), verifies its image, strictly resolves exact
 dependency releases, and atomically writes `nanvix.toml` plus the
 provenance-bearing `nanvix.lock`. Missing dependency provenance emits a blocked
-JSON result and writes nothing. Transitional Python image markers are updated
-when present; redundant reusable-workflow `docker-image` inputs are removed.
+JSON result and writes nothing. It updates canonical SDK revisions only;
+unrelated scripts and workflows are not migration targets.
 
 Canonical `.nanvix/nanvix.lock` files are committed. Only update transaction
 state (`.nanvix-zutil-update.lock` and its journal/sidecars) is ignored.

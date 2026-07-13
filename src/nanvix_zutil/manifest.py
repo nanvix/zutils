@@ -4,18 +4,13 @@
 """TOML-based manifest parser for ``nanvix.toml``.
 
 Parses a structured TOML manifest that declares package metadata and
-dependencies.  ``nanvix-version`` must be a semver string (``X.Y.Z``)
-or the literal ``"latest"``.  Dependency version fields accept a plain
-string (``version`` specifier), or a table with one of ``version``,
-``tag``, ``commitish``, or ``id``.
+dependencies. ``nanvix-version`` must be a semver string (``X.Y.Z``).
+Dependency version fields accept a plain string or a ``{ version = "..." }``
+table.
 
-Only ``version`` specifier refs (plain string or ``{ version = "..." }``)
-are auto-suffixed with ``-nanvix-{sysroot_version}`` in legacy mode or
-``-nanvix-{runtime}-sdk.{revision}`` in SDK mode. ``tag``,
-``commitish``, and ``id`` specifiers are exact-match and never suffixed.
-Refs that already contain ``-nanvix-`` are rejected to prevent accidental
-duplication.  When the sysroot is ``"latest"``, auto-suffixing is
-deferred to the resolver (which resolves the actual version first).
+Dependency refs are auto-suffixed with
+``-nanvix-{runtime}-sdk.{revision}``. Refs that already contain ``-nanvix-``
+are rejected to prevent accidental duplication.
 """
 
 from __future__ import annotations
@@ -42,7 +37,6 @@ from nanvix_zutil.utils import SEMVER_RE
 class ToolchainKind(Enum):
     """Consumer toolchain selection mode."""
 
-    LEGACY = "legacy"
     SDK = "nanvix-sdk"
 
 
@@ -102,23 +96,18 @@ class SdkPin:
 
 @dataclass(frozen=True)
 class Toolchain:
-    """Typed manifest toolchain configuration."""
+    """Typed immutable SDK toolchain configuration."""
 
     kind: ToolchainKind
-    sdk: SdkPin | None = None
-
-    @classmethod
-    def legacy(cls) -> Toolchain:
-        """Return the transitional legacy toolchain selection."""
-        return cls(kind=ToolchainKind.LEGACY)
+    sdk: SdkPin
 
     @property
-    def effective_build_ref(self) -> str | None:
-        """Return the immutable build reference, if this is an SDK toolchain."""
-        return self.sdk.effective_build_ref if self.sdk is not None else None
+    def effective_build_ref(self) -> str:
+        """Return the immutable build reference."""
+        return self.sdk.effective_build_ref
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Manifest:
     """Parsed contents of a ``nanvix.toml`` manifest file.
 
@@ -128,23 +117,21 @@ class Manifest:
         sysroot_ref: Nanvix sysroot version reference.
         dependencies: Build-time dependencies as :class:`Dependency` objects.
         system_dependencies: Runtime dependencies as :class:`Dependency` objects.
-        toolchain: Typed legacy or immutable SDK toolchain selection.
+        toolchain: Immutable SDK toolchain selection.
     """
 
     name: str
     version: str
     sysroot_ref: Ref
+    toolchain: Toolchain
     dependencies: list[Dependency] = field(default_factory=lambda: [])
     system_dependencies: list[Dependency] = field(default_factory=lambda: [])
-    toolchain: Toolchain = field(default_factory=Toolchain.legacy)
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-# We are intentionally keeping the semver matching simple for now.
-_SPECIFIER_KEYS = frozenset({"version", "tag", "commitish", "id"})
 _URL_UNSAFE = set("/\\#?%")
 
 # Matches absolute Unix paths, Windows drive paths, and relative ./ or ../ paths.
@@ -210,7 +197,7 @@ def _validate_version_string(raw: str, context: str) -> str:
 
 
 def _parse_nanvix_version(raw: object) -> Ref:
-    """Parse ``nanvix-version``: semver ``X.Y.Z`` or ``"latest"``.
+    """Parse ``nanvix-version`` as semver ``X.Y.Z``.
 
     Args:
         raw: The raw TOML value for ``nanvix-version``.
@@ -223,18 +210,14 @@ def _parse_nanvix_version(raw: object) -> Ref:
             f"{manifest_path()}: 'nanvix-version' must be a plain string"
             f" (got {type(raw).__name__})",
             code=EXIT_INVALID_ARGS,
-            hint="Use 'nanvix-version = \"X.Y.Z\"' (semver) or"
-            " 'nanvix-version = \"latest\"'.",
+            hint="Use 'nanvix-version = \"X.Y.Z\"' (semver).",
         )
-    if raw == "latest":
-        # "latest" is a supported first-class sysroot specifier; no warning needed.
-        return Ref(kind=RefKind.TAG, value="latest")
     if not SEMVER_RE.match(raw):
         log.fatal(
-            f"{manifest_path()}: 'nanvix-version' must be semver X.Y.Z or 'latest' (got '{raw}')",
+            f"{manifest_path()}: 'nanvix-version' must be semver X.Y.Z"
+            f" (got '{raw}')",
             code=EXIT_INVALID_ARGS,
-            hint="Use a version like 'nanvix-version = \"0.12.257\"'"
-            " or 'nanvix-version = \"latest\"'.",
+            hint="Use a version like 'nanvix-version = \"0.20.0\"'.",
         )
     return Ref(kind=RefKind.TAG, value=raw)
 
@@ -246,12 +229,9 @@ def _parse_version_field(raw: object, context: str) -> Ref:
 
     - String → ``Ref(VERSION, value)`` — triggers auto-suffix
     - ``{ version = "..." }`` → ``Ref(VERSION, value)`` — triggers suffix
-    - ``{ tag = "..." }`` → ``Ref(TAG, value)`` — exact match
-    - ``{ commitish = "..." }`` → ``Ref(COMMITISH, value)`` — exact match
-    - ``{ id = N }`` → ``Ref(ID, N)`` — direct release fetch
 
     Returns:
-        A :class:`Ref` with the appropriate :class:`RefKind`.
+        A :class:`Ref` with :attr:`RefKind.VERSION`.
     """
     if isinstance(raw, str):
         value = _validate_version_string(raw, context)
@@ -259,64 +239,22 @@ def _parse_version_field(raw: object, context: str) -> Ref:
 
     if isinstance(raw, dict):
         raw_dict = cast("dict[str, object]", raw)
-
-        found = _SPECIFIER_KEYS & raw_dict.keys()
-        if len(found) > 1:
+        if set(raw_dict) != {"version"}:
             log.fatal(
-                f"{manifest_path()}: table for '{context}' has conflicting keys:"
-                f" {', '.join(sorted(found))}",
+                f"{manifest_path()}: table for '{context}' must contain"
+                " exactly the 'version' key",
                 code=EXIT_INVALID_ARGS,
-                hint="Use exactly one of 'version', 'tag', 'commitish', or 'id'.",
+                hint=f"Use '{context} = {{ version = \"1.2.3\" }}'.",
             )
 
-        if "version" in raw_dict:
-            ver_val: object = raw_dict["version"]
-            if not isinstance(ver_val, str):
-                log.fatal(
-                    f"{manifest_path()}: 'version' value for '{context}' must be a string",
-                    code=EXIT_INVALID_ARGS,
-                )
-            value = _validate_version_string(ver_val, f"{context}.version")
-            return Ref(kind=RefKind.VERSION, value=value)
-
-        if "tag" in raw_dict:
-            tag_val: object = raw_dict["tag"]
-            if not isinstance(tag_val, str):
-                log.fatal(
-                    f"{manifest_path()}: 'tag' value for '{context}' must be a string",
-                    code=EXIT_INVALID_ARGS,
-                )
-            value = _validate_version_string(tag_val, f"{context}.tag")
-            return Ref(kind=RefKind.TAG, value=value)
-
-        if "commitish" in raw_dict:
-            com_val: object = raw_dict["commitish"]
-            if not isinstance(com_val, str):
-                log.fatal(
-                    f"{manifest_path()}: 'commitish' value for '{context}' must be a string",
-                    code=EXIT_INVALID_ARGS,
-                )
-            value = _validate_version_string(com_val, f"{context}.commitish")
-            return Ref(kind=RefKind.COMMITISH, value=value)
-
-        if "id" in raw_dict:
-            id_val: object = raw_dict["id"]
-            if not isinstance(id_val, int):
-                log.fatal(
-                    f"{manifest_path()}: 'id' value for '{context}' must be an integer",
-                    code=EXIT_INVALID_ARGS,
-                )
-            return Ref(kind=RefKind.ID, value=id_val)
-
-        log.fatal(
-            f"{manifest_path()}: table for '{context}' must contain one of"
-            " 'version', 'tag', 'commitish', or 'id'",
-            code=EXIT_INVALID_ARGS,
-            hint=f"Use '{context} = {{ version = \"1.2.3\" }}',"
-            f" '{context} = {{ tag = \"...\" }}',"
-            f" '{context} = {{ commitish = \"...\" }}',"
-            f" or '{context} = {{ id = 12345 }}'.",
-        )
+        ver_val: object = raw_dict["version"]
+        if not isinstance(ver_val, str):
+            log.fatal(
+                f"{manifest_path()}: 'version' value for '{context}' must be a string",
+                code=EXIT_INVALID_ARGS,
+            )
+        value = _validate_version_string(ver_val, f"{context}.version")
+        return Ref(kind=RefKind.VERSION, value=value)
 
     log.fatal(
         f"{manifest_path()}: value for '{context}' must be a string or a table",
@@ -340,11 +278,7 @@ def _parse_dependencies(
 
         # Manifest values must not include the nanvix suffix — it is
         # derived automatically from nanvix-version.
-        if (
-            ref.kind == RefKind.VERSION
-            and isinstance(ref.value, str)
-            and "-nanvix-" in ref.value
-        ):
+        if isinstance(ref.value, str) and "-nanvix-" in ref.value:
             log.fatal(
                 f"{manifest_path()}: dependency '{name}' must not include the nanvix"
                 f" version in its ref (got '{ref.value}')",
@@ -359,108 +293,40 @@ def _parse_dependencies(
 
 
 def _parse_toolchain(raw: object, nanvix_version: str) -> Toolchain:
-    """Parse the optional typed ``[toolchain]`` table.
-
-    The canonical form uses ``kind = "nanvix-sdk"`` with ``sdk-*`` fields.
-    Early ``type/version/image`` and ``[toolchain.sdk]`` forms remain readable
-    for one transition release.
-    """
-    if raw is None:
-        return Toolchain.legacy()
+    """Parse the required canonical ``[toolchain]`` SDK table."""
     if not isinstance(raw, dict):
         log.fatal(
-            f"{manifest_path()}: [toolchain] must be a TOML table",
+            f"{manifest_path()}: missing or invalid required [toolchain] table",
             code=EXIT_INVALID_ARGS,
+            hint="Define kind, provider, sdk-version, sdk-image, and sdk-digest.",
         )
     table = cast("dict[str, object]", raw)
-    nested = table.get("sdk")
-    if nested is not None:
-        if not isinstance(nested, dict):
-            log.fatal(
-                f"{manifest_path()}: [toolchain.sdk] must be a TOML table",
-                code=EXIT_INVALID_ARGS,
-            )
-        values = cast("dict[str, object]", nested)
-        outer_keys = set(table) - {"type", "kind", "sdk"}
-        if outer_keys:
-            log.fatal(
-                f"{manifest_path()}: SDK pin fields must not be split between"
-                " [toolchain] and [toolchain.sdk]",
-                code=EXIT_INVALID_ARGS,
-            )
-    else:
-        values = {
-            key: value for key, value in table.items() if key not in {"type", "kind"}
-        }
-
-    if "type" in table and "kind" in table:
-        log.fatal(
-            f"{manifest_path()}: [toolchain] must not define both 'type' and 'kind'",
-            code=EXIT_INVALID_ARGS,
-        )
-    raw_kind = table.get("type", table.get("kind"))
-    if raw_kind is None:
-        kind = ToolchainKind.SDK if values else ToolchainKind.LEGACY
-    elif isinstance(raw_kind, str):
-        if raw_kind == "sdk":
-            raw_kind = ToolchainKind.SDK.value
-        try:
-            kind = ToolchainKind(raw_kind)
-        except ValueError:
-            log.fatal(
-                f"{manifest_path()}: unsupported toolchain type {raw_kind!r}",
-                code=EXIT_INVALID_ARGS,
-                hint="Use 'legacy' or 'nanvix-sdk'.",
-            )
-    else:
-        log.fatal(
-            f"{manifest_path()}: toolchain type must be a string",
-            code=EXIT_INVALID_ARGS,
-        )
-
-    if kind == ToolchainKind.LEGACY:
-        if values:
-            log.fatal(
-                f"{manifest_path()}: legacy [toolchain] must not contain SDK pin fields",
-                code=EXIT_INVALID_ARGS,
-            )
-        return Toolchain.legacy()
-
-    aliases = {
-        "version": "sdk-version",
-        "sdk_version": "sdk-version",
-        "provider": "provider_id",
-        "provider-id": "provider_id",
-        "provider_id": "provider_id",
-        "image": "sdk-image",
-        "digest": "sdk-digest",
-    }
-    normalized: dict[str, object] = {}
-    for key, value in values.items():
-        canonical = aliases.get(key, key)
-        if canonical in normalized:
-            log.fatal(
-                f"{manifest_path()}: duplicate SDK pin field {canonical!r}",
-                code=EXIT_INVALID_ARGS,
-            )
-        normalized[canonical] = value
     allowed = {
+        "kind",
+        "provider",
         "sdk-version",
-        "provider_id",
         "sdk-image",
         "sdk-digest",
         "build-image",
         "build-digest",
     }
-    unexpected = sorted(set(normalized) - allowed)
+    unexpected = sorted(set(table) - allowed)
     if unexpected:
         log.fatal(
-            f"{manifest_path()}: unexpected SDK pin fields: {', '.join(unexpected)}",
+            f"{manifest_path()}: unexpected [toolchain] fields:"
+            f" {', '.join(unexpected)}",
+            code=EXIT_INVALID_ARGS,
+            hint="Use only the canonical SDK field names.",
+        )
+    raw_kind = table.get("kind")
+    if raw_kind != ToolchainKind.SDK.value:
+        log.fatal(
+            f"{manifest_path()}: [toolchain] kind must be 'nanvix-sdk'",
             code=EXIT_INVALID_ARGS,
         )
 
     def required_string(key: str) -> str:
-        value = normalized.get(key)
+        value = table.get(key)
         if not isinstance(value, str) or not value:
             log.fatal(
                 f"{manifest_path()}: SDK toolchain requires non-empty {key!r}",
@@ -469,28 +335,23 @@ def _parse_toolchain(raw: object, nanvix_version: str) -> Toolchain:
         return value
 
     version = required_string("sdk-version")
-    provider_id = required_string("provider_id")
+    provider_id = required_string("provider")
     image = required_string("sdk-image")
-    digest_value = normalized.get("sdk-digest")
-    image_name, separator, embedded_digest = image.partition("@")
-    if separator:
-        if digest_value is not None and digest_value != embedded_digest:
-            log.fatal(
-                f"{manifest_path()}: SDK image digest and digest field disagree",
-                code=EXIT_INVALID_ARGS,
-            )
-        digest = embedded_digest
-    else:
-        digest = required_string("sdk-digest")
+    digest = required_string("sdk-digest")
+    if "@" in image:
+        log.fatal(
+            f"{manifest_path()}: canonical sdk-image must not include a digest",
+            code=EXIT_INVALID_ARGS,
+        )
     if _DIGEST_RE.fullmatch(digest) is None:
         log.fatal(
             f"{manifest_path()}: SDK digest must be sha256 followed by 64 lowercase hex digits",
             code=EXIT_INVALID_ARGS,
         )
     expected_image = f"ghcr.io/nanvix/nanvix-sdk-{provider_id}"
-    if image_name != expected_image:
+    if image != expected_image:
         log.fatal(
-            f"{manifest_path()}: SDK image {image_name!r} does not match"
+            f"{manifest_path()}: SDK image {image!r} does not match"
             f" provider {provider_id!r} (expected {expected_image!r})",
             code=EXIT_INVALID_ARGS,
         )
@@ -509,8 +370,8 @@ def _parse_toolchain(raw: object, nanvix_version: str) -> Toolchain:
             f"{manifest_path()}: unsupported SDK provider {provider_id!r}",
             code=EXIT_INVALID_ARGS,
         )
-    build_image_value = normalized.get("build-image")
-    build_digest_value = normalized.get("build-digest")
+    build_image_value = table.get("build-image")
+    build_digest_value = table.get("build-digest")
     if (build_image_value is None) != (build_digest_value is None):
         log.fatal(
             f"{manifest_path()}: build-image and build-digest must be specified together",
@@ -544,7 +405,7 @@ def _parse_toolchain(raw: object, nanvix_version: str) -> Toolchain:
         sdk=SdkPin(
             version=version,
             provider_id=provider_id,
-            image=image_name,
+            image=image,
             digest=digest,
             build_image=build_image,
             build_digest=build_digest,
@@ -561,9 +422,9 @@ def load_manifest(path: Path | None = None) -> Manifest:
     """Parse a ``nanvix.toml`` manifest file.
 
     Reads the TOML file, validates required keys, enforces semver for
-    ``nanvix-version``, parses dependency version fields (plain strings,
-    ``{ version }``, ``{ tag }``, ``{ commitish }``, ``{ id }``), and
-    auto-suffixes ``version`` refs with ``-nanvix-{sysroot_version}``.
+    ``nanvix-version``, requires a canonical immutable SDK toolchain, parses
+    dependency version fields (plain strings or ``{ version }``), and
+    auto-suffixes refs with the exact SDK release coordinate.
 
     Returns:
         A :class:`Manifest` instance.
@@ -651,17 +512,9 @@ def load_manifest(path: Path | None = None) -> Manifest:
         cast("dict[str, object]", sys_deps_raw), "system-dependencies"
     )
 
-    # Auto-suffix VERSION refs with the nanvix sysroot version.
-    # When the sysroot is "latest", suffixing is deferred to the resolver
-    # (which resolves the sysroot first and knows the actual version).
-    # Strip the leading "v" from the sysroot version to match the release
-    # tag format used by nanvix-zutil (e.g. "1.3.1-nanvix-0.12.291").
-    if sysroot_ref.value != "latest" and sysroot_ref.kind != RefKind.LOCAL:
-        version_suffix = (
-            toolchain.sdk.version.removeprefix("v")
-            if toolchain.kind == ToolchainKind.SDK and toolchain.sdk is not None
-            else sysroot_ref.value.removeprefix("v")
-        )
+    # Auto-suffix VERSION refs with the exact SDK revision.
+    if sysroot_ref.kind != RefKind.LOCAL:
+        version_suffix = toolchain.sdk.version.removeprefix("v")
         for dep in [*dependencies, *system_dependencies]:
             if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
                 if "-nanvix-" in dep.ref.value:

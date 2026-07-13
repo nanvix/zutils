@@ -27,7 +27,11 @@ from nanvix_zutil.exitcodes import (
     EXIT_INVALID_ARGS,
     EXIT_MISSING_DEP,
 )
-from nanvix_zutil.sdk import SdkImage, SdkProvenance
+from nanvix_zutil.sdk import (
+    SdkProvenance,
+    SdkValidationError,
+    validate_sdk_release,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -98,14 +102,14 @@ class LockfileMetadata:
             (e.g. ``"sha256:a1b2c3d4..."``).
         nanvix_zutil_version: Version of ``nanvix-zutil`` that
             generated this lockfile.
-        sdk: Verified SDK provenance, or ``None`` for a legacy lock.
+        sdk: Verified SDK provenance.
         shallow: Whether transitive dependency discovery was intentionally
             omitted when this lock was generated.
     """
 
     manifest_hash: str
     nanvix_zutil_version: str
-    sdk: SdkProvenance | None = None
+    sdk: SdkProvenance
     shallow: bool = False
 
 
@@ -142,6 +146,42 @@ def get_zutil_version() -> str:
         return "unknown"
 
 
+def _validated_sdk_provenance(
+    sdk: SdkProvenance,
+    context: str,
+) -> SdkProvenance:
+    """Validate complete SDK provenance before it crosses a lockfile boundary."""
+    contract: dict[str, object] = {
+        "schema_version": sdk.schema_version,
+        "sdk_version": sdk.sdk_version,
+        "provider_id": sdk.provider_id,
+        "provider": sdk.provider,
+        "role": sdk.role,
+        "image": {
+            "name": sdk.image.name,
+            "digest": sdk.image.digest,
+            "ref": sdk.image.ref,
+        },
+        "target": sdk.target,
+        "toolchain": sdk.toolchain,
+        "libc": {
+            "nanvix_tag": sdk.nanvix_tag,
+            "nanvix_version": sdk.nanvix_version,
+            "nanvix_commit": sdk.nanvix_commit,
+            "sysroot_sha256": sdk.sysroot_sha256,
+        },
+        "compat": sdk.compat,
+        "features": sdk.features,
+    }
+    try:
+        return validate_sdk_release(contract).provenance()
+    except SdkValidationError as exc:
+        log.fatal(
+            f"{context}: invalid metadata.sdk: {exc}",
+            code=EXIT_INVALID_ARGS,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------
@@ -169,34 +209,36 @@ def serialize_lockfile(lockfile: Lockfile) -> bytes:
     if lockfile.metadata.shallow:
         meta_dict["shallow"] = True
     lines.append(tomli_w.dumps({"metadata": meta_dict}).rstrip())
-    if lockfile.metadata.sdk is not None:
-        sdk = lockfile.metadata.sdk
-        sdk_dict: dict[str, object] = {
-            "schema-version": sdk.schema_version,
-            "sdk-version": sdk.sdk_version,
-            "provider-id": sdk.provider_id,
-            "provider": sdk.provider,
-            "role": sdk.role,
-            "image-name": sdk.image.name,
-            "image-digest": sdk.image.digest,
-            "image-ref": sdk.image.ref,
-            "nanvix-tag": sdk.nanvix_tag,
-            "nanvix-version": sdk.nanvix_version,
-            "nanvix-commit": sdk.nanvix_commit,
-            "sysroot-sha256": sdk.sysroot_sha256,
-        }
+    sdk = _validated_sdk_provenance(
+        lockfile.metadata.sdk,
+        "Cannot serialize lockfile",
+    )
+    sdk_dict: dict[str, object] = {
+        "schema-version": sdk.schema_version,
+        "sdk-version": sdk.sdk_version,
+        "provider-id": sdk.provider_id,
+        "provider": sdk.provider,
+        "role": sdk.role,
+        "image-name": sdk.image.name,
+        "image-digest": sdk.image.digest,
+        "image-ref": sdk.image.ref,
+        "nanvix-tag": sdk.nanvix_tag,
+        "nanvix-version": sdk.nanvix_version,
+        "nanvix-commit": sdk.nanvix_commit,
+        "sysroot-sha256": sdk.sysroot_sha256,
+    }
+    lines.append("")
+    lines.append("[metadata.sdk]")
+    lines.append(tomli_w.dumps(sdk_dict).rstrip())
+    for name, values in (
+        ("target", sdk.target),
+        ("toolchain", sdk.toolchain),
+        ("compat", sdk.compat),
+        ("features", sdk.features),
+    ):
         lines.append("")
-        lines.append("[metadata.sdk]")
-        lines.append(tomli_w.dumps(sdk_dict).rstrip())
-        for name, values in (
-            ("target", sdk.target),
-            ("toolchain", sdk.toolchain),
-            ("compat", sdk.compat),
-            ("features", sdk.features),
-        ):
-            lines.append("")
-            lines.append(f"[metadata.sdk.{name}]")
-            lines.append(tomli_w.dumps(values).rstrip())
+        lines.append(f"[metadata.sdk.{name}]")
+        lines.append(tomli_w.dumps(values).rstrip())
     lines.append("")
 
     # [[package]] blocks
@@ -311,26 +353,18 @@ def read_lockfile(path: Path) -> Lockfile:
         )
 
     shallow_value = meta.get("shallow", False)
-    # Transitional writer 0.15.0 accidentally emitted shallow as a string;
-    # accept it when reading while all new writes use a TOML boolean.
-    if shallow_value == "true":
-        shallow_value = True
     if not isinstance(shallow_value, bool):
         log.fatal(
             f"Lockfile {path}: invalid metadata 'shallow'",
             code=EXIT_INVALID_ARGS,
         )
     raw_sdk = meta.get("sdk")
-    sdk = (
-        _parse_sdk_provenance(cast("dict[str, object]", raw_sdk), path)
-        if isinstance(raw_sdk, dict)
-        else None
-    )
-    if raw_sdk is not None and sdk is None:
+    if not isinstance(raw_sdk, dict):
         log.fatal(
-            f"Lockfile {path}: metadata.sdk must be a table",
+            f"Lockfile {path}: missing required [metadata.sdk] table",
             code=EXIT_INVALID_ARGS,
         )
+    sdk = _parse_sdk_provenance(cast("dict[str, object]", raw_sdk), path)
 
     metadata = LockfileMetadata(
         manifest_hash=manifest_hash,
@@ -365,64 +399,64 @@ def _parse_sdk_provenance(
     path: Path,
 ) -> SdkProvenance:
     """Parse verified SDK provenance from lockfile metadata."""
-
-    def text(key: str) -> str:
-        value = data.get(key)
-        if not isinstance(value, str) or not value:
-            log.fatal(
-                f"Lockfile {path}: metadata.sdk missing or invalid {key!r}",
-                code=EXIT_INVALID_ARGS,
-            )
-        return value
-
-    def object_table(key: str, *, required: bool = False) -> dict[str, object]:
-        value = data.get(key)
-        if value is None and not required:
-            return {}
-        if not isinstance(value, dict):
-            log.fatal(
-                f"Lockfile {path}: metadata.sdk {key!r} must be a table",
-                code=EXIT_INVALID_ARGS,
-            )
-        return dict(cast("dict[str, object]", value))
-
-    raw_compat = object_table("compat", required=True)
-    schema_version = data.get("schema-version", 1)
-    if (
-        not isinstance(schema_version, int)
-        or isinstance(schema_version, bool)
-        or schema_version != 1
-    ):
+    expected = {
+        "schema-version",
+        "sdk-version",
+        "provider-id",
+        "provider",
+        "role",
+        "image-name",
+        "image-digest",
+        "image-ref",
+        "nanvix-tag",
+        "nanvix-version",
+        "nanvix-commit",
+        "sysroot-sha256",
+        "target",
+        "toolchain",
+        "compat",
+        "features",
+    }
+    if set(data) != expected:
+        missing = sorted(expected - data.keys())
+        extra = sorted(data.keys() - expected)
+        details = [
+            *(f"missing {key}" for key in missing),
+            *(f"unexpected {key}" for key in extra),
+        ]
         log.fatal(
-            f"Lockfile {path}: unsupported metadata.sdk schema-version",
+            f"Lockfile {path}: metadata.sdk is incomplete:" f" {', '.join(details)}",
             code=EXIT_INVALID_ARGS,
         )
-    image = SdkImage(
-        name=text("image-name"),
-        digest=text("image-digest"),
-        ref=text("image-ref"),
-    )
-    if image.ref != f"{image.name}@{image.digest}":
+    contract: dict[str, object] = {
+        "schema_version": data["schema-version"],
+        "sdk_version": data["sdk-version"],
+        "provider_id": data["provider-id"],
+        "provider": data["provider"],
+        "role": data["role"],
+        "image": {
+            "name": data["image-name"],
+            "digest": data["image-digest"],
+            "ref": data["image-ref"],
+        },
+        "target": data["target"],
+        "toolchain": data["toolchain"],
+        "libc": {
+            "nanvix_tag": data["nanvix-tag"],
+            "nanvix_version": data["nanvix-version"],
+            "nanvix_commit": data["nanvix-commit"],
+            "sysroot_sha256": data["sysroot-sha256"],
+        },
+        "compat": data["compat"],
+        "features": data["features"],
+    }
+    try:
+        return validate_sdk_release(contract).provenance()
+    except SdkValidationError as exc:
         log.fatal(
-            f"Lockfile {path}: metadata.sdk image coordinate is inconsistent",
+            f"Lockfile {path}: invalid metadata.sdk: {exc}",
             code=EXIT_INVALID_ARGS,
         )
-    return SdkProvenance(
-        sdk_version=text("sdk-version"),
-        provider_id=text("provider-id"),
-        provider=text("provider"),
-        role=text("role"),
-        image=image,
-        nanvix_tag=text("nanvix-tag"),
-        nanvix_version=text("nanvix-version"),
-        nanvix_commit=text("nanvix-commit"),
-        sysroot_sha256=text("sysroot-sha256"),
-        compat=raw_compat,
-        schema_version=1,
-        target=object_table("target"),
-        toolchain=object_table("toolchain"),
-        features=object_table("features"),
-    )
 
 
 def _parse_package(data: dict[str, object], path: Path) -> ResolvedPackage:

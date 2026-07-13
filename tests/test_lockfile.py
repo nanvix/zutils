@@ -19,6 +19,7 @@ from nanvix_zutil.lockfile import (
     read_lockfile,
     write_lockfile,
 )
+from tests.testutils import make_sdk_provenance
 
 
 def _make_sample_lockfile() -> Lockfile:
@@ -27,6 +28,7 @@ def _make_sample_lockfile() -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash="sha256:abc123",
             nanvix_zutil_version="0.2.2",
+            sdk=make_sdk_provenance(),
         ),
         packages=[
             ResolvedPackage(
@@ -119,6 +121,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
             metadata=LockfileMetadata(
                 manifest_hash="sha256:def456",
                 nanvix_zutil_version="0.2.2",
+                sdk=make_sdk_provenance(),
             ),
             packages=[
                 ResolvedPackage(
@@ -157,6 +160,7 @@ class TestLockfileRoundTrip(unittest.TestCase):
             metadata=LockfileMetadata(
                 manifest_hash="sha256:id_test",
                 nanvix_zutil_version="0.2.2",
+                sdk=make_sdk_provenance(),
             ),
             packages=[
                 ResolvedPackage(
@@ -268,24 +272,10 @@ class TestDownloadLockfileAsset(unittest.TestCase):
     def test_downloads_and_parses_lockfile(self, mock_download: MagicMock) -> None:
         # Build a minimal valid lockfile and write it to a temp file
         # that the mock will return as the download path.
-        lockfile_content = (
-            "[metadata]\n"
-            'manifest-hash = "sha256:abc"\n'
-            'nanvix-zutil-version = "0.2.2"\n'
-            "\n"
-            "[[package]]\n"
-            'name = "nanvix"\n'
-            'repo = "nanvix/nanvix"\n'
-            'kind = "sysroot"\n'
-            'ref-kind = "tag"\n'
-            'ref-value = "0.1.0"\n'
-            'resolved-tag = "v0.1.0"\n'
-            'resolved-commitish = "aaa"\n'
-            "release-id = 1\n"
-            "dependencies = []\n"
-        )
         out_path = Path(self._tmpdir.name) / "nanvix.lock"
-        out_path.write_text(lockfile_content)
+        lockfile = _make_sample_lockfile()
+        lockfile.metadata.manifest_hash = "sha256:abc"
+        write_lockfile(lockfile, out_path)
         mock_download.return_value = out_path
 
         release: dict[str, object] = {
@@ -301,7 +291,7 @@ class TestDownloadLockfileAsset(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result.metadata.manifest_hash, "sha256:abc")
-        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(len(result.packages), 2)
         self.assertEqual(result.packages[0].name, "nanvix")
 
 

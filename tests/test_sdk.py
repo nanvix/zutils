@@ -15,7 +15,6 @@ from nanvix_zutil.sdk import (
     SDK_LABEL_PREFIX,
     SdkValidationError,
     _release_asset,
-    consumer_release_tag,
     sdk_consumer_release_tag,
     validate_sdk_release,
     verify_sdk_metadata,
@@ -234,16 +233,6 @@ class TestSdkReleaseNames(unittest.TestCase):
         second = sdk_consumer_release_tag("1.3.1", "v0.20.0-sdk.2")
         self.assertEqual(first, "1.3.1-nanvix-0.20.0-sdk.1")
         self.assertNotEqual(first, second)
-
-    def test_legacy_coordinate_preserved(self) -> None:
-        self.assertEqual(
-            consumer_release_tag("1.3.1", "0.20.0"),
-            "1.3.1-nanvix-0.20.0",
-        )
-
-    def test_runtime_skew_rejected(self) -> None:
-        with self.assertRaises(SdkValidationError):
-            consumer_release_tag("1.3.1", "0.20.1", "v0.20.0-sdk.1")
 
 
 if __name__ == "__main__":

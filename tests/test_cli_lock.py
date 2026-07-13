@@ -21,7 +21,7 @@ from nanvix_zutil.lockfile import (
     write_lockfile,
 )
 from nanvix_zutil.script import ZScript
-from tests.testutils import write_manifest
+from tests.testutils import MINIMAL_MANIFEST, make_sdk_provenance, write_manifest
 
 
 def _make_mock_lockfile(manifest_path: Path) -> Lockfile:
@@ -32,6 +32,7 @@ def _make_mock_lockfile(manifest_path: Path) -> Lockfile:
         metadata=LockfileMetadata(
             manifest_hash=compute_manifest_hash(manifest_path),
             nanvix_zutil_version="0.2.2",
+            sdk=make_sdk_provenance(),
         ),
         packages=[
             ResolvedPackage(
@@ -143,10 +144,11 @@ class TestLockCheck(unittest.TestCase):
 
         # Modify the manifest to make the lockfile stale
         manifest_path.write_text(
-            "[package]\n"
-            'name = "test"\n'
-            'version = "0.2.0"\n'
-            'nanvix-version = "0.2.0"\n'
+            MINIMAL_MANIFEST.replace(
+                'version = "0.1.0"',
+                'version = "0.2.0"',
+                1,
+            )
         )
 
         script = ZScript()

@@ -82,7 +82,6 @@ class TestStrictSdkResolver(unittest.TestCase):
         result = resolve(
             self.manifest,
             cache_dir=Path.cwd() / "cache",
-            strict=True,
         )
         self.assertIsInstance(result, BlockedResolution)
         assert isinstance(result, BlockedResolution)
@@ -115,7 +114,6 @@ class TestStrictSdkResolver(unittest.TestCase):
         result = resolve(
             self.manifest,
             cache_dir=Path.cwd() / "cache",
-            strict=True,
             shallow=True,
         )
         self.assertNotIsInstance(result, BlockedResolution)
@@ -151,7 +149,6 @@ class TestStrictSdkResolver(unittest.TestCase):
         result = resolve(
             self.manifest,
             cache_dir=Path.cwd() / "cache",
-            strict=True,
         )
         self.assertIsInstance(result, BlockedResolution)
         assert isinstance(result, BlockedResolution)
@@ -173,7 +170,6 @@ class TestStrictSdkResolver(unittest.TestCase):
                 resolve(
                     self.manifest,
                     cache_dir=Path.cwd() / "cache",
-                    strict=True,
                 )
         self.assertEqual(context.exception.code, 2)
 
@@ -196,7 +192,6 @@ class TestStrictSdkResolver(unittest.TestCase):
                 resolve(
                     self.manifest,
                     cache_dir=Path.cwd() / "cache",
-                    strict=True,
                 )
         self.assertEqual(context.exception.code, 2)
 
@@ -241,7 +236,6 @@ class TestStrictSdkResolver(unittest.TestCase):
                 resolve(
                     self.manifest,
                     cache_dir=Path.cwd() / "cache",
-                    strict=True,
                 )
         self.assertEqual(context.exception.code, 2)
 
