@@ -11,10 +11,8 @@ etc.) without publishing a release.
 2. Files from `PATH/bin/` and `PATH/lib/` are copied on top of the
    downloaded sysroot, replacing matching artifacts.
 3. Sysroot verification runs against the overlaid result.
-4. If `PATH/deps/<name>/` directories exist for any ported dependency
-   (repos under the `nanvix/` organisation, such as `nanvix/zlib` or
-   `nanvix/cpython`), those are installed from local files instead of
-   downloading from GitHub.
+4. Published dependencies are still resolved against the exact SDK revision.
+   Local dependency directories are consumed only with `--offline`.
 
 ## Offline Mode
 
@@ -25,8 +23,8 @@ all artifacts to be available locally via `--with-nanvix`.  In offline mode:
   is not provided.
 - **All** dependencies (not just `nanvix/`-owned) are resolved from
   `PATH/deps/<name>/`.
-- Missing individual dependencies produce a warning rather than a fatal
-  error, allowing the port's own build logic to handle fallbacks.
+- Missing individual local dependencies produce a warning rather than a fatal
+  error so local development can provide them by other means.
 - A local sysroot must be provided via `--sysroot-path`.
 
 ## Sysroot Path Override
@@ -48,9 +46,6 @@ precedence over version-based resolution.
   │   ├── mkramfs.elf          # all modes
   │   ├── linuxd.elf           # multi-process only
   │   └── uservm.elf           # multi-process only
-  └── lib/
-      ├── libposix.a           # all modes
-      └── user.ld              # all modes
   ```
 
   `standalone` (default) and `single-process` require the same set.
@@ -71,8 +66,6 @@ cd /path/to/consumer   # e.g. usr/lib/zlib
 # Clean sysroot and re-run with local override
 rm -rf .nanvix/sysroot .nanvix/env.json
 .nanvix/venv/bin/nanvix-zutil setup \
-    --with-docker nanvix/toolchain:latest-minimal \
-    --allow-local-docker-override \
     --with-nanvix ~/src/nanvix/nanvix
 
 # Verify
@@ -109,9 +102,7 @@ The `z.sh` and `z.ps1` wrappers forward `--with-nanvix` directly to
 `nanvix-zutil`. Pass the flag to any subcommand that accepts it:
 
 ```bash
-./z setup --with-docker nanvix/toolchain:latest-minimal \
-    --allow-local-docker-override \
-    --with-nanvix ~/src/nanvix/nanvix
+./z setup --with-nanvix ~/src/nanvix/nanvix
 ./z build
 ```
 

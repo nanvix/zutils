@@ -12,7 +12,7 @@ import sys
 
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP, EXIT_SUCCESS
-from nanvix_zutil.manifest import ToolchainKind, load_manifest
+from nanvix_zutil.manifest import load_manifest
 from nanvix_zutil.paths import manifest_path
 from nanvix_zutil.resolver import BlockedResolution, resolve
 
@@ -68,7 +68,6 @@ def main() -> None:
         manifest,
         gh_token=gh_token,
         shallow=args.shallow,
-        strict=manifest.toolchain.kind == ToolchainKind.SDK,
     )
     if isinstance(lockfile, BlockedResolution):
         print(json.dumps(lockfile.to_dict(), sort_keys=True))
@@ -93,21 +92,20 @@ def main() -> None:
         "package_version": manifest.version,
     }
     sdk = lockfile.metadata.sdk
-    if sdk is not None:
-        result.update(
-            {
-                "sdk_version": sdk.sdk_version,
-                "sdk_provider_id": sdk.provider_id,
-                "sdk_provider": sdk.provider,
-                "sdk_image": sdk.image.name,
-                "sdk_digest": sdk.image.digest,
-                "sdk_image_ref": sdk.image.ref,
-                "sdk_c_abi": str(sdk.compat["c_abi"]),
-                "sdk_libc_tag": sdk.nanvix_tag,
-                "sdk_libc_commit": sdk.nanvix_commit,
-                "sdk_sysroot_sha256": sdk.sysroot_sha256,
-            }
-        )
+    result.update(
+        {
+            "sdk_version": sdk.sdk_version,
+            "sdk_provider_id": sdk.provider_id,
+            "sdk_provider": sdk.provider,
+            "sdk_image": sdk.image.name,
+            "sdk_digest": sdk.image.digest,
+            "sdk_image_ref": sdk.image.ref,
+            "sdk_c_abi": str(sdk.compat["c_abi"]),
+            "sdk_libc_tag": sdk.nanvix_tag,
+            "sdk_libc_commit": sdk.nanvix_commit,
+            "sdk_sysroot_sha256": sdk.sysroot_sha256,
+        }
+    )
 
     for key, value in result.items():
         print(f"{key}={value}")

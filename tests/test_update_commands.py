@@ -16,7 +16,6 @@ import os
 import stat
 import subprocess
 import sys
-import tomllib
 import unittest
 import zipfile
 from pathlib import Path
@@ -84,8 +83,6 @@ def make_consumer(root: Path, *, newline: str = "\n") -> Path:
             f"jobs:{newline}"
             f"  ci:{newline}"
             f"    with:{newline}"
-            f"      docker-image: >-{newline}"
-            f"        {_OLD_IMAGE}{newline}"
             f"      caller-event-name: pull_request{newline}"
         ).encode()
     )
@@ -171,7 +168,6 @@ class TestUpdateNanvix(unittest.TestCase):
         self.assertEqual(
             result.changed_files,
             (
-                ".github/workflows/nanvix-ci.yml",
                 ".nanvix/nanvix.lock",
                 ".nanvix/nanvix.toml",
             ),
@@ -182,7 +178,6 @@ class TestUpdateNanvix(unittest.TestCase):
         self.assertNotIn("NANVIX_SDK_IMAGE", (root / ".nanvix/z.py").read_text())
         workflow = (root / ".github/workflows/nanvix-ci.yml").read_text()
         self.assertNotIn("docker-image:", workflow)
-        self.assertNotIn(_OLD_IMAGE, workflow)
         self.assertIn("caller-event-name: pull_request", workflow)
         self.assertEqual(
             read_lockfile(root / ".nanvix/nanvix.lock").metadata.sdk,
@@ -218,35 +213,26 @@ class TestUpdateNanvix(unittest.TestCase):
             self.assertIn(b"\r\n", content)
             self.assertNotIn(b"\n", content.replace(b"\r\n", b""))
 
-    def test_transitional_marker_is_optional_and_checked(self) -> None:
+    def test_unrelated_script_is_not_modified(self) -> None:
         root = Path.cwd()
         contract = make_consumer(root)
         marker = root / ".nanvix/z.py"
         marker.write_text(
             f'NANVIX_SDK_IMAGE = "{_OLD_IMAGE}"\n' "from nanvix_zutil import ZScript\n"
         )
+        original = marker.read_bytes()
         result, _code = update_nanvix._run(nanvix_args(contract.name))
-        self.assertIn(".nanvix/z.py", result.changed_files)
-        self.assertIn(self.contract.image.ref, marker.read_text())
+        self.assertNotIn(".nanvix/z.py", result.changed_files)
+        self.assertEqual(marker.read_bytes(), original)
 
-    def test_workflow_call_input_definition_is_preserved(self) -> None:
-        """Only caller values, not reusable-workflow input schemas, are removed."""
-        workflow = (
-            "on:\n"
-            "  workflow_call:\n"
-            "    inputs:\n"
-            "      docker-image:\n"
-            "        type: string\n"
-            "jobs:\n"
-            "  ci:\n"
-            "    with:\n"
-            f"      docker-image: {_OLD_IMAGE}\n"
-        )
-        candidate = update_nanvix._remove_docker_image_inputs(workflow)
-        self.assertIsNotNone(candidate)
-        assert candidate is not None
-        self.assertIn("      docker-image:\n        type: string\n", candidate)
-        self.assertNotIn(_OLD_IMAGE, candidate)
+    def test_workflow_is_outside_sdk_revision_update(self) -> None:
+        root = Path.cwd()
+        contract = make_consumer(root)
+        workflow = root / ".github/workflows/nanvix-ci.yml"
+        original = workflow.read_bytes()
+        result, _code = update_nanvix._run(nanvix_args(contract.name))
+        self.assertNotIn(".github/workflows/nanvix-ci.yml", result.changed_files)
+        self.assertEqual(workflow.read_bytes(), original)
 
     def test_dependencies_are_retargeted_before_strict_resolution(self) -> None:
         root = Path.cwd()
@@ -261,13 +247,20 @@ class TestUpdateNanvix(unittest.TestCase):
             candidate.dependencies[0].ref.value,
             "1.3.1-nanvix-0.20.0-sdk.1",
         )
-        self.assertTrue(self.resolve.call_args.kwargs["strict"])
+        self.assertNotIn("strict", self.resolve.call_args.kwargs)
+        current_pin = update_nanvix.load_manifest(manifest_path).toolchain.sdk
         self.assertEqual(
             self.resolve.call_args.kwargs["manifest_content"],
-            update_nanvix._update_manifest(manifest_path.read_bytes(), self.contract),
+            update_nanvix._update_manifest(
+                manifest_path.read_bytes(),
+                self.contract,
+                current_pin,
+            ),
         )
 
-    def test_nested_transitional_toolchain_is_fully_canonicalized(self) -> None:
+    def test_nested_transitional_toolchain_is_rejected(self) -> None:
+        root = Path.cwd()
+        contract = make_consumer(root)
         old = (
             "[package]\n"
             'name = "test"\n'
@@ -282,13 +275,10 @@ class TestUpdateNanvix(unittest.TestCase):
             "\n[dependencies]\n"
             'zlib = "1.3.1"\n'
         ).encode()
-        candidate = update_nanvix._update_manifest(old, self.contract)
-        data = tomllib.loads(candidate.decode())
-        self.assertNotIn("sdk", data["toolchain"])
-        self.assertEqual(
-            data["toolchain"]["kind"],
-            "nanvix-sdk",
-        )
+        (root / ".nanvix/nanvix.toml").write_bytes(old)
+        with self.assertRaises(SystemExit) as context:
+            update_nanvix._run(nanvix_args(contract.name))
+        self.assertEqual(context.exception.code, 2)
 
     def test_blocked_result_writes_nothing(self) -> None:
         root = Path.cwd()

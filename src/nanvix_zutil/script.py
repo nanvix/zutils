@@ -36,9 +36,6 @@ from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
     RefKind,
-    extract_nanvix_version,
-    extract_nanvix_version_base,
-    suffix_dep,
 )
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
@@ -50,18 +47,13 @@ from nanvix_zutil.docker import (
     Mount,
     is_windows,
 )
-from nanvix_zutil.exitcodes import (
-    EXIT_DEGRADED_SETUP,
-    EXIT_INVALID_ARGS,
-    EXIT_MISSING_DEP,
-)
-from nanvix_zutil.github import resolve_release, resolve_release_with_fallback
+from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
 from nanvix_zutil.helpers import (
     check_docker,
     sync_configs,
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
-from nanvix_zutil.manifest import Manifest, ToolchainKind, load_manifest
+from nanvix_zutil.manifest import Manifest, load_manifest
 from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
 from nanvix_zutil.paths import sysroot as _sysroot_dir
@@ -101,22 +93,6 @@ class ZScript:
         docker: Active :class:`~nanvix_zutil.DockerConfig`, or ``None``
             when Docker mode is not in use.
     """
-
-    SYSROOT_REQUIRED_FILES: tuple[str, ...] = (
-        "lib/libposix.a",
-        "lib/user.ld",
-        "bin/nanvixd.elf",
-        "bin/kernel.elf",
-        "bin/mkramfs.elf",
-    )
-
-    SYSROOT_REQUIRED_FILES_WINDOWS: tuple[str, ...] = (
-        "lib/libposix.a",
-        "lib/user.ld",
-        "bin/nanvixd.exe",
-        "bin/kernel.elf",
-        "bin/mkramfs.exe",
-    )
 
     SDK_RUNTIME_REQUIRED_FILES: tuple[str, ...] = (
         "bin/nanvixd.elf",
@@ -202,14 +178,10 @@ class ZScript:
         Subclasses can extend by overriding the class attributes or
         this method.
         """
-        if self.manifest.toolchain.kind == ToolchainKind.SDK and is_windows():
+        if is_windows():
             files = list(self.SDK_RUNTIME_REQUIRED_FILES_WINDOWS)
-        elif self.manifest.toolchain.kind == ToolchainKind.SDK:
-            files = list(self.SDK_RUNTIME_REQUIRED_FILES)
-        elif is_windows():
-            files = list(self.SYSROOT_REQUIRED_FILES_WINDOWS)
         else:
-            files = list(self.SYSROOT_REQUIRED_FILES)
+            files = list(self.SDK_RUNTIME_REQUIRED_FILES)
         if self.config.deployment_mode == "multi-process":
             files.extend(self.SYSROOT_MULTI_PROCESS_FILES)
         if self.config.deployment_mode == "standalone":
@@ -227,7 +199,6 @@ class ZScript:
         self.sysroot: Sysroot | None = None
         self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
-        self._used_fallback: bool = False
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
         self._cli_sysroot_path: str | None = None
@@ -312,7 +283,7 @@ class ZScript:
     # Lifecycle hooks — auto-implemented
     # ------------------------------------------------------------------
 
-    def setup(self) -> bool:
+    def setup(self) -> None:
         """Prepare the build environment.
 
         The base implementation automatically downloads the Nanvix sysroot
@@ -322,19 +293,10 @@ class ZScript:
         Subclasses may override this to perform additional setup steps.
         Call ``super().setup()`` to retain the automatic download behaviour::
 
-            def setup(self) -> bool:
-                failed = super().setup()
+            def setup(self) -> None:
+                super().setup()
                 # extra verification or configuration here
-                return failed
-
-        Returns:
-            ``True`` if any dependency was resolved via version fallback, or any
-            other failure condition
-            ``False`` if all dependencies matched their exact requested
-            versions.
         """
-        self._used_fallback = False
-
         # Resolve sysroot: --sysroot-path takes precedence.
         sysroot_path = self._cli_sysroot_path
 
@@ -392,34 +354,15 @@ class ZScript:
 
         self.sysroot.verify(self.sysroot_required_files())
 
-        # Deferred auto-suffix: when sysroot is "latest", load_manifest()
-        # skips suffixing because the real version isn't known yet.  Now
-        # that the sysroot is resolved, suffix VERSION deps before
-        # passing them to install_dep().
         deps: list[Dependency] = list(self.manifest.dependencies)
-        if self.manifest.sysroot_ref.value == "latest":
-            if self.sysroot.tag:
-                resolved_version = self.sysroot.tag.removeprefix("v")
-                deps = [suffix_dep(d, resolved_version) for d in deps]
-            elif not self._offline:
-                log.fatal(
-                    "Sysroot resolved to 'latest' but no tag is available"
-                    " — delete .nanvix/sysroot and re-run 'nanvix-zutil setup'.",
-                    code=EXIT_MISSING_DEP,
-                )
-            # In offline mode with no tag, deps remain un-suffixed.
-            # This is acceptable because offline resolution uses local
-            # paths (deps/<name>/) which are version-agnostic.
 
         sdk_releases: dict[str, dict[str, object]] = {}
-        sdk_mode = self.manifest.toolchain.kind == ToolchainKind.SDK
-        if sdk_mode and not self._offline:
+        if not self._offline:
             # Windows resolves the digest-bound release tuple but cannot execute the
             # Linux provider image; CI verifies that image on its Linux job.
             resolution = resolve(
                 self.manifest,
                 gh_token=self.config.get(CFG_GH_TOKEN),
-                strict=True,
                 verify_sdk_image=not is_windows(),
             )
             if isinstance(resolution, BlockedResolution):
@@ -475,7 +418,7 @@ class ZScript:
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
-                if nanvix_local and (self._offline or not sdk_mode):
+                if nanvix_local and self._offline:
                     should_try_local = self._offline or dep.repo.startswith("nanvix/")
                     if should_try_local and self.buildroot.install_local_nanvix(
                         dep, Path(nanvix_local)
@@ -492,41 +435,11 @@ class ZScript:
                     continue
 
                 try:
-                    # Resolve release with version fallback for nanvix-suffixed
-                    # deps, then pass the pre-resolved release and enable
-                    # cross-mode asset fallback in install_dep().
-                    release: dict[str, object] | None = None
-                    base_version = extract_nanvix_version_base(str(dep.ref.value))
-                    if sdk_mode:
-                        release = sdk_releases.get(dep.name)
-                        if release is None:
-                            log.fatal(
-                                f"Strict SDK release missing for '{dep.name}'",
-                                code=EXIT_MISSING_DEP,
-                            )
-                    elif base_version is not None:
-                        release, fb_ver = resolve_release_with_fallback(
-                            repo=dep.repo,
-                            version_specifier=str(dep.ref.value),
-                            base_version=base_version,
-                            gh_token=self.config.get(CFG_GH_TOKEN),
-                        )
-                        # Log when version fallback was used.
-                        # fb_ver is None when the exact tag was found;
-                        # non-None means a fallback release was used.
-                        if fb_ver is not None:
-                            self._used_fallback = True
-                            requested_ver = extract_nanvix_version(str(dep.ref.value))
-                            log.warning(
-                                f"Version fallback for {dep.name}: "
-                                f"requested nanvix-{requested_ver}, "
-                                f"resolved nanvix-{fb_ver}"
-                            )
-                    else:
-                        release = resolve_release(
-                            repo=dep.repo,
-                            version_specifier=dep.ref.value,
-                            gh_token=self.config.get(CFG_GH_TOKEN),
+                    release = sdk_releases.get(dep.name)
+                    if release is None:
+                        log.fatal(
+                            f"Exact SDK release missing for '{dep.name}'",
+                            code=EXIT_MISSING_DEP,
                         )
 
                     self.buildroot.install_dep(
@@ -546,7 +459,6 @@ class ZScript:
 
         self.config.save()
         sync_configs()
-        return self._used_fallback
 
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.
@@ -590,7 +502,6 @@ class ZScript:
             self.manifest,
             gh_token=self.config.get(CFG_GH_TOKEN),
             shallow=shallow,
-            strict=self.manifest.toolchain.kind == ToolchainKind.SDK,
         )
         if isinstance(lockfile, BlockedResolution):
             log.fatal(
@@ -611,15 +522,6 @@ class ZScript:
         """
         lock_path = nanvix_root() / "nanvix.lock"
         lockfile = read_lockfile(lock_path)
-
-        # Warn when "latest" lockfile may silently be stale.
-        sysroot_pkg = next((p for p in lockfile.packages if p.name == "nanvix"), None)
-        if sysroot_pkg is not None and sysroot_pkg.ref.value == "latest":
-            log.warning(
-                "'nanvix-version = \"latest\"' — lockfile staleness cannot"
-                " be detected by hash; re-run 'nanvix-zutil lock' to pick up new"
-                " releases."
-            )
 
         if is_stale(lockfile):
             log.fatal(
@@ -759,7 +661,6 @@ class ZScript:
             if args.subcommand == "setup":
                 if (
                     requested_image is not None
-                    and manifest_image is not None
                     and requested_image != manifest_image
                     and not allow_override
                 ):
@@ -771,15 +672,13 @@ class ZScript:
                         " --allow-local-docker-override for an intentional"
                         " local-development override.",
                     )
-                image = requested_image or manifest_image or persisted_image
+                image = requested_image or manifest_image
             else:
                 image = persisted_image
 
             if image is None:
                 log.fatal(
-                    "No Docker image configured. SDK manifests must define an"
-                    " immutable build image; legacy manifests must run"
-                    " 'setup --with-docker IMAGE'.",
+                    "No Docker image configured. Run setup first.",
                     code=EXIT_INVALID_ARGS,
                 )
 
@@ -804,9 +703,7 @@ class ZScript:
         subcommand: str | None = args.subcommand
 
         # Fail fast on env.json / nanvix.toml sysroot version drift so
-        # users don't build against a stale sysroot. `sysroot_ref` is
-        # always TAG (semver or "latest") or LOCAL; "latest" is
-        # resolved against GitHub so we can compare a concrete tag.
+        # users don't build against a stale sysroot.
         # See https://github.com/nanvix/zutils/issues/263.
         if subcommand is not None and subcommand != "setup":
             pinned = instance.manifest.sysroot_ref
@@ -819,19 +716,7 @@ class ZScript:
                 cached = instance.config.get("sysroot_tag")
                 if isinstance(cached, str) and cached:
                     expected = pinned.value
-                    if expected == "latest" and not instance._offline:
-                        release = resolve_release(
-                            repo="nanvix/nanvix",
-                            version_specifier="latest",
-                            gh_token=instance.config.get(CFG_GH_TOKEN),
-                            semver=True,
-                        )
-                        tag_name = release.get("tag_name")
-                        if isinstance(tag_name, str):
-                            expected = tag_name
-                    if expected != "latest" and cached.removeprefix(
-                        "v"
-                    ) != expected.removeprefix("v"):
+                    if cached.removeprefix("v") != expected.removeprefix("v"):
                         log.fatal(
                             f"Sysroot is stale: env.json={cached!r}, expected={expected!r}."
                             f" (nanvix.toml={pinned.value!r})."
@@ -864,22 +749,7 @@ class ZScript:
 
         handler = dispatch.get(subcommand) if subcommand is not None else None
         if callable(handler) and subcommand is not None:
-            handler_result = handler()
-
-            if subcommand == "setup":
-                if instance._used_fallback:
-                    log.fatal(
-                        f"{subcommand.capitalize()} complete with fallback dependencies",
-                        code=EXIT_DEGRADED_SETUP,
-                    )
-                # NOTE: This is semantically backwards,
-                # but we're going to be making setup standalone soon.
-                # Leave it so we don't have to modify downstreams.
-                elif handler_result is True:
-                    log.fatal(
-                        "Setup override returned True, indicating failure.",
-                        code=EXIT_DEGRADED_SETUP,
-                    )
+            handler()
             log.success(f"{subcommand.capitalize()} complete")
         else:
             log.fatal(f"Unknown subcommand: {subcommand}", code=EXIT_INVALID_ARGS)

@@ -11,6 +11,6 @@ sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"
 sdk-digest = "sha256:880ed7e6a20fe9bf2536b1b3ba9bdbbd067a48f043ec9131d3dd398c65f11f35"
 
 [dependencies]
-lib-hello = { commitish = "HEAD" }
+lib-hello = "0.1.0"
 
 [system-dependencies]

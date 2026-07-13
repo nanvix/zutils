@@ -8,6 +8,7 @@ import os
 import subprocess as sp
 import sys
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -32,13 +33,76 @@ from nanvix_zutil.lockfile import (
     ResolvedAsset,
     ResolvedPackage,
 )
+from nanvix_zutil.manifest import Manifest
 from nanvix_zutil.resolver import BlockedResolution
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
-    MANIFEST_LATEST_WITH_DEPS,
     MANIFEST_WITH_DEPS,
+    make_toml,
+    make_sdk_provenance,
     write_manifest,
 )
+
+_default_resolve_stop: Callable[[], None]
+
+
+def _default_resolution(
+    manifest: Manifest,
+    *_args: object,
+    **_kwargs: object,
+) -> Lockfile:
+    """Return exact SDK releases for a script test manifest."""
+    runtime = str(manifest.sysroot_ref.value).removeprefix("v")
+    packages = [
+        ResolvedPackage(
+            name="nanvix",
+            repo="nanvix/nanvix",
+            kind="sysroot",
+            ref=manifest.sysroot_ref,
+            resolved_tag=f"v{runtime}",
+            resolved_commitish="a" * 40,
+            release_id=1,
+        )
+    ]
+    for index, dep in enumerate(manifest.dependencies, start=2):
+        packages.append(
+            ResolvedPackage(
+                name=dep.name,
+                repo=dep.repo,
+                kind="dependency",
+                ref=dep.ref,
+                resolved_tag=str(dep.ref.value),
+                resolved_commitish="b" * 40,
+                release_id=index,
+                assets=[
+                    ResolvedAsset(
+                        name=f"{dep.name}-microvm-standalone-256mb.tar.bz2",
+                        url=f"https://example.invalid/{dep.name}.tar.bz2",
+                    )
+                ],
+            )
+        )
+    return Lockfile(
+        LockfileMetadata(
+            manifest_hash="sha256:test",
+            nanvix_zutil_version="0.15.3",
+            sdk=make_sdk_provenance(runtime),
+        ),
+        packages,
+    )
+
+
+def setUpModule() -> None:
+    """Prevent routine script tests from accessing SDK release services."""
+    global _default_resolve_stop
+    patcher = patch("nanvix_zutil.script.resolve", side_effect=_default_resolution)
+    patcher.start()
+    _default_resolve_stop = patcher.stop
+
+
+def tearDownModule() -> None:
+    """Stop the module-wide SDK resolver patch."""
+    _default_resolve_stop()
 
 
 class TestZScriptInit(unittest.TestCase):
@@ -128,17 +192,11 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.path = Path("/fake/sysroot")
 
         fake_buildroot = MagicMock()
-        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.1.0"}
-
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch(
                 "nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot
             ) as mock_create,
-            patch(
-                "nanvix_zutil.script.resolve_release_with_fallback",
-                return_value=(fake_release, "0.1.0"),
-            ),
         ):
             script = ZScript()
             script.setup()
@@ -175,58 +233,6 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
         config_file = paths.nanvix_root() / "env.json"
         self.assertTrue(config_file.exists())
-
-
-class TestZScriptSetupLatestSysroot(unittest.TestCase):
-    """setup() with nanvix-version = "latest" suffixes deps correctly."""
-
-    def setUp(self) -> None:
-        write_manifest(MANIFEST_LATEST_WITH_DEPS)
-        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
-            os.environ.pop(key, None)
-
-    def test_setup_latest_sysroot_suffixes_deps(self) -> None:
-        """setup() suffixes VERSION deps with the resolved sysroot tag."""
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.tag = "v0.12.277"
-
-        fake_buildroot = MagicMock()
-        fake_release: dict[str, object] = {"tag_name": "1.3.1-nanvix-0.12.277"}
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
-            patch(
-                "nanvix_zutil.script.resolve_release_with_fallback",
-                return_value=(fake_release, "0.12.277"),
-            ),
-        ):
-            script = ZScript()
-            script.setup()
-
-        # install_dep should be called with the suffixed ref value.
-        fake_buildroot.install_dep.assert_called_once()
-        _, kwargs = fake_buildroot.install_dep.call_args
-        self.assertEqual(kwargs["dep"].ref.value, "1.3.1-nanvix-0.12.277")
-
-    def test_setup_latest_sysroot_empty_tag_fatal(self) -> None:
-        """setup() exits fatally when sysroot tag is empty (upgrade path)."""
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.tag = ""
-
-        with (
-            patch(
-                "nanvix_zutil.script.Sysroot.download",
-                return_value=fake_sysroot,
-            ),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            script = ZScript()
-            script.setup()
-
-        self.assertEqual(ctx.exception.code, 3)
 
 
 class TestZScriptSyncConfigs(unittest.TestCase):
@@ -512,7 +518,11 @@ class TestSdkDockerSelection(unittest.TestCase):
             ],
         )
         lock = Lockfile(
-            LockfileMetadata("sha256:x", "0.15.0"),
+            LockfileMetadata(
+                "sha256:x",
+                "0.15.0",
+                sdk=make_sdk_provenance("0.20.0"),
+            ),
             packages=[package],
         )
         fake_buildroot = MagicMock()
@@ -526,18 +536,14 @@ class TestSdkDockerSelection(unittest.TestCase):
                 return_value=fake_buildroot,
             ),
             patch("nanvix_zutil.script.resolve", return_value=lock) as resolver,
-            patch("nanvix_zutil.script.resolve_release_with_fallback") as fallback,
         ):
             script = ZScript()
-            used_fallback = script.setup()
-        self.assertFalse(used_fallback)
+            script.setup()
         resolver.assert_called_once()
-        self.assertTrue(resolver.call_args.kwargs["strict"])
         self.assertEqual(
             resolver.call_args.kwargs["verify_sdk_image"],
             sys.platform != "win32",
         )
-        fallback.assert_not_called()
         fake_buildroot.install_dep.assert_called_once()
         release = fake_buildroot.install_dep.call_args.kwargs["_release"]
         self.assertEqual(
@@ -566,13 +572,11 @@ class TestSdkDockerSelection(unittest.TestCase):
             ),
             patch("nanvix_zutil.script.resolve", return_value=blocked),
             patch("nanvix_zutil.script.Buildroot.create") as create,
-            patch("nanvix_zutil.script.resolve_release_with_fallback") as fallback,
             self.assertRaises(SystemExit) as context,
         ):
             ZScript().setup()
         self.assertEqual(context.exception.code, EXIT_MISSING_DEP)
         create.assert_not_called()
-        fallback.assert_not_called()
 
 
 class TestHelpersRun(unittest.TestCase):
@@ -894,8 +898,6 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
             os.environ["NANVIX_DEPLOYMENT_MODE"] = mode
             script = ZScript()
             files = script.sysroot_required_files()
-            self.assertIn("lib/libposix.a", files, f"missing in {mode}")
-            self.assertIn("lib/user.ld", files, f"missing in {mode}")
             self.assertIn(nanvixd, files, f"missing in {mode}")
             self.assertIn("bin/kernel.elf", files, f"missing in {mode}")
             self.assertIn(mkramfs, files, f"missing in {mode}")
@@ -1064,192 +1066,6 @@ class TestZScriptCleanWindows(unittest.TestCase):
         script.clean()  # Should not raise.
 
 
-class TestZScriptSetupFallbackReporting(unittest.TestCase):
-    """setup() reports fallback state correctly."""
-
-    def setUp(self) -> None:
-        write_manifest(MANIFEST_WITH_DEPS)
-        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
-            os.environ.pop(key, None)
-
-    def test_setup_returns_false_when_no_fallback(self) -> None:
-        """setup() returns False when all deps resolve exactly."""
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-
-        fake_buildroot = MagicMock()
-        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.1.0"}
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
-            patch(
-                "nanvix_zutil.script.resolve_release_with_fallback",
-                return_value=(fake_release, None),  # None = no fallback
-            ),
-        ):
-            script = ZScript()
-            result = script.setup()
-
-        self.assertFalse(result)
-
-    def test_setup_returns_true_when_fallback_used(self) -> None:
-        """setup() returns True when a dep falls back to a different version."""
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-
-        fake_buildroot = MagicMock()
-        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.0.9"}
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
-            patch(
-                "nanvix_zutil.script.resolve_release_with_fallback",
-                return_value=(fake_release, "0.0.9"),  # non-None = fallback used
-            ),
-        ):
-            script = ZScript()
-            result = script.setup()
-
-        self.assertTrue(result)
-
-    def test_setup_no_deps_returns_false(self) -> None:
-        """setup() returns False when there are no dependencies."""
-        write_manifest()  # default manifest, no deps
-
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-
-        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
-            script = ZScript()
-            result = script.setup()
-
-        self.assertFalse(result)
-
-    def test_setup_fallback_logs_warning(self) -> None:
-        """setup() logs at warning level when fallback is used."""
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-
-        fake_buildroot = MagicMock()
-        fake_release: dict[str, object] = {"tag_name": "1.0-nanvix-0.0.9"}
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch("nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot),
-            patch(
-                "nanvix_zutil.script.resolve_release_with_fallback",
-                return_value=(fake_release, "0.0.9"),
-            ),
-            patch("nanvix_zutil.script.log") as mock_log,
-        ):
-            script = ZScript()
-            script.setup()
-
-        # Verify warning was called (not info) for fallback message.
-        warning_calls = [
-            call
-            for call in mock_log.warning.call_args_list
-            if "fallback" in str(call).lower()
-        ]
-        self.assertTrue(warning_calls, "Expected a warning log for fallback")
-
-        # Verify info was NOT called for fallback (regression guard).
-        info_calls = [
-            call
-            for call in mock_log.info.call_args_list
-            if "fallback" in str(call).lower()
-        ]
-        self.assertFalse(info_calls, "Fallback should use warning, not info")
-
-
-class TestZScriptMainDegradedExit(unittest.TestCase):
-    """main() exits with EXIT_DEGRADED_SETUP when setup uses fallback."""
-
-    def setUp(self) -> None:
-        write_manifest(MANIFEST_WITH_DEPS)
-        for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
-            os.environ.pop(key, None)
-
-        # script.py calls helpers.check_docker (imported into the script
-        # module namespace). Patch it to a no-op so these tests don't try to
-        # actually pull a Docker image.
-        p = patch("nanvix_zutil.script.check_docker", return_value=None)
-        p.start()
-        self.addCleanup(p.stop)
-
-    def test_exit_degraded_setup_value(self) -> None:
-        """EXIT_DEGRADED_SETUP has the expected value of 7."""
-        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
-
-        self.assertEqual(EXIT_DEGRADED_SETUP, 7)
-
-    def test_main_exits_7_on_fallback_setup(self) -> None:
-        """main() with setup subcommand exits 7 when fallback was used."""
-        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
-
-        def _setup_with_fallback(self_inner: ZScript) -> bool:
-            self_inner._used_fallback = True  # pyright: ignore[reportPrivateUsage]
-            return True
-
-        with (
-            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch.object(ZScript, "setup", _setup_with_fallback),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            ZScript.main()
-
-        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
-
-    def test_main_exits_7_on_return_only_fallback_setup(self) -> None:
-        """main() honors setup() returning True without touching private state."""
-        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
-
-        with (
-            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch.object(ZScript, "setup", return_value=True),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            ZScript.main()
-
-        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
-
-    def test_main_exits_0_on_clean_setup(self) -> None:
-        """main() with setup subcommand completes normally when no fallback."""
-        with (
-            patch("sys.argv", ["z.py", "setup", "--with-docker", "test/image:tag"]),
-            patch.object(ZScript, "setup", return_value=False),
-            patch("nanvix_zutil.script.log") as mock_log,
-        ):
-            # Should not raise SystemExit.
-            ZScript.main()
-
-        # Verify success log was emitted.
-        success_calls = [
-            call
-            for call in mock_log.success.call_args_list
-            if "complete" in str(call).lower()
-        ]
-        self.assertTrue(success_calls, "Expected a success log on clean setup")
-
-    def test_main_fatal_exits_with_degraded_code(self) -> None:
-        """main() exits with EXIT_DEGRADED_SETUP when setup() returns True."""
-        from nanvix_zutil.exitcodes import EXIT_DEGRADED_SETUP
-
-        with (
-            patch(
-                "sys.argv",
-                ["z.py", "setup", "--with-docker", "test/image:tag"],
-            ),
-            patch.object(ZScript, "setup", return_value=True),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            ZScript.main()
-
-        self.assertEqual(ctx.exception.code, EXIT_DEGRADED_SETUP)
-
-
 class TestZScriptSysrootDriftCheck(unittest.TestCase):
     """Preflight check fatals on env.json / nanvix.toml sysroot drift."""
 
@@ -1261,40 +1077,13 @@ class TestZScriptSysrootDriftCheck(unittest.TestCase):
         """Non-setup subcommand fatals when cached sysroot_tag != pinned version."""
         import json
 
-        write_manifest(
-            '[package]\nname = "test"\nversion = "0.1.0"\n'
-            'nanvix-version = "0.14.0"\n'
-        )
+        write_manifest(make_toml(nanvix_version="0.14.0"))
         (paths.nanvix_root() / "env.json").write_text(
             json.dumps({"sysroot_tag": "v0.15.0"})
         )
 
         with (
             patch("sys.argv", ["z.py", "lock", "--check"]),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            ZScript.main()
-
-        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-
-    def test_main_exits_missing_dep_on_latest_sysroot_drift(self) -> None:
-        """Non-setup subcommand fatals when pinned latest resolves != cached sysroot_tag."""
-        import json
-
-        write_manifest(
-            '[package]\nname = "test"\nversion = "0.1.0"\n'
-            'nanvix-version = "latest"\n'
-        )
-        (paths.nanvix_root() / "env.json").write_text(
-            json.dumps({"sysroot_tag": "v0.14.0"})
-        )
-
-        with (
-            patch("sys.argv", ["z.py", "lock", "--check"]),
-            patch(
-                "nanvix_zutil.script.resolve_release",
-                return_value={"tag_name": "v0.15.0"},
-            ),
             self.assertRaises(SystemExit) as ctx,
         ):
             ZScript.main()
@@ -1340,30 +1129,6 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
             script.setup()
 
         fake_sysroot.overlay_local_nanvix.assert_not_called()
-
-    def test_setup_local_deps_skips_github(self) -> None:
-        """setup() skips GitHub download for deps found locally."""
-        write_manifest(MANIFEST_WITH_DEPS)
-
-        local_dir = Path.cwd() / "local-nanvix"
-        (local_dir / "deps" / "zlib" / "lib").mkdir(parents=True)
-        (local_dir / "deps" / "zlib" / "lib" / "libz.a").write_bytes(b"local-zlib")
-
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = Path("/fake/sysroot")
-        fake_sysroot.tag = "v0.1.0"
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch("nanvix_zutil.script.resolve_release_with_fallback") as mock_resolve,
-        ):
-            script = ZScript()
-            script._with_nanvix_path = str(local_dir)
-            script.setup()
-
-        # The dependency was satisfied locally so GitHub resolve should not
-        # have been called.
-        mock_resolve.assert_not_called()
 
 
 class TestZScriptSetupLocalSysroot(unittest.TestCase):
@@ -2120,7 +1885,7 @@ class TestOfflineMode(unittest.TestCase):
                 "nanvix_zutil.script.Sysroot.from_local",
                 return_value=fake_sysroot,
             ),
-            patch("nanvix_zutil.script.resolve_release") as mock_resolve,
+            patch("nanvix_zutil.script.resolve") as mock_resolve,
         ):
             script.setup()
 

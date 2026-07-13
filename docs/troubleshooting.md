@@ -171,4 +171,3 @@ tar-copy strategy is used instead of bind mounts.
 | 4 | Network error | GitHub API unreachable or rate-limited |
 | 5 | Build failure | Compiler error in consumer code |
 | 6 | Test failure | Tests did not pass |
-| 7 | Degraded setup | Version fallback was used |

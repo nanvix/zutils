@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 from nanvix_zutil import paths
 from nanvix_zutil.lockfile import (
@@ -20,7 +21,7 @@ from tests.test_sdk import make_sdk_contract
 
 
 class TestSdkManifest(unittest.TestCase):
-    """Preferred, derived, legacy, and malformed SDK pin forms."""
+    """Canonical SDK pins are mandatory."""
 
     def test_immutable_sdk_pin_and_exact_dependency_tag(self) -> None:
         digest = f"sha256:{'a' * 64}"
@@ -53,7 +54,7 @@ class TestSdkManifest(unittest.TestCase):
             "1.3.1-nanvix-0.20.0-sdk.1",
         )
 
-    def test_early_spelling_remains_readable(self) -> None:
+    def test_transitional_spelling_is_rejected(self) -> None:
         digest = f"sha256:{'a' * 64}"
         paths.manifest_path().write_text(
             "[package]\n"
@@ -67,18 +68,20 @@ class TestSdkManifest(unittest.TestCase):
             'image = "ghcr.io/nanvix/nanvix-sdk-c-clang"\n'
             f'digest = "{digest}"\n'
         )
-        pin = load_manifest().toolchain.sdk
-        assert pin is not None
-        self.assertEqual(pin.image_ref, f"{pin.image}@{digest}")
+        with self.assertRaises(SystemExit) as context:
+            load_manifest()
+        self.assertEqual(context.exception.code, 2)
 
-    def test_missing_toolchain_is_legacy(self) -> None:
+    def test_missing_toolchain_is_rejected(self) -> None:
         paths.manifest_path().write_text(
             "[package]\n"
             'name = "test"\n'
             'version = "1.0.0"\n'
             'nanvix-version = "0.20.0"\n'
         )
-        self.assertEqual(load_manifest().toolchain.kind, ToolchainKind.LEGACY)
+        with self.assertRaises(SystemExit) as context:
+            load_manifest()
+        self.assertEqual(context.exception.code, 2)
 
     def test_sdk_runtime_skew_fails(self) -> None:
         paths.manifest_path().write_text(
@@ -87,10 +90,11 @@ class TestSdkManifest(unittest.TestCase):
             'version = "1.0.0"\n'
             'nanvix-version = "0.20.1"\n'
             "\n[toolchain]\n"
-            'type = "sdk"\n'
-            'version = "v0.20.0-sdk.1"\n'
+            'kind = "nanvix-sdk"\n'
+            'sdk-version = "v0.20.0-sdk.1"\n'
             'provider = "c-clang"\n'
-            f'image = "ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:{"a" * 64}"\n'
+            'sdk-image = "ghcr.io/nanvix/nanvix-sdk-c-clang"\n'
+            f'sdk-digest = "sha256:{"a" * 64}"\n'
         )
         with self.assertRaises(SystemExit) as context:
             load_manifest()
@@ -98,7 +102,7 @@ class TestSdkManifest(unittest.TestCase):
 
 
 class TestSdkLockfile(unittest.TestCase):
-    """SDK provenance is optional, round-trippable, and shallow-aware."""
+    """SDK provenance is required, round-trippable, and shallow-aware."""
 
     def test_provenance_round_trip(self) -> None:
         provenance = validate_sdk_release(make_sdk_contract()).provenance()
@@ -116,16 +120,31 @@ class TestSdkLockfile(unittest.TestCase):
         self.assertEqual(restored.metadata.sdk, provenance)
         self.assertTrue(restored.metadata.shallow)
 
-    def test_legacy_lock_remains_readable(self) -> None:
+    def test_lock_without_sdk_is_rejected(self) -> None:
         path = paths.nanvix_root() / "nanvix.lock"
         path.write_text(
             "[metadata]\n"
             'manifest-hash = "sha256:x"\n'
             'nanvix-zutil-version = "0.14.0"\n'
         )
-        restored = read_lockfile(path)
-        self.assertIsNone(restored.metadata.sdk)
-        self.assertFalse(restored.metadata.shallow)
+        with self.assertRaises(SystemExit) as context:
+            read_lockfile(path)
+        self.assertEqual(context.exception.code, 2)
+
+    def test_incomplete_sdk_lock_is_not_written(self) -> None:
+        provenance = validate_sdk_release(make_sdk_contract()).provenance()
+        lock = Lockfile(
+            LockfileMetadata(
+                manifest_hash="sha256:manifest",
+                nanvix_zutil_version="0.15.3",
+                sdk=replace(provenance, target={}),
+            )
+        )
+        path = paths.nanvix_root() / "nanvix.lock"
+        with self.assertRaises(SystemExit) as context:
+            write_lockfile(lock, path)
+        self.assertEqual(context.exception.code, 2)
+        self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

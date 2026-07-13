@@ -44,7 +44,7 @@ __init__.py    ←  public library API (re-exports all public symbols)
   ├── config.py      ←  Config
   ├── docker.py      ←  DockerConfig, Mount
   ├── exitcodes.py   ←  EXIT_* constants
-  ├── github.py      ←  resolve_release, resolve_release_with_fallback
+  ├── github.py      ←  exact release resolution and downloads
   ├── lockfile.py    ←  Lockfile, ResolvedPackage, read_lockfile, write_lockfile
   ├── manifest.py    ←  Manifest, load_manifest
   ├── release.py     ←  package, ArchiveFormat, DEFAULT_FORMATS (.tar.gz, .zip)
@@ -88,7 +88,7 @@ nanvix/<project>/
 - **Type-checked with `pyright` in strict mode.** All code must pass strict type checking. Every public function must have a complete type signature.
 - **Formatted with `black`.** No configuration overrides.
 - **All public functions must have docstrings.**
-- **Deterministic exit codes 0–7:** 0=success, 1=general error, 2=invalid args, 3=missing dependency, 4=network error, 5=build failure, 6=test failure, 7=degraded setup.
+- **Deterministic exit codes 0–6:** 0=success, 1=general error, 2=invalid args, 3=missing dependency, 4=network error, 5=build failure, 6=test failure.
 - **`--json` mode** for all output — errors emit structured JSON with `level`, `code`, `message`, and optional `hint`.
 - **Confinement:** `nanvix_zutil` creates no files outside `.nanvix/` in consumer repos.
 - **Default branch is `dev`**, not `main`.
