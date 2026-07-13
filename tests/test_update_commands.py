@@ -229,6 +229,25 @@ class TestUpdateNanvix(unittest.TestCase):
         self.assertIn(".nanvix/z.py", result.changed_files)
         self.assertIn(self.contract.image.ref, marker.read_text())
 
+    def test_workflow_call_input_definition_is_preserved(self) -> None:
+        """Only caller values, not reusable-workflow input schemas, are removed."""
+        workflow = (
+            "on:\n"
+            "  workflow_call:\n"
+            "    inputs:\n"
+            "      docker-image:\n"
+            "        type: string\n"
+            "jobs:\n"
+            "  ci:\n"
+            "    with:\n"
+            f"      docker-image: {_OLD_IMAGE}\n"
+        )
+        candidate = update_nanvix._remove_docker_image_inputs(workflow)
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertIn("      docker-image:\n        type: string\n", candidate)
+        self.assertNotIn(_OLD_IMAGE, candidate)
+
     def test_dependencies_are_retargeted_before_strict_resolution(self) -> None:
         root = Path.cwd()
         contract = make_consumer(root)

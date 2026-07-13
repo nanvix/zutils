@@ -137,8 +137,13 @@ def _remove_docker_image_inputs(text: str) -> str | None:
             index += 1
             continue
 
-        removed = True
         marker = match.group("value").split("#", maxsplit=1)[0].strip()
+        if not marker:
+            rendered.append(line)
+            index += 1
+            continue
+
+        removed = True
         base_indent = len(match.group("indent").expandtabs(8))
         index += 1
         if marker.startswith((">", "|")):
