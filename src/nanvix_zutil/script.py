@@ -283,7 +283,7 @@ class ZScript:
     # Lifecycle hooks — auto-implemented
     # ------------------------------------------------------------------
 
-    def setup(self) -> None:
+    def setup(self) -> bool:
         """Prepare the build environment.
 
         The base implementation automatically downloads the Nanvix sysroot
@@ -293,9 +293,13 @@ class ZScript:
         Subclasses may override this to perform additional setup steps.
         Call ``super().setup()`` to retain the automatic download behaviour::
 
-            def setup(self) -> None:
+            def setup(self) -> bool:
                 super().setup()
                 # extra verification or configuration here
+                return False
+
+        Returns:
+            ``False``. Degraded legacy setup no longer exists.
         """
         # Resolve sysroot: --sysroot-path takes precedence.
         sysroot_path = self._cli_sysroot_path
@@ -459,6 +463,7 @@ class ZScript:
 
         self.config.save()
         sync_configs()
+        return False
 
     def install_artifacts(self, output: str) -> None:
         """Export build artifacts to a target directory.
