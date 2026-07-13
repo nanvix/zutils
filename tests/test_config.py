@@ -7,8 +7,78 @@ import json
 import os
 import unittest
 
-from nanvix_zutil.config import Config
+from nanvix_zutil.config import (
+    Config,
+    DeploymentMode,
+    Host,
+    Machine,
+    MemorySize,
+    Target,
+)
 from nanvix_zutil.paths import nanvix_root
+
+
+class TestConfigEnums(unittest.TestCase):
+    """Enum-typed properties preserve str compatibility."""
+
+    def _clean(self) -> None:
+        for key in (
+            "NANVIX_HOST",
+            "NANVIX_TARGET",
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._clean()
+
+    def test_host_default_matches_platform(self) -> None:
+        import sys
+
+        self._clean()
+        cfg = Config()
+        expected = Host.windows if sys.platform == "win32" else Host.linux
+        self.assertEqual(cfg.host, expected)
+
+    def test_properties_return_enums(self) -> None:
+        self._clean()
+        cfg = Config()
+        self.assertIsInstance(cfg.host, Host)
+        self.assertIsInstance(cfg.target, Target)
+        self.assertIsInstance(cfg.machine, Machine)
+        self.assertIsInstance(cfg.deployment_mode, DeploymentMode)
+        self.assertIsInstance(cfg.memory_size, MemorySize)
+
+    def test_str_equality_and_fstring(self) -> None:
+        self._clean()
+        cfg = Config()
+        self.assertEqual(cfg.machine, "microvm")
+        self.assertEqual(f"{cfg.machine}", "microvm")
+
+    def test_env_override_still_produces_enum(self) -> None:
+        os.environ["NANVIX_TARGET"] = "arm"
+        cfg = Config()
+        self.assertIs(cfg.target, Target.arm)
+
+
+class TestConfigValidation(unittest.TestCase):
+    """Invalid enum values are fatal at construction time."""
+
+    def tearDown(self) -> None:
+        os.environ.pop("NANVIX_MACHINE", None)
+        os.environ.pop("NANVIX_HOST", None)
+
+    def test_invalid_machine_is_fatal(self) -> None:
+        os.environ["NANVIX_MACHINE"] = "not-a-machine"
+        with self.assertRaises(SystemExit):
+            Config()
+
+    def test_invalid_host_is_fatal(self) -> None:
+        os.environ["NANVIX_HOST"] = "beos"
+        with self.assertRaises(SystemExit):
+            Config()
 
 
 class TestConfigDefaults(unittest.TestCase):

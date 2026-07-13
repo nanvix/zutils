@@ -15,20 +15,73 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from enum import StrEnum
 from typing import cast, overload
 
+from nanvix_zutil import log
 from nanvix_zutil.paths import nanvix_root
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+
+class Host(StrEnum):
+    """Development host operating system."""
+
+    linux = "linux"
+    windows = "windows"
+
+
+class Target(StrEnum):
+    """Target CPU architecture."""
+
+    x86 = "x86"
+    arm = "arm"
+
+
+class Machine(StrEnum):
+    """Target virtual machine."""
+
+    microvm = "microvm"
+    hyperlight = "hyperlight"
+
+
+class DeploymentMode(StrEnum):
+    """Deployment mode."""
+
+    single_process = "single-process"
+    multi_process = "multi-process"
+    standalone = "standalone"
+
+
+class MemorySize(StrEnum):
+    """Memory size used for artifact naming."""
+
+    mb128 = "128mb"
+    mb256 = "256mb"
+
+
+def _default_host() -> str:
+    """Return the default host string for the current platform."""
+    return Host.windows.value if sys.platform == "win32" else Host.linux.value
+
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
 
 _DEFAULTS: dict[str, str] = {
-    "NANVIX_TARGET": "x86",
-    "NANVIX_MACHINE": "microvm",
-    "NANVIX_DEPLOYMENT_MODE": "standalone",
-    "NANVIX_MEMORY_SIZE": "256mb",
+    "NANVIX_HOST": _default_host(),
+    "NANVIX_TARGET": Target.x86.value,
+    "NANVIX_MACHINE": Machine.microvm.value,
+    "NANVIX_DEPLOYMENT_MODE": DeploymentMode.standalone.value,
+    "NANVIX_MEMORY_SIZE": MemorySize.mb256.value,
 }
+
+DEFAULT_HOST: str = _DEFAULTS["NANVIX_HOST"]
+"""Default development host (platform-dependent)."""
 
 DEFAULT_TARGET: str = _DEFAULTS["NANVIX_TARGET"]
 """Default target architecture."""
@@ -41,6 +94,14 @@ DEFAULT_DEPLOYMENT_MODE: str = _DEFAULTS["NANVIX_DEPLOYMENT_MODE"]
 
 DEFAULT_MEMORY_SIZE: str = _DEFAULTS["NANVIX_MEMORY_SIZE"]
 """Default memory size string for artifact naming."""
+
+_ENUMS: dict[str, type[StrEnum]] = {
+    "NANVIX_HOST": Host,
+    "NANVIX_TARGET": Target,
+    "NANVIX_MACHINE": Machine,
+    "NANVIX_DEPLOYMENT_MODE": DeploymentMode,
+    "NANVIX_MEMORY_SIZE": MemorySize,
+}
 
 # ---------------------------------------------------------------------------
 # Standard config key names
@@ -60,10 +121,11 @@ CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
 #: epilog.  Not exhaustive — consumers and other modules may honour additional
 #: ``NANVIX_*`` variables recognised by manifest/script modules.
 ENV_VARS: dict[str, str] = {
-    "NANVIX_TARGET": f"Target architecture (default: {DEFAULT_TARGET})",
-    "NANVIX_MACHINE": f"Target machine (default: {DEFAULT_MACHINE})",
-    "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE})",
-    "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE})",
+    "NANVIX_HOST": f"Development host (default: {DEFAULT_HOST}; one of: {', '.join(Host)})",
+    "NANVIX_TARGET": f"Target architecture (default: {DEFAULT_TARGET}; one of: {', '.join(Target)})",
+    "NANVIX_MACHINE": f"Target machine (default: {DEFAULT_MACHINE}; one of: {', '.join(Machine)})",
+    "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE}; one of: {', '.join(DeploymentMode)})",
+    "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE}; one of: {', '.join(MemorySize)})",
     "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
     "NANVIX_DOCKER_IMAGE": "Docker image override (set by setup --with-docker)",
     "GH_TOKEN": "GitHub token for API rate limits",
@@ -93,6 +155,8 @@ class Config:
     3. Built-in defaults
 
     Attributes:
+        host: Development host operating system (e.g. ``"linux"``).
+        target: Target CPU architecture (e.g. ``"x86"``).
         machine: Target machine identifier (e.g. ``"microvm"``).
         deployment_mode: Deployment mode (``"single-process"``,
             ``"multi-process"``, or ``"standalone"``).
@@ -129,26 +193,52 @@ class Config:
             if key.startswith("NANVIX_"):
                 self._data[key] = val
 
+        # Validate enum-typed keys; fatal on invalid.
+        for key, enum_cls in _ENUMS.items():
+            val = self._data[key]
+            try:
+                enum_cls(val)
+            except ValueError:
+                allowed = ", ".join(enum_cls)
+                log.fatal(
+                    f"Invalid value for {key}: {val!r}.",
+                    hint=f"Allowed values: {allowed}.",
+                )
+
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
 
     @property
-    def machine(self) -> str:
-        """Target machine identifier."""
-        return self._data.get("NANVIX_MACHINE", _DEFAULTS["NANVIX_MACHINE"])
+    def host(self) -> Host:
+        """Development host operating system."""
+        return Host(self._data.get("NANVIX_HOST", _DEFAULTS["NANVIX_HOST"]))
 
     @property
-    def deployment_mode(self) -> str:
-        """Deployment mode string."""
-        return self._data.get(
-            "NANVIX_DEPLOYMENT_MODE", _DEFAULTS["NANVIX_DEPLOYMENT_MODE"]
+    def target(self) -> Target:
+        """Target CPU architecture."""
+        return Target(self._data.get("NANVIX_TARGET", _DEFAULTS["NANVIX_TARGET"]))
+
+    @property
+    def machine(self) -> Machine:
+        """Target machine identifier."""
+        return Machine(self._data.get("NANVIX_MACHINE", _DEFAULTS["NANVIX_MACHINE"]))
+
+    @property
+    def deployment_mode(self) -> DeploymentMode:
+        """Deployment mode."""
+        return DeploymentMode(
+            self._data.get(
+                "NANVIX_DEPLOYMENT_MODE", _DEFAULTS["NANVIX_DEPLOYMENT_MODE"]
+            )
         )
 
     @property
-    def memory_size(self) -> str:
+    def memory_size(self) -> MemorySize:
         """Memory size string."""
-        return self._data.get("NANVIX_MEMORY_SIZE", _DEFAULTS["NANVIX_MEMORY_SIZE"])
+        return MemorySize(
+            self._data.get("NANVIX_MEMORY_SIZE", _DEFAULTS["NANVIX_MEMORY_SIZE"])
+        )
 
     # ------------------------------------------------------------------
     # Generic get / set
