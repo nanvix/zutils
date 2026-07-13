@@ -57,6 +57,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install bootstrap runtime
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-venv
+          rm -rf /var/lib/apt/lists/*
+
       - name: Install project and dev dependencies
         run: uv sync --python 3.12
 
