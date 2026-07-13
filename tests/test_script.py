@@ -218,9 +218,10 @@ class TestZScriptAutoSetup(unittest.TestCase):
 
         with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
             script = ZScript()
-            script.setup()
+            result = script.setup()
 
         self.assertIsNone(script.buildroot)
+        self.assertFalse(result)
 
     def test_setup_saves_config(self) -> None:
         """setup() persists the sysroot path to env.json."""

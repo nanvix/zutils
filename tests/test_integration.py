@@ -30,9 +30,10 @@ class _MockConsumer(ZScript):
         super().__init__()
         self.called: list[str] = []
 
-    def setup(self) -> None:
+    def setup(self) -> bool:
         """Record setup hook invocation."""
         self.called.append("setup")
+        return False
 
     def build(self) -> None:
         """Record build hook invocation."""
