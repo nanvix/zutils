@@ -56,10 +56,8 @@ _SDK_ASSIGNMENT = re.compile(
     r'^(?P<prefix>\s*NANVIX_SDK_IMAGE\s*(?::\s*str\s*)?=\s*")[^"]*(?P<suffix>".*)$',
     re.MULTILINE,
 )
-_DOCKER_IMAGE = re.compile(
-    r"^(?P<prefix>\s*docker-image\s*:\s*)(?P<quote>[\"']?)"
-    r"(?P<value>[^\"'\s#]+)(?P=quote)(?P<suffix>\s*(?:#.*)?)$",
-    re.MULTILINE,
+_DOCKER_IMAGE_KEY = re.compile(
+    r"^(?P<indent>[ \t]*)docker-image[ \t]*:[ \t]*(?P<value>.*)$",
 )
 
 
@@ -123,6 +121,40 @@ def _replace_exact(
         text,
         count=1,
     )
+
+
+def _remove_docker_image_inputs(text: str) -> str | None:
+    """Remove inline or block-scalar caller image inputs from workflow YAML."""
+    lines = text.splitlines(keepends=True)
+    rendered: list[str] = []
+    removed = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        match = _DOCKER_IMAGE_KEY.match(line.rstrip("\r\n"))
+        if match is None:
+            rendered.append(line)
+            index += 1
+            continue
+
+        removed = True
+        marker = match.group("value").split("#", maxsplit=1)[0].strip()
+        base_indent = len(match.group("indent").expandtabs(8))
+        index += 1
+        if marker.startswith((">", "|")):
+            while index < len(lines):
+                candidate = lines[index].rstrip("\r\n")
+                if not candidate.strip():
+                    rendered.append(lines[index])
+                    index += 1
+                    continue
+                prefix_length = len(candidate) - len(candidate.lstrip(" \t"))
+                indent = len(candidate[:prefix_length].expandtabs(8))
+                if indent <= base_indent:
+                    break
+                index += 1
+
+    return "".join(rendered) if removed else None
 
 
 def _canonical_toolchain_block(
@@ -365,35 +397,22 @@ def _optional_marker_candidates(
         if not path.is_file():
             continue
         text = path.read_bytes().decode("utf-8")
-        matches = list(_DOCKER_IMAGE.finditer(text))
-        if not matches:
+        candidate_text = _remove_docker_image_inputs(text)
+        if candidate_text is None:
             continue
-        current_images = {match.group("value") for match in matches}
-        if len(current_images) != 1 or (
-            old_images and not current_images.issubset(old_images)
-        ):
-            raise UpdateError(f"{relative}: docker-image inputs disagree")
-        candidate = _DOCKER_IMAGE.sub(
-            lambda match: (
-                f'{match.group("prefix")}{match.group("quote")}{new_image}'
-                f'{match.group("quote")}{match.group("suffix")}'
-            ),
-            text,
-        ).encode("utf-8")
+        candidate = candidate_text.encode("utf-8")
         candidates[relative] = candidate
 
         def validate_workflow(
             value: bytes,
             label: str = relative.as_posix(),
-            expected: str = new_image,
-            count: int = len(matches),
         ) -> None:
-            images = [
-                match.group("value")
-                for match in _DOCKER_IMAGE.finditer(value.decode("utf-8"))
-            ]
-            if len(images) != count or any(image != expected for image in images):
-                raise UpdateError(f"{label}: invalid docker-image candidate")
+            rendered = value.decode("utf-8")
+            if any(
+                _DOCKER_IMAGE_KEY.match(line) is not None
+                for line in rendered.splitlines()
+            ):
+                raise UpdateError(f"{label}: redundant docker-image input remains")
 
         validators[relative] = validate_workflow
     return candidates, validators

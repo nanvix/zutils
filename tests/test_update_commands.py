@@ -84,7 +84,9 @@ def make_consumer(root: Path, *, newline: str = "\n") -> Path:
             f"jobs:{newline}"
             f"  ci:{newline}"
             f"    with:{newline}"
-            f"      docker-image: {_OLD_IMAGE}{newline}"
+            f"      docker-image: >-{newline}"
+            f"        {_OLD_IMAGE}{newline}"
+            f"      caller-event-name: pull_request{newline}"
         ).encode()
     )
     (root / ".zutils-version").write_bytes(f"v0.14.0{newline}".encode())
@@ -178,6 +180,10 @@ class TestUpdateNanvix(unittest.TestCase):
         self.assertIn('kind = "nanvix-sdk"', manifest)
         self.assertIn('sdk-version = "v0.20.0-sdk.1"', manifest)
         self.assertNotIn("NANVIX_SDK_IMAGE", (root / ".nanvix/z.py").read_text())
+        workflow = (root / ".github/workflows/nanvix-ci.yml").read_text()
+        self.assertNotIn("docker-image:", workflow)
+        self.assertNotIn(_OLD_IMAGE, workflow)
+        self.assertIn("caller-event-name: pull_request", workflow)
         self.assertEqual(
             read_lockfile(root / ".nanvix/nanvix.lock").metadata.sdk,
             self.contract.provenance(),
