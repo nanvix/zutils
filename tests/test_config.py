@@ -66,19 +66,25 @@ class TestConfigEnums(unittest.TestCase):
 class TestConfigValidation(unittest.TestCase):
     """Invalid enum values are fatal at construction time."""
 
+    _KEYS = (
+        "NANVIX_HOST",
+        "NANVIX_TARGET",
+        "NANVIX_MACHINE",
+        "NANVIX_DEPLOYMENT_MODE",
+        "NANVIX_MEMORY_SIZE",
+    )
+
     def tearDown(self) -> None:
-        os.environ.pop("NANVIX_MACHINE", None)
-        os.environ.pop("NANVIX_HOST", None)
+        for key in self._KEYS:
+            os.environ.pop(key, None)
 
-    def test_invalid_machine_is_fatal(self) -> None:
-        os.environ["NANVIX_MACHINE"] = "not-a-machine"
-        with self.assertRaises(SystemExit):
-            Config()
-
-    def test_invalid_host_is_fatal(self) -> None:
-        os.environ["NANVIX_HOST"] = "beos"
-        with self.assertRaises(SystemExit):
-            Config()
+    def test_invalid_value_is_fatal_for_every_enum_key(self) -> None:
+        for key in self._KEYS:
+            with self.subTest(key=key):
+                os.environ[key] = "not-a-real-value"
+                with self.assertRaises(SystemExit):
+                    Config()
+                os.environ.pop(key, None)
 
 
 class TestConfigDefaults(unittest.TestCase):

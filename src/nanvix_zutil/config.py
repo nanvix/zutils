@@ -155,13 +155,17 @@ class Config:
     3. Built-in defaults
 
     Attributes:
-        host: Development host operating system (e.g. ``"linux"``).
-        target: Target CPU architecture (e.g. ``"x86"``).
-        machine: Target machine identifier (e.g. ``"microvm"``).
-        deployment_mode: Deployment mode (``"single-process"``,
-            ``"multi-process"``, or ``"standalone"``).
-        memory_size: Memory size string used in artifact names
-            (e.g. ``"256mb"``).
+        host: Development host operating system as :class:`Host`
+            (e.g. ``Host.linux``).
+        target: Target CPU architecture as :class:`Target`
+            (e.g. ``Target.x86``).
+        machine: Target machine identifier as :class:`Machine`
+            (e.g. ``Machine.microvm``).
+        deployment_mode: Deployment mode as :class:`DeploymentMode`.
+        memory_size: Memory size as :class:`MemorySize`.
+
+    All enum values are :class:`str` subclasses (``StrEnum``), so bare-string
+    equality and f-string interpolation keep working for existing callers.
     """
 
     def __init__(self) -> None:
