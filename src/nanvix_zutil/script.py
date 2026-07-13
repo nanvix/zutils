@@ -427,6 +427,8 @@ class ZScript:
 
                     self.buildroot.install_dep(
                         dep=dep,
+                        host=self.config.host,
+                        target=self.config.target,
                         machine=self.config.machine,
                         deployment_mode=self.config.deployment_mode,
                         memory_size=self.config.memory_size,

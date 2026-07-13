@@ -72,7 +72,7 @@ class TestDependency(unittest.TestCase):
         dep = Dependency(
             name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
         )
-        expected = "{name}-{machine}-{mode}-{mem}"
+        expected = "{name}-{host}-{arch}-{machine}-{mode}-{mem}-dev"
         self.assertEqual(dep.artifact_pattern, expected)
 
     def test_default_install_libs_none(self) -> None:
@@ -273,12 +273,78 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(
                 dep,
+                host="linux",
+                target="x86",
                 machine="microvm",
                 deployment_mode="single-process",
                 memory_size="256mb",
             )
 
-        self.assertEqual(captured[0], "zlib-microvm-single-process-256mb")
+        self.assertEqual(captured[0], "zlib-linux-x86-microvm-single-process-256mb-dev")
+
+    def test_install_dep_custom_pattern_receives_host_and_arch(self) -> None:
+        """Custom ``artifact_pattern`` still receives the new host/arch keys."""
+        br = self._setup_buildroot()
+        archive = _make_tar_bz2({"sysroot/lib/libz.a": b""})
+        archive_path = Path.cwd() / "zlib.tar.bz2"
+        archive_path.write_bytes(archive)
+
+        dep = Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+            artifact_pattern="{name}-{host}-{arch}",
+        )
+
+        captured: list[str] = []
+
+        def fake_download(
+            repo: str,
+            version_specifier: str | int,
+            asset_name: str,
+            dest: Path,
+            gh_token: str | None = None,
+            *,
+            match_prefix: bool = False,
+            semver: bool = False,
+            _release: dict[str, object] | None = None,
+            allow_missing: bool = False,
+        ) -> Path:
+            captured.append(asset_name)
+            return archive_path
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            br.install_dep(dep, host="windows", target="arm")
+
+        self.assertEqual(captured[0], "zlib-windows-arm")
+
+    def test_install_dep_fatal_when_asset_missing(self) -> None:
+        """A missing ``-dev`` asset must fail hard — no fallback."""
+        br = self._setup_buildroot()
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
+
+        captured_kwargs: dict[str, object] = {}
+
+        def fake_download(*_args: object, **kwargs: object) -> Path:
+            captured_kwargs.update(kwargs)
+            from nanvix_zutil import log
+
+            log.fatal("Asset 'zlib-...-dev' not found in release nanvix/zlib@v1.0.0")
+
+        with patch(
+            "nanvix_zutil.buildroot.github.download_release_asset",
+            side_effect=fake_download,
+        ):
+            with self.assertRaises(SystemExit):
+                br.install_dep(dep)
+
+        # Lock the contract: install_dep must never pass allow_missing=True.
+        self.assertNotEqual(captured_kwargs.get("allow_missing"), True)
 
     def test_install_dep_preserves_header_subdirectory(self) -> None:
         """Headers in subdirectories are extracted with directory structure preserved."""
