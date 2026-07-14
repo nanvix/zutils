@@ -64,9 +64,10 @@ def out_dir() -> Path:
     return nanvix_root() / "out"
 
 
-def release_dir() -> Path:
-    """Path to built outputs to be distributed with ``release`` (``.nanvix/out/release``)."""
-    return out_dir() / "release"
+def staging_dir() -> Path:
+    """Path to built outputs staged for the ``release`` command
+    (``.nanvix/out/staging``)."""
+    return out_dir() / "staging"
 
 
 def dist_dir() -> Path:
@@ -74,22 +75,17 @@ def dist_dir() -> Path:
     return out_dir() / "dist"
 
 
-def lib_out() -> Path:
-    """Path to built library outputs to be bundled into the release
-    lib path. (``.nanvix/out/release/lib``)"""
-    return release_dir() / "lib"
+def dev_out() -> Path:
+    """Path to build outputs bundled into the ``-dev`` archive consumed
+    by downstream builds (headers, static/shared libraries).
+    (``.nanvix/out/staging/dev``)"""
+    return staging_dir() / "dev"
 
 
-def include_out() -> Path:
-    """Path to built header outputs to be bundled into the release
-    include path. (``.nanvix/out/release/include``)"""
-    return release_dir() / "include"
-
-
-def bin_out() -> Path:
-    """Path to built binaries to be bundled into the release bin path.
-    (``.nanvix/out/release/bin``)"""
-    return release_dir() / "bin"
+def regular_out() -> Path:
+    """Path to build outputs bundled into the end-user release archive
+    (runtime binaries, initrd images). (``.nanvix/out/staging/regular``)"""
+    return staging_dir() / "regular"
 
 
 def test_out() -> Path:

@@ -139,27 +139,6 @@ class ZScript:
     # Subcommands that always run inside Docker.
     DOCKER_COMMANDS: frozenset[str | None] = frozenset({"setup", "build", "clean"})
 
-    def release_targets(self) -> dict[str, str]:
-        """
-        Consumer-provided release targets, consumed by the standalone
-        ``nanvix-zutil release`` command.
-        By default, ``release`` will wrap everything in ``release_dir()``.
-        Override to produce one archive per subdirectory.
-        This value maps from subdirectory names to release artifact names.
-
-        Example usage:
-        ```python
-        def release_targets() -> dict[str,str]:
-            return {
-                # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-                "sysroot-pkg": f"{name}-{toolchain}",
-                # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
-                "buildroot-pkg": f"{name}-{toolchain}-buildroot",
-            }
-        ```
-        """
-        return {}
-
     def sysroot_required_files(self) -> list[str]:
         """Return the sysroot files required for the current platform and mode.
 
