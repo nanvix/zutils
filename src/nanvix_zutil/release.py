@@ -29,6 +29,10 @@ from pathlib import Path
 from tempfile import mkdtemp
 from typing import Literal, Sequence
 
+#: Suffix appended to build-against (``dev/``) release archives.  End-user
+#: (``regular/``) archives carry no suffix.
+DEV_ARCHIVE_SUFFIX: str = "-dev"
+
 from nanvix_zutil import log
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_INVALID_ARGS
 from nanvix_zutil.sdk import sdk_consumer_release_tag
