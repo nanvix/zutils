@@ -868,20 +868,6 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
         for key in ("NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE", "NANVIX_MEMORY_SIZE"):
             os.environ.pop(key, None)
 
-    def test_multi_process_includes_linuxd_and_uservm(self) -> None:
-        os.environ["NANVIX_DEPLOYMENT_MODE"] = "multi-process"
-        script = ZScript()
-        files = script.sysroot_required_files()
-        self.assertIn("bin/linuxd.elf", files)
-        self.assertIn("bin/uservm.elf", files)
-
-    def test_single_process_excludes_linuxd_and_uservm(self) -> None:
-        os.environ["NANVIX_DEPLOYMENT_MODE"] = "single-process"
-        script = ZScript()
-        files = script.sysroot_required_files()
-        self.assertNotIn("bin/linuxd.elf", files)
-        self.assertNotIn("bin/uservm.elf", files)
-
     def test_standalone_excludes_linuxd_and_uservm(self) -> None:
         os.environ["NANVIX_DEPLOYMENT_MODE"] = "standalone"
         script = ZScript()
@@ -890,18 +876,17 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
         self.assertNotIn("bin/uservm.elf", files)
 
     def test_base_files_always_present(self) -> None:
-        """Core files are required regardless of deployment mode."""
+        """Core files are required in standalone mode."""
         import sys
 
         nanvixd = "bin/nanvixd.exe" if sys.platform == "win32" else "bin/nanvixd.elf"
         mkramfs = "bin/mkramfs.exe" if sys.platform == "win32" else "bin/mkramfs.elf"
-        for mode in ("multi-process", "single-process", "standalone"):
-            os.environ["NANVIX_DEPLOYMENT_MODE"] = mode
-            script = ZScript()
-            files = script.sysroot_required_files()
-            self.assertIn(nanvixd, files, f"missing in {mode}")
-            self.assertIn("bin/kernel.elf", files, f"missing in {mode}")
-            self.assertIn(mkramfs, files, f"missing in {mode}")
+        os.environ["NANVIX_DEPLOYMENT_MODE"] = "standalone"
+        script = ZScript()
+        files = script.sysroot_required_files()
+        self.assertIn(nanvixd, files)
+        self.assertIn("bin/kernel.elf", files)
+        self.assertIn(mkramfs, files)
 
     def test_default_deployment_mode_is_standalone(self) -> None:
         """Default (no env override) should be standalone."""

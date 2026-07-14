@@ -7,8 +7,89 @@ import json
 import os
 import unittest
 
-from nanvix_zutil.config import Config
+from nanvix_zutil.config import (
+    Config,
+    DeploymentMode,
+    Host,
+    Machine,
+    MemorySize,
+    Target,
+)
 from nanvix_zutil.paths import nanvix_root
+
+
+class TestConfigEnums(unittest.TestCase):
+    """Enum-typed properties preserve str compatibility."""
+
+    def _clean(self) -> None:
+        for key in (
+            "NANVIX_HOST",
+            "NANVIX_TARGET",
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        self._clean()
+
+    def test_host_default_matches_platform(self) -> None:
+        import sys
+
+        self._clean()
+        cfg = Config()
+        expected = Host.windows if sys.platform == "win32" else Host.linux
+        self.assertEqual(cfg.host, expected)
+
+    def test_properties_return_enums(self) -> None:
+        self._clean()
+        cfg = Config()
+        self.assertIsInstance(cfg.host, Host)
+        self.assertIsInstance(cfg.target, Target)
+        self.assertIsInstance(cfg.machine, Machine)
+        self.assertIsInstance(cfg.deployment_mode, DeploymentMode)
+        self.assertIsInstance(cfg.memory_size, MemorySize)
+
+    def test_str_equality_and_fstring(self) -> None:
+        self._clean()
+        cfg = Config()
+        self.assertEqual(cfg.machine, "microvm")
+        self.assertEqual(f"{cfg.machine}", "microvm")
+
+    def test_env_override_still_produces_enum(self) -> None:
+        # Host is the only remaining enum with more than one value.
+        # Force the non-platform-default so this exercises an actual override.
+        import sys
+
+        other = Host.linux if sys.platform == "win32" else Host.windows
+        os.environ["NANVIX_HOST"] = other.value
+        cfg = Config()
+        self.assertIs(cfg.host, other)
+
+
+class TestConfigValidation(unittest.TestCase):
+    """Invalid enum values are fatal at construction time."""
+
+    _KEYS = (
+        "NANVIX_HOST",
+        "NANVIX_TARGET",
+        "NANVIX_MACHINE",
+        "NANVIX_DEPLOYMENT_MODE",
+        "NANVIX_MEMORY_SIZE",
+    )
+
+    def tearDown(self) -> None:
+        for key in self._KEYS:
+            os.environ.pop(key, None)
+
+    def test_invalid_value_is_fatal_for_every_enum_key(self) -> None:
+        for key in self._KEYS:
+            with self.subTest(key=key):
+                os.environ[key] = "not-a-real-value"
+                with self.assertRaises(SystemExit):
+                    Config()
+                os.environ.pop(key, None)
 
 
 class TestConfigDefaults(unittest.TestCase):

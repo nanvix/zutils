@@ -77,8 +77,6 @@ class ZScript:
         SYSROOT_REQUIRED_FILES: Files that must exist in the sysroot
             regardless of deployment mode.  Override in subclasses to add
             library-specific files.
-        SYSROOT_MULTI_PROCESS_FILES: Additional files required only for
-            multi-process deployments (``linuxd.elf``, ``uservm.elf``).
         config: Persistent build configuration loaded from
             ``.nanvix/env.json`` and environment variables.
         log: The :mod:`nanvix_zutil.log` module, accessible as ``self.log``
@@ -104,11 +102,6 @@ class ZScript:
         "bin/nanvixd.exe",
         "bin/kernel.elf",
         "bin/mkramfs.exe",
-    )
-
-    SYSROOT_MULTI_PROCESS_FILES: tuple[str, ...] = (
-        "bin/linuxd.elf",
-        "bin/uservm.elf",
     )
 
     SYSROOT_STANDALONE_FILES: tuple[str, ...] = (
@@ -171,19 +164,15 @@ class ZScript:
         """Return the sysroot files required for the current platform and mode.
 
         Uses Windows binary names (``nanvixd.exe``, ``mkramfs.exe``) on
-        Windows; Linux names on other platforms.  Multi-process mode
-        additionally requires ``linuxd.elf`` and ``uservm.elf``.
-        Standalone mode additionally requires ``mkimage``, ``procd.elf``,
-        ``memd.elf``, and ``vfsd.elf``.
-        Subclasses can extend by overriding the class attributes or
-        this method.
+        Windows; Linux names on other platforms.  Standalone mode
+        additionally requires ``mkimage``, ``procd.elf``, ``memd.elf``,
+        and ``vfsd.elf``.  Subclasses can extend by overriding the class
+        attributes or this method.
         """
         if is_windows():
             files = list(self.SDK_RUNTIME_REQUIRED_FILES_WINDOWS)
         else:
             files = list(self.SDK_RUNTIME_REQUIRED_FILES)
-        if self.config.deployment_mode == "multi-process":
-            files.extend(self.SYSROOT_MULTI_PROCESS_FILES)
         if self.config.deployment_mode == "standalone":
             if is_windows():
                 files.extend(self.SYSROOT_STANDALONE_FILES_WINDOWS)
