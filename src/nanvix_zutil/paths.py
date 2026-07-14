@@ -103,8 +103,15 @@ def buildroot() -> Path:
 
 
 def sysroot() -> Path:
-    """Path to the sysroot (``.nanvix/sysroot``).
+    """Path to the sysroot.
 
-    Used to store items needed at runtime.
+    Prefers the configured ``NANVIX_SYSROOT`` from ``env.json`` so
+    downstreams that stage a shared sysroot outside ``.nanvix/sysroot``
+    (e.g. Windows CI reusing another consumer's) resolve correctly.
+    Falls back to ``.nanvix/sysroot`` when unset.
     """
-    return nanvix_root() / "sysroot"
+    # Deferred import: ``config`` imports ``paths.nanvix_root``.
+    from nanvix_zutil.config import CFG_SYSROOT, Config
+
+    configured = Config().get(CFG_SYSROOT)
+    return Path(configured) if configured else nanvix_root() / "sysroot"
