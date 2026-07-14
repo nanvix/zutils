@@ -1,112 +1,94 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""``nanvix-zutil release`` — package release archives from ``.nanvix/out/release``.
+"""``nanvix-zutil release`` — package release archives from ``.nanvix/out/staging``.
 
-Standalone command (per issue #191): does not require a ``ZScript``
-subclass, but honours a consumer-defined ``release_targets()`` override
-on ``.nanvix/z.py`` when present.
+Standalone command.  At package time, inspects ``.nanvix/out/staging/`` for
+the two magic subdirectories ``release/`` and ``dev/``.  For each present
+and non-empty subdirectory, produces one archive suffixed accordingly:
 
-Archives are written to ``.nanvix/out/dist`` under the manifest package
-name.  With no override, a single archive is produced covering the
-entire release directory.  With an override, one archive per entry is
-produced from the named subdirectory.
+    {name}-{host}-{arch}-{machine}-{mode}-{mem}.{ext}      (release/)
+    {name}-{host}-{arch}-{machine}-{mode}-{mem}-dev.{ext}  (dev/)
+
+The archive extension is gated on host: ``linux`` -> ``.tar.gz``,
+``windows`` -> ``.zip``.  If neither directory exists or both are empty,
+the command fails.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import sys
+from pathlib import Path
 
 from nanvix_zutil import log
-from nanvix_zutil.config import Config
-from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_SUCCESS
+from nanvix_zutil.config import Config, Host
+from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
-from nanvix_zutil.paths import dist_dir, nanvix_root, staging_dir
-from nanvix_zutil.release import package
+from nanvix_zutil.paths import dev_out, dist_dir, regular_out
+from nanvix_zutil.release import ArchiveFormat, package
 
-HELP: str = "Package release archives from .nanvix/out/release into .nanvix/out/dist"
+HELP: str = "Package release archives from .nanvix/out/staging into .nanvix/out/dist"
 """One-line description surfaced in ``nanvix-zutil --help``."""
 
-_TARGET_ALLOWLIST = re.compile(r"^[A-Za-z0-9_.-]+$")
+_HOST_FORMAT: dict[Host, ArchiveFormat] = {
+    Host.linux: ArchiveFormat.TAR_GZ,
+    Host.windows: ArchiveFormat.ZIP,
+}
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build and return the argument parser for ``nanvix-zutil release``.
-
-    Returns:
-        Configured :class:`argparse.ArgumentParser`.
-    """
+    """Build and return the argument parser for ``nanvix-zutil release``."""
     return argparse.ArgumentParser(
         prog="nanvix-zutil release",
         description=(
-            "Package release archives from .nanvix/out/release into"
-            " .nanvix/out/dist. If .nanvix/z.py defines a release_targets()"
-            " override, one archive is produced per entry; otherwise a"
-            " single archive covers the whole release directory."
+            "Package release archives from .nanvix/out/staging into"
+            " .nanvix/out/dist.  Produces one archive per non-empty magic"
+            " subdirectory (regular/, dev/), suffixed accordingly."
         ),
     )
 
 
-def _check_target(target: str) -> None:
-    """Reject release-target names that are not filename-safe."""
-    if not _TARGET_ALLOWLIST.match(target) and target not in (".", ".."):
-        log.fatal(
-            f"Invalid release target '{target}'."
-            " Characters must be alphanumeric, underscore, hyphen, or dot.",
-            code=EXIT_INVALID_ARGS,
-        )
-
-
-def consumer_release_targets() -> dict[str, str]:
-    """Return ``release_targets()`` from ``.nanvix/z.py`` if it defines one.
-
-    Returns ``{}`` when ``z.py`` is absent or defines no ``release_targets``
-    override.  Import errors on ``z.py`` propagate — a broken consumer
-    script must fail loudly rather than silently ship a default archive.
-    """
-    z_py = nanvix_root() / "z.py"
-    if not z_py.exists():
-        return {}
-
-    # Lazy import: ``__main__`` imports this module at top level for HELP.
-    from nanvix_zutil.__main__ import discover_script_class
-
-    script_cls = discover_script_class()
-    instance = script_cls()
-
-    targets_fn = getattr(instance, "release_targets", None)
-    if not callable(targets_fn):
-        return {}
-    result = targets_fn()
-    if not isinstance(result, dict):
-        return {}
-    return {str(k): str(v) for k, v in result.items()}  # type: ignore[reportUnknownVariableType]
+def _is_non_empty_dir(path: Path) -> bool:
+    """Return True when *path* exists, is a directory, and contains an entry."""
+    return path.is_dir() and any(path.iterdir())
 
 
 def release() -> None:
-    """Package release archives from ``.nanvix/out/release``."""
+    """Package release archives from ``.nanvix/out/staging``."""
     manifest = load_manifest()
     config = Config()
 
-    targets = consumer_release_targets()
-    if not targets:
-        name = (
-            f"{manifest.name}"
-            f"-{config.host}"
-            f"-{config.target}"
-            f"-{config.machine}"
-            f"-{config.deployment_mode}"
-            f"-{config.memory_size}"
-        )
-        package([staging_dir()], dist_dir(), name)
-        return
+    fmt = _HOST_FORMAT[config.host]
+    base = (
+        f"{manifest.name}"
+        f"-{config.host}"
+        f"-{config.target}"
+        f"-{config.machine}"
+        f"-{config.deployment_mode}"
+        f"-{config.memory_size}"
+    )
 
-    for input, output in targets.items():
-        _check_target(input)
-        _check_target(output)
-        package([staging_dir() / input], dist_dir(), output)
+    # (source, archive suffix): regular/ -> no suffix, dev/ -> "-dev".
+    slots: list[tuple[Path, str]] = []
+    if _is_non_empty_dir(regular_out()):
+        slots.append((regular_out(), ""))
+    if _is_non_empty_dir(dev_out()):
+        slots.append((dev_out(), "-dev"))
+
+    if not slots:
+        log.fatal(
+            "Nothing to package: no non-empty regular/ or dev/ under"
+            f" {regular_out().parent}.",
+            code=EXIT_GENERAL_ERROR,
+            hint=(
+                "Stage runtime artifacts under regular_out() during build."
+                " Stage headers and libraries under dev_out()."
+            ),
+        )
+
+    for source, suffix in slots:
+        package([source], dist_dir(), f"{base}{suffix}", formats=(fmt,))
 
 
 def main() -> None:
