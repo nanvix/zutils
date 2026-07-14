@@ -28,7 +28,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
-from nanvix_zutil.paths import bin_out, nanvix_root, repo_root
+from nanvix_zutil.paths import release_out, nanvix_root, repo_root
 
 
 class BinHello(ZScript):
@@ -107,7 +107,7 @@ class BinHello(ZScript):
             make_initrd(
                 self,
                 repo_root() / "hello.elf",
-                bin_out(),
+                release_out(),
                 args=InitRdArgs(),
             )
 

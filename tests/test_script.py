@@ -1220,16 +1220,16 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             result = helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(),
             )
 
-        self.assertEqual(result, paths.bin_out() / "my-app.img")
+        self.assertEqual(result, paths.release_out() / "my-app.img")
         cmd = captured[0]
         bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
         self.assertEqual(cmd[0], str(bin_dir / "mkimage.elf"))
         self.assertEqual(cmd[1], "-o")
-        self.assertEqual(cmd[2], str(paths.bin_out() / "my-app.img"))
+        self.assertEqual(cmd[2], str(paths.release_out() / "my-app.img"))
         self.assertEqual(cmd[3], f"{bin_dir / 'procd.elf'};procd")
         self.assertEqual(cmd[4], f"{bin_dir / 'memd.elf'};memd")
         self.assertEqual(cmd[5], f"{bin_dir / 'vfsd.elf'};vfsd")
@@ -1249,7 +1249,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(),
             )
 
@@ -1270,7 +1270,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(app_args=["--verbose", "--port=8080"]),
             )
 
@@ -1294,7 +1294,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(
                     procd_args=["--debug"],
                     memd_args=["--heap=64m"],
@@ -1321,7 +1321,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(kernel_args=["console=ttyS0", "debug"]),
             )
 
@@ -1344,7 +1344,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(app_args=["--sep=;"]),
             )
 
@@ -1367,7 +1367,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(kernel_args=["a;b"]),
             )
 
@@ -1392,7 +1392,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(bin_dir=custom_bin),
             )
 
@@ -1407,7 +1407,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(),
             )
         self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
@@ -1426,11 +1426,11 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             result = helpers.make_initrd(
                 script,
                 paths.repo_root() / "hello-world.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(),
             )
 
-        self.assertEqual(result, paths.bin_out() / "hello-world.img")
+        self.assertEqual(result, paths.release_out() / "hello-world.img")
         self.assertEqual(
             captured[0][6], f"{paths.repo_root() / 'hello-world.elf'};hello-world"
         )
@@ -1449,10 +1449,10 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         input_path = paths.repo_root() / "build" / "hello.elf"
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             result = helpers.make_initrd(
-                script, input_path, paths.bin_out(), args=InitRdArgs()
+                script, input_path, paths.release_out(), args=InitRdArgs()
             )
 
-        self.assertEqual(result, paths.bin_out() / "hello.img")
+        self.assertEqual(result, paths.release_out() / "hello.img")
         self.assertEqual(captured[0][6], f"{input_path};hello")
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
@@ -1469,7 +1469,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(),
             )
         self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
@@ -1488,7 +1488,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"]),
             )
 
@@ -1512,7 +1512,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
             )
 
@@ -1536,7 +1536,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(
                     procd_env=["LOG=debug"],
                     memd_env=["HEAP=64m"],
@@ -1563,7 +1563,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(app_env=["PATH=/a;/b"]),
             )
 
@@ -1587,7 +1587,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(
                     procd_args=["--log-level", "trace"], procd_env=["LOG=debug"]
                 ),
@@ -1613,7 +1613,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
             helpers.make_initrd(
                 script,
                 paths.repo_root() / "my-app.elf",
-                paths.bin_out(),
+                paths.release_out(),
                 args=InitRdArgs(
                     app_args=["--verbose"], app_env=["DEBUG=1"], procd_env=["LOG=debug"]
                 ),
@@ -1640,25 +1640,25 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         # Sanity: neither output directory should exist before the calls
         # so we can verify make_initrd creates them.
-        self.assertFalse(paths.bin_out().exists())
+        self.assertFalse(paths.release_out().exists())
         self.assertFalse(paths.test_out().exists())
 
         input_path = paths.repo_root() / "my-app.elf"
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             release = helpers.make_initrd(
-                script, input_path, paths.bin_out(), args=InitRdArgs()
+                script, input_path, paths.release_out(), args=InitRdArgs()
             )
             test_img = helpers.make_initrd(
                 script, input_path, paths.test_out(), args=InitRdArgs()
             )
 
-        self.assertEqual(release, paths.bin_out() / "my-app.img")
+        self.assertEqual(release, paths.release_out() / "my-app.img")
         self.assertEqual(test_img, paths.test_out() / "my-app.img")
-        self.assertTrue(paths.bin_out().is_dir())
+        self.assertTrue(paths.release_out().is_dir())
         self.assertTrue(paths.test_out().is_dir())
         # The mkimage command's ``-o`` argument should reflect the chosen
         # output directory for each invocation.
-        self.assertEqual(captured[0][2], str(paths.bin_out() / "my-app.img"))
+        self.assertEqual(captured[0][2], str(paths.release_out() / "my-app.img"))
         self.assertEqual(captured[1][2], str(paths.test_out() / "my-app.img"))
 
 
