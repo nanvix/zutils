@@ -94,6 +94,7 @@ from nanvix_zutil.helpers import (
     InitRdArgs,
     ensure_tool_installed,
     make_initrd,
+    mkramfs,
     run,
     sync_configs,
 )
@@ -204,6 +205,7 @@ __all__ = [
     "sync_configs",
     "write_lockfile",
     "InitRdArgs",
+    "mkramfs",
     "parse_sdk_version",
     "validate_sdk_release",
     "verify_sdk_metadata",
