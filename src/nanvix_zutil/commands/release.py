@@ -94,6 +94,8 @@ def release() -> None:
     if not targets:
         name = (
             f"{manifest.name}"
+            f"-{config.host}"
+            f"-{config.target}"
             f"-{config.machine}"
             f"-{config.deployment_mode}"
             f"-{config.memory_size}"

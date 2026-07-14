@@ -13,7 +13,7 @@ consumers may also invoke :func:`package` directly for custom staging::
     archives = package(
         sources=[Path("build/output")],
         dest=Path("dist"),
-        name="mylib-microvm-standalone-256mb",
+        name="mylib-linux-x86-microvm-standalone-256mb",
     )
 """
 
