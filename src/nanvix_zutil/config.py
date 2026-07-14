@@ -38,28 +38,23 @@ class Target(StrEnum):
     """Target CPU architecture."""
 
     x86 = "x86"
-    arm = "arm"
 
 
 class Machine(StrEnum):
     """Target virtual machine."""
 
     microvm = "microvm"
-    hyperlight = "hyperlight"
 
 
 class DeploymentMode(StrEnum):
     """Deployment mode."""
 
-    single_process = "single-process"
-    multi_process = "multi-process"
     standalone = "standalone"
 
 
 class MemorySize(StrEnum):
     """Memory size used for artifact naming."""
 
-    mb128 = "128mb"
     mb256 = "256mb"
 
 

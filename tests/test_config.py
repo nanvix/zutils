@@ -58,9 +58,14 @@ class TestConfigEnums(unittest.TestCase):
         self.assertEqual(f"{cfg.machine}", "microvm")
 
     def test_env_override_still_produces_enum(self) -> None:
-        os.environ["NANVIX_TARGET"] = "arm"
+        # Host is the only remaining enum with more than one value.
+        # Force the non-platform-default so this exercises an actual override.
+        import sys
+
+        other = Host.linux if sys.platform == "win32" else Host.windows
+        os.environ["NANVIX_HOST"] = other.value
         cfg = Config()
-        self.assertIs(cfg.target, Target.arm)
+        self.assertIs(cfg.host, other)
 
 
 class TestConfigValidation(unittest.TestCase):
