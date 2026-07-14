@@ -143,7 +143,7 @@ class ZScript:
         """
         Consumer-provided release targets, consumed by the standalone
         ``nanvix-zutil release`` command.
-        By default, ``release`` will wrap everything in ``release_dir()``.
+        By default, ``release`` will wrap everything in ``staging_dir()``.
         Override to produce one archive per subdirectory.
         This value maps from subdirectory names to release artifact names.
 
@@ -151,9 +151,9 @@ class ZScript:
         ```python
         def release_targets() -> dict[str,str]:
             return {
-                # release_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+                # staging_dir()/sysroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
                 "sysroot-pkg": f"{name}-{toolchain}",
-                # release_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
+                # staging_dir()/buildroot-pkg -> dist_dir()/{name}-{toolchain}.tar.gz
                 "buildroot-pkg": f"{name}-{toolchain}-buildroot",
             }
         ```

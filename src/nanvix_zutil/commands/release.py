@@ -23,7 +23,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import Config
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_SUCCESS
 from nanvix_zutil.manifest import load_manifest
-from nanvix_zutil.paths import dist_dir, nanvix_root, release_dir
+from nanvix_zutil.paths import dist_dir, nanvix_root, staging_dir
 from nanvix_zutil.release import package
 
 HELP: str = "Package release archives from .nanvix/out/release into .nanvix/out/dist"
@@ -100,13 +100,13 @@ def release() -> None:
             f"-{config.deployment_mode}"
             f"-{config.memory_size}"
         )
-        package([release_dir()], dist_dir(), name)
+        package([staging_dir()], dist_dir(), name)
         return
 
     for input, output in targets.items():
         _check_target(input)
         _check_target(output)
-        package([release_dir() / input], dist_dir(), output)
+        package([staging_dir() / input], dist_dir(), output)
 
 
 def main() -> None:

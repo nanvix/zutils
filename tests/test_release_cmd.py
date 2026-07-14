@@ -44,14 +44,14 @@ class TestReleaseDefault(unittest.TestCase):
         env_patch.start()
         self.addCleanup(env_patch.stop)
 
-    def _populate_release_dir(self) -> Path:
-        rel = paths.release_dir()
+    def _populate_staging_dir(self) -> Path:
+        rel = paths.staging_dir()
         rel.mkdir(parents=True, exist_ok=True)
         (rel / "artifact.bin").write_bytes(b"payload")
         return rel
 
-    def test_packages_when_release_dir_exists(self) -> None:
-        self._populate_release_dir()
+    def test_packages_when_staging_dir_exists(self) -> None:
+        self._populate_staging_dir()
 
         release_cmd.release()
 
@@ -68,7 +68,7 @@ class TestReleaseDefault(unittest.TestCase):
             self.assertGreater(p.stat().st_size, 0, f"empty archive: {p}")
 
     def test_emits_success_message(self) -> None:
-        self._populate_release_dir()
+        self._populate_staging_dir()
 
         buf = StringIO()
         original_stderr = sys.stderr
@@ -86,8 +86,8 @@ class TestReleaseDefault(unittest.TestCase):
         )
         self.assertIn(str(paths.dist_dir()), output)
 
-    def test_fails_when_release_dir_missing(self) -> None:
-        self.assertFalse(paths.release_dir().exists())
+    def test_fails_when_staging_dir_missing(self) -> None:
+        self.assertFalse(paths.staging_dir().exists())
 
         with self.assertRaises(SystemExit) as ctx:
             release_cmd.release()
@@ -109,7 +109,7 @@ class TestReleaseDefault(unittest.TestCase):
 
         output = buf.getvalue()
         self.assertIn("error:", output)
-        self.assertIn(str(paths.release_dir()), output)
+        self.assertIn(str(paths.staging_dir()), output)
         self.assertIn("hint:", output)
         self.assertIn("release", output)
 
@@ -129,7 +129,7 @@ class TestReleaseTargetsOverride(unittest.TestCase):
 
     def _populate(self, *subdirs: str) -> None:
         for sub in subdirs:
-            d = paths.release_dir() / sub
+            d = paths.staging_dir() / sub
             d.mkdir(parents=True, exist_ok=True)
             (d / "artifact.bin").write_bytes(b"payload")
 
@@ -149,7 +149,7 @@ class TestReleaseTargetsOverride(unittest.TestCase):
         ):
             release_cmd.release()
 
-        rel = paths.release_dir()
+        rel = paths.staging_dir()
         dist = paths.dist_dir()
         self.assertEqual(mock_pkg.call_count, 2)
         seen = {(tuple(c.args[0]), c.args[2]) for c in mock_pkg.call_args_list}
@@ -164,7 +164,7 @@ class TestReleaseTargetsOverride(unittest.TestCase):
             self.assertEqual(c.args[1], dist)
 
     def test_empty_targets_falls_back_to_default(self) -> None:
-        rel = paths.release_dir()
+        rel = paths.staging_dir()
         rel.mkdir(parents=True, exist_ok=True)
         (rel / "artifact.bin").write_bytes(b"payload")
 
