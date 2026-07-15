@@ -106,7 +106,7 @@ Zutils has a multi-phase lifecycle similar to other build tools. Most lifecycle 
 | Setup     | `./z setup`                                               | ❌          | ❌           | Uses the manifest's immutable SDK build image.                           |
 | Build     | `./z build`                                               | ❌          | ✅           | See below.                                                              |
 | Test      | `./z test`                                                | ❌          | ✅           | Runs project-specific test suites. Should _not_ create build artefacts. |
-| Release   | `./z release`                                             | ✅          | ❌           | Packages build artefacts into tarballs and zip files for distribution. Honours a `release_targets()` override on the consumer's `ZScript` subclass when present. |
+| Release   | `./z release`                                             | ✅          | ❌           | Packages build artefacts from `.nanvix/out/staging/` into archives under `.nanvix/out/dist/`.  See below. |
 | Benchmark | `./z benchmark`                                           | ❌          | ✅           | Runs benchmarks.                                                        |
 | Clean     | `./z clean`                                               | ❌          | ✅           | Cleans up build files.                                                  |
 | Distclean | `./z distclean`                                           | ✅          | ❌           | Removes all transient nanvix artefacts. Also runs clean if available.   |
@@ -149,6 +149,71 @@ unless `--allow-local-docker-override` explicitly opts into local development.
 #### Build
 
 Builds the project. Should create ramfs images used for testing in addition to the final build artefacts. Build always happens in Docker, using the toolchain image specified at setup time.
+
+#### Release
+
+Standalone command.  Packages whatever the consumer's `build` stage has
+staged under `.nanvix/out/staging/` into archives under `.nanvix/out/dist/`.
+
+The default archive base name is:
+
+```
+{package}-{host}-{arch}-{machine}-{deployment_mode}-{memory_size}
+```
+
+e.g. `cpython-linux-x86-microvm-standalone-256mb.tar.gz` (end-user
+release) or `cpython-linux-x86-microvm-standalone-256mb-dev.tar.gz`
+(consumed by downstream builds).  The extension is gated on host:
+`.tar.gz` on linux, `.zip` on windows.
+
+##### Magic paths
+
+Two well-known subdirectories under `.nanvix/out/staging/` decide what
+gets packaged and how the resulting archive is suffixed:
+
+| Staged under (helper)               | Archive suffix |
+| ----------------------------------- | -------------- |
+| `regular_out()` — `staging/regular` | *(none)*       |
+| `dev_out()` — `staging/dev`         | `-dev`         |
+
+A package that stages runtime binaries under `regular_out()` produces
+one `{name}-...{ext}` end-user archive.  A package that stages headers
+and static/shared libraries under `dev_out()` produces one
+`{name}-...-dev.{ext}` archive consumed by downstream builds.  A
+package that stages both produces one archive of each shape.  Files
+staged outside these two directories are not packaged.  If neither
+directory exists or both are empty, `release` fails — nothing to ship
+is a bug.
+
+##### Consumer responsibilities
+
+- Stage runtime artifacts (binaries, initrd images, daemons) into
+  `regular_out()`.
+- Stage headers and static/shared libraries into `dev_out()`.
+- If the release must ship `nanvixd.{ext}` (or another system
+  component), copy it into `regular_out()` as part of `build`.  The
+  release command itself does not fetch or synthesise Nanvix system
+  binaries.
+
+##### Dependency consumption
+
+Downstreams pull upstream `-dev` archives via `Buildroot.install_dep`.
+The default `Dependency.artifact_pattern` targets exactly the `-dev`
+asset:
+
+```
+{name}-{host}-{arch}-{machine}-{mode}-{mem}-dev
+```
+
+A missing `-dev` asset is fatal — there is no fallback to the end-user
+archive or to legacy naming.  Cross-host consumption (e.g. a Windows
+consumer pulling a Linux-only publication) fails hard by design.
+
+##### CI notes
+
+The `windows-release` workflow job (defined in `nanvix/workflows`) is
+unchanged by the schema: it runs the same `nanvix-zutil release`
+invocation and picks up the `.zip` extension automatically.
 
 ### CLI Verb Generation
 
