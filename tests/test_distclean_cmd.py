@@ -27,12 +27,6 @@ class TestDistcleanFunction(unittest.TestCase):
         distclean()
         self.assertFalse(sysroot.exists())
 
-    def test_removes_buildroot(self) -> None:
-        buildroot = paths.buildroot()
-        buildroot.mkdir()
-        distclean()
-        self.assertFalse(buildroot.exists())
-
     def test_removes_cache(self) -> None:
         cache = self.nanvix_dir / "cache"
         cache.mkdir()

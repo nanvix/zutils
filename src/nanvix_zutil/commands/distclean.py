@@ -20,7 +20,6 @@ HELP: str = "Remove all transient .nanvix/ artifacts"
 #: (``nanvix.toml``) and lockfile (``nanvix.lock``) are preserved.
 _ARTIFACTS: tuple[str, ...] = (
     "sysroot",
-    "buildroot",
     "cache",
     "env.json",
     "venv",

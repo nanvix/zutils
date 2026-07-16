@@ -72,7 +72,6 @@ from nanvix_zutil.config import (
     Target,
 )
 from nanvix_zutil.docker import (
-    BUILDROOT_CONTAINER_PATH,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -137,7 +136,6 @@ __all__ = [
     "ArchiveFormat",
     "Buildroot",
     "BlockedResolution",
-    "BUILDROOT_CONTAINER_PATH",
     "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",
     "CFG_SYSROOT",

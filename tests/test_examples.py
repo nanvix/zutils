@@ -164,12 +164,14 @@ def _write_env_json(nanvix_dir: Path, sysroot: Path) -> None:
     (nanvix_dir / "env.json").write_text(json.dumps(cfg, indent=2))
 
 
-def _setup_bin_hello_buildroot() -> None:
-    """Populate bin-hello's buildroot from lib-hello artifacts.
+def _setup_bin_hello_sysroot() -> None:
+    """Populate bin-hello's sysroot with lib-hello artifacts.
 
     bin-hello declares ``lib-hello`` as a dependency, but the GitHub
     repo ``nanvix/lib-hello`` does not exist.  This helper reuses the
-    sysroot and build artifacts produced by the lib-hello lifecycle test.
+    sysroot and build artifacts produced by the lib-hello lifecycle test,
+    copying ``libhello.a`` and ``hello.h`` into the shared sysroot per
+    the merged buildroot/sysroot layout.
     """
     nanvix_dir = _BIN_HELLO / ".nanvix"
     sysroot_src = (_LIB_HELLO / ".nanvix" / "sysroot").resolve()
@@ -177,11 +179,8 @@ def _setup_bin_hello_buildroot() -> None:
     if not sysroot_dst.exists():
         sysroot_dst.symlink_to(sysroot_src)
 
-    buildroot = nanvix_dir / "buildroot"
-    (buildroot / "lib").mkdir(parents=True, exist_ok=True)
-    (buildroot / "include").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_LIB_HELLO / "libhello.a", buildroot / "lib" / "libhello.a")
-    shutil.copy2(_LIB_HELLO / "src" / "hello.h", buildroot / "include" / "hello.h")
+    shutil.copy2(_LIB_HELLO / "libhello.a", sysroot_src / "lib" / "libhello.a")
+    shutil.copy2(_LIB_HELLO / "src" / "hello.h", sysroot_src / "include" / "hello.h")
 
     _write_env_json(nanvix_dir, sysroot_src)
 
@@ -289,7 +288,7 @@ class TestBinHelloLifecycle(unittest.TestCase):
             raise unittest.SkipTest("lib-hello not built — lifecycle tests failed?")
         if not (_LIB_HELLO / ".nanvix" / "sysroot").exists():
             raise unittest.SkipTest("lib-hello sysroot not available")
-        _setup_bin_hello_buildroot()
+        _setup_bin_hello_sysroot()
 
     def test_full_lifecycle(self) -> None:
         """Run build → test and verify each step."""
