@@ -8,6 +8,8 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,7 +18,7 @@ from nanvix_zutil import log
 from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
-from nanvix_zutil.paths import nanvix_root
+from nanvix_zutil.paths import nanvix_root, sysroot
 
 if TYPE_CHECKING:
     from nanvix_zutil.script import ZScript
@@ -277,6 +279,52 @@ def make_initrd(
     run(*cmd)
 
     return output
+
+
+def mkramfs(
+    output: Path,
+    *,
+    files: Mapping[str, Path] | None = None,
+    timeout: int = 60,
+) -> None:
+    """Build a ramfs image at *output* containing *files*.
+
+    Stages *files* (guest-path → host-path) into a private temporary
+    directory, ensures ``tmp/`` exists (Nanvix convention), then
+    invokes ``mkramfs`` from the sysroot to produce the image. The
+    staging directory is cleaned up before returning.
+
+    Args:
+        output: Destination path for the generated image.
+        files: Mapping of guest path (POSIX-style, relative to ramfs
+            root) to host path. Parent directories are created as
+            needed. ``None`` (default) stages nothing.
+        timeout: Seconds before ``mkramfs`` is killed.
+
+    Raises:
+        SystemExit: With :data:`EXIT_MISSING_DEP` if the ``mkramfs``
+            tool is missing from the sysroot.
+        FileNotFoundError: A host path in *files* does not exist.
+            Treated as programmer error; not mapped to ``SystemExit``.
+    """
+    bin_dir = sysroot() / "bin"
+    tool = bin_dir / ("mkramfs.exe" if is_windows() else "mkramfs.elf")
+    if not tool.is_file():
+        log.fatal(
+            f"mkramfs not found at {tool}; run setup first.",
+            code=EXIT_MISSING_DEP,
+            hint="Ensure the sysroot contains mkramfs by running ./z setup.",
+        )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="nanvix_ramfs_") as tmpdir:
+        staging = Path(tmpdir) / "ramfs"
+        (staging / "tmp").mkdir(parents=True)
+        for guest, host in (files or {}).items():
+            dest = staging / guest.lstrip("/")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(host, dest)
+        run(str(tool), "-o", str(output), str(staging), timeout=timeout)
 
 
 def run(
