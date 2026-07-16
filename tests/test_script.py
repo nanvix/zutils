@@ -38,8 +38,8 @@ from nanvix_zutil.resolver import BlockedResolution
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_WITH_DEPS,
-    make_toml,
     make_sdk_provenance,
+    make_toml,
     write_manifest,
 )
 
