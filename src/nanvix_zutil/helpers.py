@@ -12,17 +12,11 @@ import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from nanvix_zutil import log
-from nanvix_zutil.config import CFG_SYSROOT
 from nanvix_zutil.docker import DockerConfig, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
 from nanvix_zutil.paths import nanvix_root, sysroot
-
-if TYPE_CHECKING:
-    from nanvix_zutil.script import ZScript
-
 
 # Env vars that must never leak from the host into the Docker container.
 #
@@ -176,13 +170,12 @@ class InitRdArgs:
 
 
 def make_initrd(
-    instance: "ZScript",
     input_path: Path,
     out_dir: Path,
     *,
     args: InitRdArgs | None = None,
 ) -> Path:
-    """Build a standalone initrd image for *app*.
+    """Build a standalone initrd image containing *input_path*.
 
     Invokes ``mkimage`` from the sysroot ``bin/`` directory to produce
     an image containing the system daemons (``procd``, ``memd``,
@@ -202,25 +195,14 @@ def make_initrd(
         Path to the generated ``.img`` file.
 
     Raises:
-        SystemExit: If *app* contains path separators, the sysroot
-            is unavailable, or ``mkimage`` is missing.
+        SystemExit: If ``mkimage`` is missing from the sysroot.
     """
 
     if args is None:
         args = InitRdArgs()
 
     if args.bin_dir is None:
-        if instance.sysroot is not None:
-            args.bin_dir = instance.sysroot.path / "bin"
-        else:
-            sysroot_str = instance.config.get(CFG_SYSROOT)
-            if sysroot_str:
-                args.bin_dir = Path(sysroot_str) / "bin"
-            else:
-                log.fatal(
-                    "Sysroot not available; run setup first.",
-                    code=EXIT_MISSING_DEP,
-                )
+        args.bin_dir = sysroot() / "bin"
 
     if is_windows():
         mkimage = args.bin_dir / "mkimage.exe"

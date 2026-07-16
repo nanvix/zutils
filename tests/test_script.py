@@ -1178,23 +1178,15 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
     def setUp(self) -> None:
         write_manifest()
-
-    def _make_script(self) -> ZScript:
-        script = ZScript()
         # Set up a fake sysroot with a bin/ directory and mkimage stub.
         sysroot_bin = paths.sysroot() / "bin"
         sysroot_bin.mkdir(parents=True, exist_ok=True)
         (sysroot_bin / "mkimage.elf").touch()
         (sysroot_bin / "mkimage.exe").touch()
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = paths.sysroot()
-        script.sysroot = fake_sysroot
-        return script
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_basic_invocation_linux(self, _mock: object) -> None:
         """Produces the expected command on Linux."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1203,7 +1195,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             result = helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(),
@@ -1211,7 +1202,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         self.assertEqual(result, paths.regular_out() / "my-app.img")
         cmd = captured[0]
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(cmd[0], str(bin_dir / "mkimage.elf"))
         self.assertEqual(cmd[1], "-o")
         self.assertEqual(cmd[2], str(paths.regular_out() / "my-app.img"))
@@ -1223,7 +1214,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_basic_invocation_windows(self, _mock: object) -> None:
         """Uses mkimage.exe on Windows."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1232,19 +1222,17 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(),
             )
 
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
 
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_args(self, _mock: object) -> None:
         """App arguments are appended to the app entry."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1253,7 +1241,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(app_args=["--verbose", "--port=8080"]),
@@ -1268,7 +1255,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_args(self, _mock: object) -> None:
         """Daemon arguments are appended to respective entries."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1277,7 +1263,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(
@@ -1287,7 +1272,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
                 ),
             )
 
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd --debug")
         self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd --heap=64m")
         self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd --cache=off")
@@ -1295,7 +1280,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_kernel_args(self, _mock: object) -> None:
         """Kernel arguments are passed via --kernel-args."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1304,7 +1288,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(kernel_args=["console=ttyS0", "debug"]),
@@ -1318,7 +1301,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_semicolons_escaped_in_args(self, _mock: object) -> None:
         """Semicolons in arguments are escaped as \\;."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1327,7 +1309,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(app_args=["--sep=;"]),
@@ -1341,7 +1322,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_semicolons_escaped_in_kernel_args(self, _mock: object) -> None:
         """Semicolons in kernel arguments are escaped."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1350,7 +1330,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(kernel_args=["a;b"]),
@@ -1363,7 +1342,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_custom_bin_dir(self, _mock: object) -> None:
         """A custom bin_dir is used instead of the sysroot."""
-        script = self._make_script()
         custom_bin = Path.cwd() / "custom" / "bin"
         custom_bin.mkdir(parents=True)
         (custom_bin / "mkimage.elf").touch()
@@ -1375,7 +1353,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(bin_dir=custom_bin),
@@ -1384,23 +1361,9 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         self.assertEqual(captured[0][0], str(custom_bin / "mkimage.elf"))
         self.assertIn(str(custom_bin / "procd.elf"), captured[0][3])
 
-    def test_no_sysroot_exits(self) -> None:
-        """Exits with EXIT_MISSING_DEP when sysroot is None and config lacks one."""
-        script = ZScript()
-        script.sysroot = None
-        with self.assertRaises(SystemExit) as ctx:
-            helpers.make_initrd(
-                script,
-                paths.repo_root() / "my-app.elf",
-                paths.regular_out(),
-                args=InitRdArgs(),
-            )
-        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
-
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_stem_derived_from_filename(self, _mock: object) -> None:
         """The output .img uses the stem of input_path; argv0 also uses the stem."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1409,7 +1372,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             result = helpers.make_initrd(
-                script,
                 paths.repo_root() / "hello-world.elf",
                 paths.regular_out(),
                 args=InitRdArgs(),
@@ -1424,7 +1386,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     def test_input_path_with_directory_components(self, _mock: object) -> None:
         """input_path may include directory components; they are preserved
         verbatim in the entry, while the .img name is taken from the stem."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1434,7 +1395,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         input_path = paths.repo_root() / "build" / "hello.elf"
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             result = helpers.make_initrd(
-                script, input_path, paths.regular_out(), args=InitRdArgs()
+                input_path, paths.regular_out(), args=InitRdArgs()
             )
 
         self.assertEqual(result, paths.regular_out() / "hello.img")
@@ -1443,16 +1404,10 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_mkimage_not_found_exits(self, _mock: object) -> None:
         """Exits with EXIT_MISSING_DEP when mkimage binary is missing."""
-        script = ZScript()
-        # Sysroot bin dir exists but mkimage.elf does not.
-        sysroot_bin = paths.sysroot() / "bin"
-        sysroot_bin.mkdir(parents=True, exist_ok=True)
-        fake_sysroot = MagicMock()
-        fake_sysroot.path = paths.sysroot()
-        script.sysroot = fake_sysroot
+        # Remove the mkimage stub setUp put in place.
+        (paths.sysroot() / "bin" / "mkimage.elf").unlink()
         with self.assertRaises(SystemExit) as ctx:
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(),
@@ -1462,7 +1417,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_env(self, _mock: object) -> None:
         """Environment variables are appended after a semicolon separator."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1471,7 +1425,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(app_env=["VAR1=foo", "VAR2=bar"]),
@@ -1486,7 +1439,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_app_args_and_env(self, _mock: object) -> None:
         """Both app arguments and environment variables are emitted."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1495,7 +1447,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(app_args=["--verbose"], app_env=["DEBUG=1"]),
@@ -1510,7 +1461,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_env(self, _mock: object) -> None:
         """Daemon environment variables are appended to respective entries."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1519,7 +1469,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(
@@ -1529,7 +1478,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
                 ),
             )
 
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
         self.assertEqual(captured[0][4], f"{bin_dir / 'memd.elf'};memd;HEAP=64m")
         self.assertEqual(captured[0][5], f"{bin_dir / 'vfsd.elf'};vfsd;CACHE=off")
@@ -1537,7 +1486,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_env_semicolons_escaped(self, _mock: object) -> None:
         """Semicolons in env values are escaped."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1546,7 +1494,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(app_env=["PATH=/a;/b"]),
@@ -1561,7 +1508,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=False)
     def test_daemon_args_and_env(self, _mock: object) -> None:
         """Daemon entries include both CLI arguments and environment variables."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1570,7 +1516,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(
@@ -1578,7 +1523,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
                 ),
             )
 
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(
             captured[0][3],
             f"{bin_dir / 'procd.elf'};procd --log-level trace;LOG=debug",
@@ -1587,7 +1532,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     @patch("nanvix_zutil.helpers.is_windows", return_value=True)
     def test_env_windows(self, _mock: object) -> None:
         """Environment variables work correctly on Windows (mkimage.exe)."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1596,7 +1540,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
 
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             helpers.make_initrd(
-                script,
                 paths.repo_root() / "my-app.elf",
                 paths.regular_out(),
                 args=InitRdArgs(
@@ -1604,7 +1547,7 @@ class TestHelpersMakeInitrd(unittest.TestCase):
                 ),
             )
 
-        bin_dir = script.sysroot.path / "bin"  # type: ignore[union-attr]
+        bin_dir = paths.sysroot() / "bin"
         self.assertEqual(captured[0][0], str(bin_dir / "mkimage.exe"))
         self.assertEqual(captured[0][3], f"{bin_dir / 'procd.elf'};procd;LOG=debug")
         self.assertEqual(
@@ -1616,7 +1559,6 @@ class TestHelpersMakeInitrd(unittest.TestCase):
     def test_out_dir_used_verbatim_and_created(self, _mock: object) -> None:
         """The caller-supplied ``out_dir`` controls where the .img is written
         and is created automatically if it does not already exist."""
-        script = self._make_script()
         captured: list[list[str]] = []
 
         def fake_run(cmd: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
@@ -1631,10 +1573,10 @@ class TestHelpersMakeInitrd(unittest.TestCase):
         input_path = paths.repo_root() / "my-app.elf"
         with patch("nanvix_zutil.helpers.subprocess.run", side_effect=fake_run):
             release = helpers.make_initrd(
-                script, input_path, paths.regular_out(), args=InitRdArgs()
+                input_path, paths.regular_out(), args=InitRdArgs()
             )
             test_img = helpers.make_initrd(
-                script, input_path, paths.test_out(), args=InitRdArgs()
+                input_path, paths.test_out(), args=InitRdArgs()
             )
 
         self.assertEqual(release, paths.regular_out() / "my-app.img")

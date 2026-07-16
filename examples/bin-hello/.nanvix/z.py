@@ -105,7 +105,6 @@ class BinHello(ZScript):
         # containing the system daemons and the application binary.
         if self.config.deployment_mode == "standalone":
             make_initrd(
-                self,
                 repo_root() / "hello.elf",
                 regular_out(),
                 args=InitRdArgs(),
