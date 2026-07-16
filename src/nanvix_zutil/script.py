@@ -276,18 +276,25 @@ class ZScript:
         Returns:
             ``False``. Degraded legacy setup no longer exists.
         """
-        # Resolve sysroot: manifest LOCAL ref takes precedence over download.
-        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
-            self.sysroot = Sysroot.from_local(
-                Path(str(self.manifest.sysroot_ref.value)),
-                config=self.config,
-            )
-        elif self._offline:
-            log.fatal(
-                "Offline mode requires a local sysroot."
-                " Declare a LOCAL sysroot ref in nanvix.toml.",
-                code=EXIT_MISSING_DEP,
-            )
+        # Resolve sysroot. In offline mode, reuse whatever is already at
+        # .nanvix/sysroot; --with-nanvix may then populate it.
+        if self._offline:
+            if not self._with_nanvix_path:
+                log.fatal(
+                    "Offline mode requires --with-nanvix to provide local artifacts.",
+                    code=EXIT_MISSING_DEP,
+                )
+            local_dir = _sysroot_dir()
+            if local_dir.exists() and not local_dir.is_dir():
+                log.fatal(
+                    f"Sysroot path '{local_dir}' exists but is not a directory.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Remove or rename this path and re-run `./z setup`.",
+                )
+            local_dir.mkdir(parents=True, exist_ok=True)
+            cached_tag = self.config.get("sysroot_tag", "")
+            self.sysroot = Sysroot(local_dir.resolve(), tag=cached_tag)
+            log.info(f"Offline: using sysroot at {local_dir}")
         else:
             self.sysroot = Sysroot.download(
                 machine=self.config.machine,
@@ -316,11 +323,6 @@ class ZScript:
         # (nanvixd.elf, mkramfs.elf, uservm.elf, libposix.a, etc.) on top
         # of the downloaded sysroot before verification.
         nanvix_local = self._with_nanvix_path
-        if self._offline and not nanvix_local:
-            log.fatal(
-                "Offline mode requires --with-nanvix to" " provide local artifacts.",
-                code=EXIT_MISSING_DEP,
-            )
         if nanvix_local:
             self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
@@ -680,12 +682,7 @@ class ZScript:
         # See https://github.com/nanvix/zutils/issues/263.
         if subcommand is not None and subcommand != "setup":
             pinned = instance.manifest.sysroot_ref
-            if pinned.kind == RefKind.LOCAL:
-                log.warning(
-                    f"Using local sysroot at {pinned.value!r};"
-                    " skipping version drift check."
-                )
-            elif pinned.kind == RefKind.TAG and isinstance(pinned.value, str):
+            if pinned.kind == RefKind.TAG and isinstance(pinned.value, str):
                 cached = instance.config.get("sysroot_tag")
                 if isinstance(cached, str) and cached:
                     expected = pinned.value
