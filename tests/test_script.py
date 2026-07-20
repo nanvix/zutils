@@ -1676,17 +1676,17 @@ class TestOfflineMode(unittest.TestCase):
 
         self.assertTrue(paths.sysroot().is_dir())
 
-    def test_offline_without_with_nanvix_exits(self) -> None:
-        """Offline mode with sysroot but no --with-nanvix exits fatally."""
+    def test_offline_without_with_nanvix_ok(self) -> None:
+        """Offline mode with sysroot but no --with-nanvix reuses sysroot."""
         paths.sysroot().mkdir()
 
         script = ZScript()
         script._offline = True
 
-        with self.assertRaises(SystemExit) as ctx:
+        with patch("nanvix_zutil.script.Sysroot.verify"):
             script.setup()
 
-        self.assertEqual(ctx.exception.code, EXIT_MISSING_DEP)
+        self.assertTrue(paths.sysroot().is_dir())
 
     def test_offline_missing_dep_warns_not_fatal(self) -> None:
         """Offline mode warns (not fatal) when a dep has no local artifacts."""

@@ -277,13 +277,8 @@ class ZScript:
             ``False``. Degraded legacy setup no longer exists.
         """
         # Resolve sysroot. In offline mode, reuse whatever is already at
-        # .nanvix/sysroot; --with-nanvix may then populate it.
+        # .nanvix/sysroot; --with-nanvix may then overlay artifacts.
         if self._offline:
-            if not self._with_nanvix_path:
-                log.fatal(
-                    "Offline mode requires --with-nanvix to provide local artifacts.",
-                    code=EXIT_MISSING_DEP,
-                )
             local_dir = _sysroot_dir()
             if local_dir.exists() and not local_dir.is_dir():
                 log.fatal(
@@ -392,19 +387,23 @@ class ZScript:
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
-                if nanvix_local and self._offline:
+                if nanvix_local:
                     should_try_local = self._offline or dep.repo.startswith("nanvix/")
                     if should_try_local and self.buildroot.install_local_nanvix(
                         dep, Path(nanvix_local)
                     ):
                         continue
 
-                # In offline mode, warn if local artifacts were not found.
-                # nanvix_local is guaranteed set here (fatal above).
+                # In offline mode, skip network install and warn.
                 if self._offline:
+                    hint = (
+                        f"{nanvix_local}/deps/{dep.name}/"
+                        if nanvix_local
+                        else "pass --with-nanvix PATH"
+                    )
                     log.warning(
                         f"Offline mode: no local artifacts found for '{dep.name}'."
-                        f" Expected at: {nanvix_local}/deps/{dep.name}/",
+                        f" Expected at: {hint}",
                     )
                     continue
 
