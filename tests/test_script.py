@@ -1150,28 +1150,6 @@ class TestZScriptSetupLocalSysroot(unittest.TestCase):
             mock_download.assert_not_called()
             mock_from_local.assert_called_once()
 
-    def test_local_sysroot_via_cli_sysroot_path(self) -> None:
-        """When --sysroot-path is provided, Sysroot.from_local is used."""
-        repo_root = paths.repo_root()
-        local_sysroot = repo_root / "my-sysroot"
-        local_sysroot.mkdir()
-
-        write_manifest()
-
-        script = ZScript()
-        script._cli_sysroot_path = str(local_sysroot)
-
-        with (
-            patch("nanvix_zutil.script.Sysroot.download") as mock_download,
-            patch(
-                "nanvix_zutil.script.Sysroot.from_local",
-                return_value=MagicMock(path=local_sysroot, tag=""),
-            ) as mock_from_local,
-        ):
-            script.setup()
-            mock_download.assert_not_called()
-            mock_from_local.assert_called_once()
-
 
 class TestHelpersMakeInitrd(unittest.TestCase):
     """helpers.make_initrd() builds the correct mkimage command."""
@@ -1700,19 +1678,19 @@ class TestOfflineMode(unittest.TestCase):
         script = ZScript()
         self.assertIsNone(script._with_nanvix_path)
 
-    def test_cli_sysroot_path_initially_none(self) -> None:
-        """_cli_sysroot_path starts as None."""
+    def test_cli_sysroot_path_attr_removed(self) -> None:
+        """_cli_sysroot_path attribute no longer exists."""
         script = ZScript()
-        self.assertIsNone(script._cli_sysroot_path)
+        self.assertFalse(hasattr(script, "_cli_sysroot_path"))
 
-    def test_offline_with_sysroot_path_uses_from_local(self) -> None:
-        """In offline mode with --sysroot-path, Sysroot.from_local is used."""
+    def test_offline_with_local_sysroot_ref_uses_from_local(self) -> None:
+        """In offline mode with a LOCAL sysroot ref, Sysroot.from_local is used."""
         sysroot_dir = paths.repo_root() / "my-sysroot"
         sysroot_dir.mkdir()
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
+        script.manifest.sysroot_ref = Ref(kind=RefKind.LOCAL, value=str(sysroot_dir))
         script._with_nanvix_path = str(paths.repo_root())
 
         fake_sysroot = MagicMock()
@@ -1731,7 +1709,7 @@ class TestOfflineMode(unittest.TestCase):
             mock_from_local.assert_called_once()
 
     def test_offline_without_sysroot_exits(self) -> None:
-        """Offline mode without a local sysroot path exits fatally."""
+        """Offline mode without a LOCAL sysroot ref exits fatally."""
         script = ZScript()
         script._offline = True
 
@@ -1748,7 +1726,7 @@ class TestOfflineMode(unittest.TestCase):
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
+        script.manifest.sysroot_ref = Ref(kind=RefKind.LOCAL, value=str(sysroot_dir))
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = sysroot_dir
@@ -1776,7 +1754,7 @@ class TestOfflineMode(unittest.TestCase):
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
+        script.manifest.sysroot_ref = Ref(kind=RefKind.LOCAL, value=str(sysroot_dir))
         script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()
@@ -1801,7 +1779,7 @@ class TestOfflineMode(unittest.TestCase):
 
         script = ZScript()
         script._offline = True
-        script._cli_sysroot_path = str(sysroot_dir)
+        script.manifest.sysroot_ref = Ref(kind=RefKind.LOCAL, value=str(sysroot_dir))
         script._with_nanvix_path = str(build_dir)
 
         fake_sysroot = MagicMock()

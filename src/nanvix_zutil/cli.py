@@ -189,16 +189,6 @@ def build_parser(
                 " Relative paths and ~ are accepted; the path is"
                 " canonicalised to an absolute directory.",
             )
-            sub.add_argument(
-                "--sysroot-path",
-                type=str,
-                metavar="PATH",
-                dest="sysroot_path",
-                help="Explicit path to a local sysroot directory,"
-                " bypassing sysroot download/version resolution."
-                " The manifest's nanvix-version is still used for"
-                " dependency tag suffixing.",
-            )
         if name == "install":
             sub.add_argument(
                 "--output",

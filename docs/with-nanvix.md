@@ -25,13 +25,17 @@ all artifacts to be available locally via `--with-nanvix`.  In offline mode:
   `PATH/deps/<name>/`.
 - Missing individual local dependencies produce a warning rather than a fatal
   error so local development can provide them by other means.
-- A local sysroot must be provided via `--sysroot-path`.
+- A local sysroot must be declared in `nanvix.toml` via a `LOCAL` sysroot ref.
 
-## Sysroot Path Override
+## Local Sysroot
 
-The `--sysroot-path PATH` flag provides an explicit local sysroot
-directory, bypassing the GitHub download entirely.  This takes
-precedence over version-based resolution.
+Declare the sysroot as a filesystem path in `nanvix.toml` to bypass the
+GitHub download entirely:
+
+```toml
+[package]
+nanvix = { local = "/path/to/sysroot" }
+```
 
 ## Prerequisites
 
@@ -88,8 +92,7 @@ PYTHONPATH=~/nanvix/usr/lib/zutils/src \
     --offline \
     --with-docker ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:880ed7e6a20fe9bf2536b1b3ba9bdbbd067a48f043ec9131d3dd398c65f11f35 \
     --allow-local-docker-override \
-    --with-nanvix ~/nanvix/build \
-    --sysroot-path ~/nanvix/build/sysroot
+    --with-nanvix ~/nanvix/build
 
 # Then build
 PYTHONPATH=~/nanvix/usr/lib/zutils/src \

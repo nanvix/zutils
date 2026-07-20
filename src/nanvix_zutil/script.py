@@ -177,7 +177,6 @@ class ZScript:
         self.docker: DockerConfig | None = None
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
-        self._cli_sysroot_path: str | None = None
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -277,15 +276,8 @@ class ZScript:
         Returns:
             ``False``. Degraded legacy setup no longer exists.
         """
-        # Resolve sysroot: --sysroot-path takes precedence.
-        sysroot_path = self._cli_sysroot_path
-
-        if sysroot_path:
-            self.sysroot = Sysroot.from_local(
-                Path(sysroot_path),
-                config=self.config,
-            )
-        elif self.manifest.sysroot_ref.kind == RefKind.LOCAL:
+        # Resolve sysroot: manifest LOCAL ref takes precedence over download.
+        if self.manifest.sysroot_ref.kind == RefKind.LOCAL:
             self.sysroot = Sysroot.from_local(
                 Path(str(self.manifest.sysroot_ref.value)),
                 config=self.config,
@@ -293,7 +285,7 @@ class ZScript:
         elif self._offline:
             log.fatal(
                 "Offline mode requires a local sysroot."
-                " Set --sysroot-path to a directory.",
+                " Declare a LOCAL sysroot ref in nanvix.toml.",
                 code=EXIT_MISSING_DEP,
             )
         else:
@@ -616,14 +608,12 @@ class ZScript:
         args = parser.parse_args(framework_argv)
 
         # ------------------------------------------------------------------
-        # Handle --offline, --with-nanvix, --sysroot-path from CLI.
+        # Handle --offline, --with-nanvix from CLI.
         # ------------------------------------------------------------------
         if getattr(args, "offline", False):
             instance._offline = True
         if getattr(args, "with_nanvix", None):
             instance._with_nanvix_path = args.with_nanvix
-        if getattr(args, "sysroot_path", None):
-            instance._cli_sysroot_path = args.sysroot_path
 
         # ------------------------------------------------------------------
         # Docker: resolve image from CLI or persisted config, then check availability.
