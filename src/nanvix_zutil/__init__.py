@@ -131,6 +131,7 @@ from nanvix_zutil.sdk import (
 )
 from nanvix_zutil.script import ZScript
 from nanvix_zutil.sysroot import Sysroot
+from nanvix_zutil.testing import StandaloneTest, StandaloneTestFailure
 
 __all__ = [
     "ArchiveFormat",
@@ -205,6 +206,8 @@ __all__ = [
     "sync_configs",
     "write_lockfile",
     "InitRdArgs",
+    "StandaloneTest",
+    "StandaloneTestFailure",
     "mkramfs",
     "parse_sdk_version",
     "validate_sdk_release",
