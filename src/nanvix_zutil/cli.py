@@ -176,8 +176,8 @@ def build_parser(
                 "--offline",
                 action="store_true",
                 default=False,
-                help="Skip the dependency resolver entirely and require"
-                " all artifacts to be available locally via --with-nanvix.",
+                help="Skip all network calls. Reuses .nanvix/sysroot as-is;"
+                " combine with --with-nanvix to overlay locally-built artifacts.",
             )
             sub.add_argument(
                 "--with-nanvix",

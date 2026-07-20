@@ -513,16 +513,15 @@ def load_manifest(path: Path | None = None) -> Manifest:
     )
 
     # Auto-suffix VERSION refs with the exact SDK revision.
-    if sysroot_ref.kind != RefKind.LOCAL:
-        version_suffix = toolchain.sdk.version.removeprefix("v")
-        for dep in [*dependencies, *system_dependencies]:
-            if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
-                if "-nanvix-" in dep.ref.value:
-                    continue
-                dep.ref = Ref(
-                    kind=dep.ref.kind,
-                    value=f"{dep.ref.value}-nanvix-{version_suffix}",
-                )
+    version_suffix = toolchain.sdk.version.removeprefix("v")
+    for dep in [*dependencies, *system_dependencies]:
+        if dep.ref.kind == RefKind.VERSION and isinstance(dep.ref.value, str):
+            if "-nanvix-" in dep.ref.value:
+                continue
+            dep.ref = Ref(
+                kind=dep.ref.kind,
+                value=f"{dep.ref.value}-nanvix-{version_suffix}",
+            )
 
     return Manifest(
         name=pkg_name,

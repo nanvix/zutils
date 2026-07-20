@@ -16,26 +16,20 @@ etc.) without publishing a release.
 
 ## Offline Mode
 
-The `--offline` flag skips the dependency resolver entirely and requires
-all artifacts to be available locally via `--with-nanvix`.  In offline mode:
+The `--offline` flag skips the dependency resolver entirely and reuses
+the sysroot already extracted at `.nanvix/sysroot`.  Run `./z setup`
+online at least once (or copy the directory in) before using it.  In
+offline mode:
 
 - `--with-nanvix PATH` is **required** — a fatal error is raised if it
   is not provided.
+- `.nanvix/sysroot` is created if missing and populated from `PATH/bin/`
+  and `PATH/lib/`.  Verification then decides whether the result is
+  sufficient.
 - **All** dependencies (not just `nanvix/`-owned) are resolved from
   `PATH/deps/<name>/`.
-- Missing individual local dependencies produce a warning rather than a fatal
-  error so local development can provide them by other means.
-- A local sysroot must be declared in `nanvix.toml` via a `LOCAL` sysroot ref.
-
-## Local Sysroot
-
-Declare the sysroot as a filesystem path in `nanvix.toml` to bypass the
-GitHub download entirely:
-
-```toml
-[package]
-nanvix = { local = "/path/to/sysroot" }
-```
+- Missing individual local dependencies produce a warning rather than a
+  fatal error so local development can provide them by other means.
 
 ## Prerequisites
 
