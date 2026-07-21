@@ -796,6 +796,9 @@ class TestHelpersRun(unittest.TestCase):
             "DYLD_LIBRARY_PATH": "/host/dyld",
             "PYTHONPATH": "/host/py",
             "PYTHONHOME": "/host/pyhome",
+            "TEMP": "C:\\host\\temp",
+            "TMP": "C:\\host\\tmp",
+            "TMPDIR": "/host/tmpdir",
             # Blocklisted (mixed case).
             "Path": "C:\\mixed",
             "home": "/home/lower",
@@ -833,6 +836,9 @@ class TestHelpersRun(unittest.TestCase):
             "DYLD_LIBRARY_PATH": "/host/dyld",
             "PYTHONPATH": "/host/py",
             "PYTHONHOME": "/host/pyhome",
+            "TEMP": "C:\\host\\temp",
+            "TMP": "C:\\host\\tmp",
+            "TMPDIR": "/host/tmpdir",
             "Path": "C:\\mixed",
             "home": "/home/lower",
         }
