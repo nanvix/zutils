@@ -94,14 +94,6 @@ def test_out() -> Path:
     return out_dir() / "test"
 
 
-def buildroot() -> Path:
-    """Path to the build root (``.nanvix/buildroot``).
-
-    Used to store items needed at build time.
-    """
-    return nanvix_root() / "buildroot"
-
-
 def sysroot() -> Path:
     """Path to the sysroot.
 

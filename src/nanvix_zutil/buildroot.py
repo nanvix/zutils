@@ -27,8 +27,7 @@ from nanvix_zutil.config import (
     DEFAULT_TARGET,
 )
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
-from nanvix_zutil.paths import buildroot as _buildroot_dir
-from nanvix_zutil.paths import nanvix_root
+from nanvix_zutil.paths import nanvix_root, sysroot
 from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 
 # ---------------------------------------------------------------------------
@@ -222,16 +221,20 @@ class Buildroot:
 
     @staticmethod
     def create() -> "Buildroot":
-        """Create (or locate) the buildroot directory and return a
-        :class:`Buildroot` instance.
+        """Ensure the sysroot ``lib/`` and ``include/`` directories
+        exist and return a :class:`Buildroot` instance.
+
+        Build-time dependencies (headers and static archives) land in
+        the sysroot alongside the runtime artifacts extracted by
+        :class:`~nanvix_zutil.sysroot.Sysroot`.
 
         Returns:
-            A :class:`Buildroot` pointing at <buildroot>.
+            A :class:`Buildroot` pointing at the sysroot.
         """
-        br = _buildroot_dir()
+        br = sysroot()
         (br / "lib").mkdir(parents=True, exist_ok=True)
         (br / "include").mkdir(parents=True, exist_ok=True)
-        log.info(f"Buildroot at {br}")
+        log.info(f"Buildroot deps installing into {br}")
         return Buildroot()
 
     # ------------------------------------------------------------------
@@ -254,7 +257,7 @@ class Buildroot:
 
         The release asset is downloaded into ``.nanvix/cache/`` and then
         extracted.  Selected ``.a`` and ``.h`` files are copied into
-        ``<buildroot>/lib/`` and ``<buildroot>/include/`` respectively.
+        ``<sysroot>/lib/`` and ``<sysroot>/include/`` respectively.
 
         Dependencies are assumed to publish a standardised ``-dev`` archive.
         A missing archive is fatal — no fallback to the legacy
@@ -317,9 +320,7 @@ class Buildroot:
                             dep.install_libs
                         ):
                             member.name = _relative_to_segment(member_path, "lib")
-                            tf.extract(
-                                member, path=_buildroot_dir() / "lib", filter="data"
-                            )
+                            tf.extract(member, path=sysroot() / "lib", filter="data")
                     elif member_path.suffix == ".h":
                         if dep.install_headers is None or member_path.name in (
                             dep.install_headers
@@ -327,7 +328,7 @@ class Buildroot:
                             member.name = _relative_to_segment(member_path, "include")
                             tf.extract(
                                 member,
-                                path=_buildroot_dir() / "include",
+                                path=sysroot() / "include",
                                 filter="data",
                             )
 
@@ -346,7 +347,7 @@ class Buildroot:
                         dep.install_libs
                     ):
                         rel = _relative_to_segment(member_path, "lib")
-                        dest = _buildroot_dir() / "lib" / rel
+                        dest = sysroot() / "lib" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -355,7 +356,7 @@ class Buildroot:
                         dep.install_headers
                     ):
                         rel = _relative_to_segment(member_path, "include")
-                        dest = _buildroot_dir() / "include" / rel
+                        dest = sysroot() / "include" / rel
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         with zf.open(info) as src, dest.open("wb") as dst:
                             shutil.copyfileobj(src, dst)
@@ -388,7 +389,7 @@ class Buildroot:
         installed = False
         lib_dir = dep_dir / "lib"
         if lib_dir.is_dir():
-            dst_lib = _buildroot_dir() / "lib"
+            dst_lib = sysroot() / "lib"
             dst_lib.mkdir(parents=True, exist_ok=True)
             for src_file in lib_dir.iterdir():
                 if src_file.is_file() and src_file.suffix == ".a":
@@ -398,7 +399,7 @@ class Buildroot:
 
         include_dir = dep_dir / "include"
         if include_dir.is_dir():
-            dst_inc = _buildroot_dir() / "include"
+            dst_inc = sysroot() / "include"
             dst_inc.mkdir(parents=True, exist_ok=True)
             for src_file in include_dir.rglob("*"):
                 if src_file.is_file() and src_file.suffix == ".h":
@@ -425,17 +426,17 @@ class Buildroot:
 
         Args:
             required_libs: List of ``.a`` file names that must exist under
-                ``<buildroot>/lib/``.
+                ``<sysroot>/lib/``.
 
         Raises:
             SystemExit: With exit code ``3`` if any required file is missing.
         """
         for lib in required_libs:
-            br = _buildroot_dir()
+            br = sysroot()
             lib_path = br / "lib" / lib
             if not lib_path.exists():
                 log.fatal(
-                    f"Required library '{lib}' not found in buildroot at {br}",
+                    f"Required library '{lib}' not found in sysroot at {br}",
                     code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download build-time dependencies.",
                 )

@@ -16,7 +16,6 @@ Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import shlex
 import sys
@@ -32,9 +31,6 @@ WORKSPACE_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/workspace")
 
 #: Container path for the Nanvix sysroot.
 SYSROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/sysroot")
-
-#: Container path for the build-time dependency root (buildroot).
-BUILDROOT_CONTAINER_PATH: PurePosixPath = PurePosixPath("/mnt/buildroot")
 
 #: Container path for the Nanvix cross-compilation toolchain.
 TOOLCHAIN_CONTAINER_PATH: PurePosixPath = PurePosixPath("/opt/nanvix")
@@ -173,7 +169,6 @@ class DockerConfig:
             ".nanvix/venv",
             ".nanvix/cache",
             ".nanvix/sysroot",
-            ".nanvix/buildroot",
         ]
     )
     """Directories/files to exclude from tar-based source copy."""
@@ -228,28 +223,6 @@ class DockerConfig:
     # ------------------------------------------------------------------
     # Mount helpers
     # ------------------------------------------------------------------
-
-    def with_sysroot_writable(self) -> DockerConfig:
-        """Return a copy with the sysroot mount made read-write.
-
-        Functional tests run ``nanvixd`` with ``cd /mnt/sysroot`` as the
-        working directory.  ``nanvixd`` uses ``flexi_logger`` which writes
-        log files into the CWD — this fails when the sysroot volume is
-        mounted read-only.
-
-        Returns:
-            A new :class:`DockerConfig` with the sysroot mount (if any)
-            changed to ``readonly=False``.  All other fields are shared.
-        """
-        new_mounts = [
-            (
-                dataclasses.replace(m, readonly=False)
-                if m.container_path == SYSROOT_CONTAINER_PATH
-                else m
-            )
-            for m in self.mounts
-        ]
-        return dataclasses.replace(self, mounts=new_mounts)
 
     # ------------------------------------------------------------------
     # Command construction

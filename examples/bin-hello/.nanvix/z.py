@@ -19,7 +19,6 @@ from pathlib import Path, PurePosixPath
 import _test
 
 from nanvix_zutil import (
-    BUILDROOT_CONTAINER_PATH,
     CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
@@ -28,7 +27,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
-from nanvix_zutil.paths import regular_out, nanvix_root, repo_root
+from nanvix_zutil.paths import regular_out, repo_root
 
 
 class BinHello(ZScript):
@@ -48,7 +47,10 @@ class BinHello(ZScript):
     # ------------------------------------------------------------------
 
     def _sysroot(self) -> PurePosixPath | Path:
-        """Return the sysroot path, translated for Docker if active."""
+        """Return the sysroot path, translated for Docker if active.
+
+        Sysroot also holds dependency headers and static archives.
+        """
         sysroot_str = self.config.get(CFG_SYSROOT, "")
         if not sysroot_str:
             log.fatal(
@@ -57,12 +59,6 @@ class BinHello(ZScript):
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
         return self.docker.translate_path(host) if self.docker else host
-
-    def _buildroot_path(self) -> PurePosixPath | Path:
-        """Return the effective buildroot path (translated for Docker if active)."""
-        if self.docker:
-            return BUILDROOT_CONTAINER_PATH
-        return nanvix_root() / "buildroot"
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -85,10 +81,10 @@ class BinHello(ZScript):
     def build(self) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
         tc = TOOLCHAIN_CONTAINER_PATH
-        buildroot = self._buildroot_path()
+        sysroot = self._sysroot()
         cc = f"{tc}/bin/clang --target=i686-unknown-nanvix --sysroot={tc}"
-        cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{buildroot}/include"
-        libs = f"{buildroot}/lib/libhello.a"
+        cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{sysroot}/include"
+        libs = f"{sysroot}/lib/libhello.a"
 
         # Single shell invocation so intermediate .o survives across
         # compile and link steps inside the same Docker container.

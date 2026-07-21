@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 from nanvix_zutil import log
+from nanvix_zutil import paths as _paths
 from nanvix_zutil.buildroot import (
     Buildroot,
     Dependency,
@@ -40,7 +41,6 @@ from nanvix_zutil.buildroot import (
 from nanvix_zutil.cli import build_parser
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
-    BUILDROOT_CONTAINER_PATH,
     SYSROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
@@ -54,9 +54,7 @@ from nanvix_zutil.helpers import (
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
-from nanvix_zutil.paths import buildroot as _buildroot_dir
 from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
-from nanvix_zutil.paths import sysroot as _sysroot_dir
 from nanvix_zutil.resolver import BlockedResolution, is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -208,10 +206,8 @@ class ZScript:
         Constructs a standard configuration that mounts:
 
         * :func:`repo_root()` → ``/mnt/workspace`` (writable, workdir)
-        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (read-only),
+        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (writable),
           if the sysroot has been configured
-        * ``.nanvix/buildroot`` → ``/mnt/buildroot`` (writable),
-          if the buildroot directory exists on disk
 
         Override in a subclass to add extra mounts or environment variables.
 
@@ -235,15 +231,6 @@ class ZScript:
                 Mount(
                     host_path=Path(sysroot_str),
                     container_path=SYSROOT_CONTAINER_PATH,
-                    readonly=True,
-                )
-            )
-
-        if _buildroot_dir().is_dir():
-            mounts.append(
-                Mount(
-                    host_path=_buildroot_dir(),
-                    container_path=BUILDROOT_CONTAINER_PATH,
                     readonly=False,
                 )
             )
@@ -279,7 +266,7 @@ class ZScript:
         # Resolve sysroot. In offline mode, reuse whatever is already at
         # .nanvix/sysroot; --with-nanvix may then overlay artifacts.
         if self._offline:
-            local_dir = _sysroot_dir()
+            local_dir = _paths.sysroot()
             if local_dir.exists() and not local_dir.is_dir():
                 log.fatal(
                     f"Sysroot path '{local_dir}' exists but is not a directory.",
@@ -297,7 +284,7 @@ class ZScript:
                 memory_size=self.config.memory_size,
                 tag=self.manifest.sysroot_ref.value,
                 gh_token=self.config.get(CFG_GH_TOKEN),
-                dest=_sysroot_dir(),
+                dest=_paths.sysroot(),
                 config=self.config,
             )
         self.config.set(CFG_SYSROOT, str(self.sysroot.path))

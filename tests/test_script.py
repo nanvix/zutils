@@ -16,7 +16,6 @@ from nanvix_zutil import helpers, paths
 from nanvix_zutil.buildroot import Ref, RefKind
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, Config
 from nanvix_zutil.docker import (
-    BUILDROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
     DockerConfig,
     Mount,
@@ -38,8 +37,8 @@ from nanvix_zutil.resolver import BlockedResolution
 from nanvix_zutil.script import ZScript
 from tests.testutils import (
     MANIFEST_WITH_DEPS,
-    make_toml,
     make_sdk_provenance,
+    make_toml,
     write_manifest,
 )
 
@@ -926,30 +925,12 @@ class TestZScriptDockerConfig(unittest.TestCase):
         assert workspace_mount is not None
         self.assertEqual(workspace_mount.host_path, paths.repo_root())
 
-    def test_docker_config_no_buildroot_mount_when_absent(self) -> None:
-        """No buildroot mount is added when the buildroot dir does not exist."""
+    def test_docker_config_no_buildroot_mount(self) -> None:
+        """Buildroot mount was removed after buildroot/sysroot consolidation."""
         script = self._make_script()
         cfg = script.docker_config("test-image")
-        buildroot_mount = next(
-            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
-            None,
-        )
-        self.assertIsNone(buildroot_mount)
-
-    def test_docker_config_auto_mounts_buildroot_when_present(self) -> None:
-        """Buildroot is auto-mounted when nanvix_dir/buildroot exists."""
-        script = self._make_script()
-        buildroot_dir = paths.buildroot()
-        buildroot_dir.mkdir(parents=True, exist_ok=True)
-        cfg = script.docker_config("test-image")
-        buildroot_mount = next(
-            (m for m in cfg.mounts if m.container_path == BUILDROOT_CONTAINER_PATH),
-            None,
-        )
-        self.assertIsNotNone(buildroot_mount)
-        assert buildroot_mount is not None
-        self.assertEqual(buildroot_mount.host_path, buildroot_dir)
-        self.assertFalse(buildroot_mount.readonly)
+        for m in cfg.mounts:
+            self.assertNotEqual(str(m.container_path), "/mnt/buildroot")
 
 
 class TestZScriptAutoDocker(unittest.TestCase):
@@ -1721,9 +1702,9 @@ class TestOfflineMode(unittest.TestCase):
 
         # GitHub resolve should NOT be called in offline mode
         mock_resolve.assert_not_called()
-        # Dep should be installed in buildroot
+        # Dep should be installed in sysroot
         self.assertIsNotNone(script.buildroot)
-        buildroot_lib = paths.buildroot() / "lib" / "libz.a"  # type: ignore[union-attr]
+        buildroot_lib = paths.sysroot() / "lib" / "libz.a"  # type: ignore[union-attr]
         self.assertTrue(buildroot_lib.exists())
 
 

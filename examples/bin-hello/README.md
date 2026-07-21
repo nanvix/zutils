@@ -51,5 +51,5 @@ bin-hello
 
 `bin-hello` declares `lib-hello` as a dependency in `nanvix.toml`.
 Running `./z setup` downloads `libhello.a` and its headers into the
-buildroot, then `./z build` compiles `main.c` and links against
-`libhello.a`.
+sysroot alongside the Nanvix runtime, then `./z build` compiles `main.c`
+and links against `libhello.a`.

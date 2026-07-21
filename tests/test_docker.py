@@ -12,7 +12,6 @@ from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
 from nanvix_zutil.docker import (
-    BUILDROOT_CONTAINER_PATH,
     SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -213,9 +212,6 @@ class TestWellKnownPaths(unittest.TestCase):
 
     def test_sysroot_path(self) -> None:
         self.assertEqual(SYSROOT_CONTAINER_PATH, PurePosixPath("/mnt/sysroot"))
-
-    def test_buildroot_path(self) -> None:
-        self.assertEqual(BUILDROOT_CONTAINER_PATH, PurePosixPath("/mnt/buildroot"))
 
     def test_toolchain_path(self) -> None:
         self.assertEqual(TOOLCHAIN_CONTAINER_PATH, PurePosixPath("/opt/nanvix"))
@@ -464,77 +460,6 @@ class TestTranslateWindowsPath(unittest.TestCase):
 
         result = _translate_windows_path(Path("ab"))
         self.assertIsInstance(result, str)
-
-
-class TestDockerConfigWithSysrootWritable(unittest.TestCase):
-    """Tests for DockerConfig.with_sysroot_writable."""
-
-    def test_sysroot_becomes_writable(self) -> None:
-        cfg = DockerConfig(
-            image="img",
-            mounts=[
-                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
-                Mount(
-                    host_path=Path("/sr"),
-                    container_path=SYSROOT_CONTAINER_PATH,
-                    readonly=True,
-                ),
-            ],
-        )
-        new = cfg.with_sysroot_writable()
-        sysroot_mount = next(
-            m for m in new.mounts if m.container_path == SYSROOT_CONTAINER_PATH
-        )
-        self.assertFalse(sysroot_mount.readonly)
-
-    def test_other_mounts_unchanged(self) -> None:
-        cfg = DockerConfig(
-            image="img",
-            mounts=[
-                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
-                Mount(
-                    host_path=Path("/sr"),
-                    container_path=SYSROOT_CONTAINER_PATH,
-                    readonly=True,
-                ),
-                Mount(
-                    host_path=Path("/br"),
-                    container_path=BUILDROOT_CONTAINER_PATH,
-                    readonly=True,
-                ),
-            ],
-        )
-        new = cfg.with_sysroot_writable()
-        br_mount = next(
-            m for m in new.mounts if m.container_path == BUILDROOT_CONTAINER_PATH
-        )
-        self.assertTrue(br_mount.readonly)
-
-    def test_no_sysroot_mount_is_noop(self) -> None:
-        cfg = DockerConfig(
-            image="img",
-            mounts=[
-                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH),
-            ],
-        )
-        new = cfg.with_sysroot_writable()
-        self.assertEqual(len(new.mounts), 1)
-
-    def test_returns_new_instance(self) -> None:
-        cfg = DockerConfig(
-            image="img",
-            mounts=[
-                Mount(
-                    host_path=Path("/sr"),
-                    container_path=SYSROOT_CONTAINER_PATH,
-                    readonly=True,
-                ),
-            ],
-        )
-        new = cfg.with_sysroot_writable()
-        self.assertIsNot(cfg, new)
-        # Original must remain read-only.
-        self.assertTrue(cfg.mounts[0].readonly)
 
 
 if __name__ == "__main__":

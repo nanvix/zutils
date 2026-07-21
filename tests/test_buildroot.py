@@ -20,7 +20,7 @@ from nanvix_zutil.buildroot import (
     parse_semver_tuple,
     suffix_dep,
 )
-from nanvix_zutil.paths import buildroot as _buildroot
+from nanvix_zutil.paths import sysroot
 from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 
 
@@ -103,20 +103,20 @@ class TestBuildrootCreate(unittest.TestCase):
 
     def test_creates_lib_dir(self) -> None:
         Buildroot.create()
-        self.assertTrue((_buildroot() / "lib").is_dir())
+        self.assertTrue((sysroot() / "lib").is_dir())
 
     def test_creates_include_dir(self) -> None:
         Buildroot.create()
-        self.assertTrue((_buildroot() / "include").is_dir())
+        self.assertTrue((sysroot() / "include").is_dir())
 
     def test_path_is_absolute(self) -> None:
         Buildroot.create()
-        self.assertTrue(_buildroot().is_absolute())
+        self.assertTrue(sysroot().is_absolute())
 
     def test_idempotent(self) -> None:
         Buildroot.create()
         Buildroot.create()
-        self.assertTrue((_buildroot() / "lib").is_dir())
+        self.assertTrue((sysroot() / "lib").is_dir())
 
 
 class TestBuildrootVerify(unittest.TestCase):
@@ -124,7 +124,7 @@ class TestBuildrootVerify(unittest.TestCase):
 
     def test_verify_passes_when_libs_present(self) -> None:
         br = Buildroot.create()
-        (_buildroot() / "lib" / "libz.a").write_bytes(b"")
+        (sysroot() / "lib" / "libz.a").write_bytes(b"")
         # Should not raise.
         br.verify(required_libs=["libz.a"])
 
@@ -165,7 +165,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
 
     def test_install_dep_extracts_header(self) -> None:
         br = self._setup_buildroot()
@@ -187,7 +187,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").exists())
 
     def test_install_dep_selective_libs(self) -> None:
         br = self._setup_buildroot()
@@ -212,8 +212,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
-        self.assertFalse((_buildroot() / "lib" / "libextra.a").exists())
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
+        self.assertFalse((sysroot() / "lib" / "libextra.a").exists())
 
     def test_install_dep_selective_headers(self) -> None:
         br = self._setup_buildroot()
@@ -238,8 +238,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
-        self.assertFalse((_buildroot() / "include" / "internal.h").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").exists())
+        self.assertFalse((sysroot() / "include" / "internal.h").exists())
 
     def test_install_dep_artifact_name_interpolated(self) -> None:
         br = self._setup_buildroot()
@@ -371,11 +371,11 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "include" / "openssl" / "ssl.h").exists())
-        self.assertTrue((_buildroot() / "include" / "openssl" / "crypto.h").exists())
-        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
+        self.assertTrue((sysroot() / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((sysroot() / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((sysroot() / "lib" / "libssl.a").exists())
         # Verify headers are NOT flattened to include/ssl.h
-        self.assertFalse((_buildroot() / "include" / "ssl.h").exists())
+        self.assertFalse((sysroot() / "include" / "ssl.h").exists())
 
     def test_install_dep_preserves_lib_subdirectory(self) -> None:
         """Libraries in subdirectories are extracted with directory structure preserved."""
@@ -400,8 +400,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "engines" / "libcapi.a").exists())
-        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
+        self.assertTrue((sysroot() / "lib" / "engines" / "libcapi.a").exists())
+        self.assertTrue((sysroot() / "lib" / "libssl.a").exists())
 
     def test_install_dep_flat_tarball_without_segments(self) -> None:
         """Tarballs with bare filenames (no include/ or lib/ segment) still work."""
@@ -426,8 +426,8 @@ class TestBuildrootInstallDep(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
-        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").exists())
 
 
 class TestSuffixDep(unittest.TestCase):
@@ -603,8 +603,8 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
-        self.assertEqual((_buildroot() / "lib" / "libz.a").read_bytes(), b"lib-content")
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
+        self.assertEqual((sysroot() / "lib" / "libz.a").read_bytes(), b"lib-content")
 
     def test_install_dep_zip_extracts_header(self) -> None:
         br = self._setup_buildroot()
@@ -626,9 +626,9 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "include" / "zlib.h").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").exists())
         self.assertEqual(
-            (_buildroot() / "include" / "zlib.h").read_bytes(), b"header-content"
+            (sysroot() / "include" / "zlib.h").read_bytes(), b"header-content"
         )
 
     def test_install_dep_zip_selective_libs(self) -> None:
@@ -654,8 +654,8 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "lib" / "libz.a").exists())
-        self.assertFalse((_buildroot() / "lib" / "libextra.a").exists())
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
+        self.assertFalse((sysroot() / "lib" / "libextra.a").exists())
 
     def test_install_dep_zip_preserves_header_subdirectory(self) -> None:
         br = self._setup_buildroot()
@@ -680,9 +680,9 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         ):
             br.install_dep(dep)
 
-        self.assertTrue((_buildroot() / "include" / "openssl" / "ssl.h").exists())
-        self.assertTrue((_buildroot() / "include" / "openssl" / "crypto.h").exists())
-        self.assertTrue((_buildroot() / "lib" / "libssl.a").exists())
+        self.assertTrue((sysroot() / "include" / "openssl" / "ssl.h").exists())
+        self.assertTrue((sysroot() / "include" / "openssl" / "crypto.h").exists())
+        self.assertTrue((sysroot() / "lib" / "libssl.a").exists())
 
 
 if __name__ == "__main__":
