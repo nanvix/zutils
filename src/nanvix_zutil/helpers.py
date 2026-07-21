@@ -28,7 +28,8 @@ from nanvix_zutil.paths import nanvix_root, sysroot
 # ``USER``/``USERNAME`` are not forwarded; the container image sets its own.
 # The caller must not override them.  ``LD_LIBRARY_PATH`` and ``PYTHONPATH``
 # similarly refer to host filesystem locations that do not exist inside the
-# container.
+# container.  ``TEMP``/``TMP``/``TMPDIR`` are honored by Clang but may contain
+# Windows paths that cannot hold compiler intermediates inside Linux.
 _CONTAINER_ENV_BLOCKLIST: frozenset[str] = frozenset(
     {
         "PATH",
@@ -43,6 +44,9 @@ _CONTAINER_ENV_BLOCKLIST: frozenset[str] = frozenset(
         "DYLD_LIBRARY_PATH",
         "PYTHONPATH",
         "PYTHONHOME",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
     }
 )
 
