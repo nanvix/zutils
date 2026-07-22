@@ -430,6 +430,66 @@ class TestBuildrootInstallDep(unittest.TestCase):
         self.assertTrue((sysroot() / "include" / "zlib.h").exists())
 
 
+class TestInstallLocalArchive(unittest.TestCase):
+    """Buildroot.install_local_archive() reads a sibling's dev tarball."""
+
+    def _dep(self) -> Dependency:
+        return Dependency(
+            name="zlib",
+            repo="nanvix/zlib",
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+        )
+
+    def _params(self) -> dict[str, str]:
+        return dict(
+            host="linux",
+            target="x86",
+            machine="microvm",
+            deployment_mode="standalone",
+            memory_size="256mb",
+        )
+
+    def _archive_name(self, dep: Dependency) -> str:
+        p = self._params()
+        return dep.artifact_pattern.format(
+            name=dep.name,
+            host=p["host"],
+            arch=p["target"],
+            machine=p["machine"],
+            mode=p["deployment_mode"],
+            mem=p["memory_size"],
+        )
+
+    def test_extracts_lib_and_header_from_local_archive(self) -> None:
+        br = Buildroot.create()
+        dep = self._dep()
+        manifest_path = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        dist_dir = manifest_path.parent / "out" / "dist"
+        dist_dir.mkdir(parents=True)
+        manifest_path.write_text("")
+        archive = _make_tar_bz2(
+            {
+                "sysroot/lib/libz.a": b"lib-content",
+                "sysroot/include/zlib.h": b"header-content",
+            }
+        )
+        (dist_dir / f"{self._archive_name(dep)}.tar.gz").write_bytes(archive)
+
+        br.install_local_archive(dep, manifest_path, **self._params())
+
+        self.assertTrue((sysroot() / "lib" / "libz.a").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").exists())
+
+    def test_fatals_when_archive_missing(self) -> None:
+        br = Buildroot.create()
+        dep = self._dep()
+        manifest_path = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        manifest_path.parent.mkdir(parents=True)
+        manifest_path.write_text("")
+        with self.assertRaises(SystemExit):
+            br.install_local_archive(dep, manifest_path, **self._params())
+
+
 class TestSuffixDep(unittest.TestCase):
     """Tests for suffix_dep()."""
 

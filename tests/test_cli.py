@@ -248,6 +248,118 @@ class TestWithNanvixFlag(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestWithDepsFlag(unittest.TestCase):
+    """Tests for the --with-deps flag on the setup subcommand."""
+
+    def test_single_entry(self) -> None:
+        parser = build_parser()
+        with tempfile.NamedTemporaryFile() as tmp:
+            args = parser.parse_args(
+                ["setup", "--with-docker", "img:t", "--with-deps", f"foo={tmp.name}"]
+            )
+            self.assertEqual(
+                args.with_deps, {"foo": str(Path(tmp.name).resolve(strict=True))}
+            )
+
+    def test_multiple_entries(self) -> None:
+        parser = build_parser()
+        with tempfile.NamedTemporaryFile() as a, tempfile.NamedTemporaryFile() as b:
+            args = parser.parse_args(
+                [
+                    "setup",
+                    "--with-docker",
+                    "img:t",
+                    "--with-deps",
+                    f"foo={a.name},bar={b.name}",
+                ]
+            )
+            self.assertEqual(
+                args.with_deps,
+                {
+                    "foo": str(Path(a.name).resolve(strict=True)),
+                    "bar": str(Path(b.name).resolve(strict=True)),
+                },
+            )
+
+    def test_path_canonicalised(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                Path("m.toml").write_text("")
+                args = parser.parse_args(
+                    ["setup", "--with-docker", "img:t", "--with-deps", "foo=m.toml"]
+                )
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(Path(args.with_deps["foo"]).is_absolute())
+
+    def test_default_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["setup", "--with-docker", "img:t"])
+        self.assertIsNone(args.with_deps)
+
+    def test_rejects_missing_equals(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["setup", "--with-docker", "img:t", "--with-deps", "foo"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_rejects_empty_name(self) -> None:
+        parser = build_parser()
+        with tempfile.NamedTemporaryFile() as tmp:
+            with self.assertRaises(SystemExit) as ctx:
+                parser.parse_args(
+                    [
+                        "setup",
+                        "--with-docker",
+                        "img:t",
+                        "--with-deps",
+                        f"={tmp.name}",
+                    ]
+                )
+            self.assertEqual(ctx.exception.code, 2)
+
+    def test_rejects_empty_path(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(
+                ["setup", "--with-docker", "img:t", "--with-deps", "foo="]
+            )
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_rejects_missing_path_dir(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(
+                [
+                    "setup",
+                    "--with-docker",
+                    "img:t",
+                    "--with-deps",
+                    "foo=/nope/xyzzy/def/not.toml",
+                ]
+            )
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_rejects_directory(self) -> None:
+        """A directory path is rejected (must be a file)."""
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit) as ctx:
+                parser.parse_args(
+                    ["setup", "--with-docker", "img:t", "--with-deps", f"foo={tmp}"]
+                )
+            self.assertEqual(ctx.exception.code, 2)
+
+    def test_rejected_on_build(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as ctx:
+            parser.parse_args(["build", "--with-deps", "foo=/p"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
 class TestInstallArtifactsSubcommand(unittest.TestCase):
     """Tests for the install subcommand."""
 

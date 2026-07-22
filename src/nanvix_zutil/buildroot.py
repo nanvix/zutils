@@ -417,6 +417,57 @@ class Buildroot:
             log.info(f"Installed {dep.name} from local path: {dep_dir}")
         return installed
 
+    def install_local_archive(
+        self,
+        dep: Dependency,
+        manifest_path: Path,
+        *,
+        host: str,
+        target: str,
+        machine: str,
+        deployment_mode: str,
+        memory_size: str,
+    ) -> None:
+        """Install a dependency from a sibling consumer's dev archive.
+
+        Looks for the pre-built dev archive under
+        ``<manifest_path>/../out/dist/`` matching the current build
+        parameters, then extracts it into the sysroot via the same
+        routine used by :meth:`install_dep`.
+
+        Fatal (``EXIT_MISSING_DEP``) if the archive is not present;
+        callers should run ``./z build`` against *manifest_path* first.
+        """
+        asset_name = dep.artifact_pattern.format(
+            name=dep.name,
+            host=host,
+            arch=target,
+            machine=machine,
+            mode=deployment_mode,
+            mem=memory_size,
+        )
+        dist_dir = manifest_path.parent / "out" / "dist"
+        # Match the online path's extension preference (github.py).
+        asset_path: Path | None = None
+        for ext in (".tar.bz2", ".tar.gz", ".zip"):
+            candidate = dist_dir / f"{asset_name}{ext}"
+            if candidate.is_file():
+                asset_path = candidate
+                break
+        if asset_path is None:
+            log.fatal(
+                f"local dep '{dep.name}': no archive matching"
+                f" {asset_name}.(tar.bz2|tar.gz|zip) in {dist_dir}",
+                code=EXIT_MISSING_DEP,
+                hint=f"Run `./z build` for {manifest_path} first.",
+            )
+        log.info(f"Extracting local dep {dep.name} from {asset_path}...")
+        if zipfile.is_zipfile(asset_path):
+            self._extract_dep_zip(asset_path, dep)
+        else:
+            self._extract_dep_tar(asset_path, dep)
+        log.success(f"Installed {dep.name} from local manifest: {manifest_path}")
+
     # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------

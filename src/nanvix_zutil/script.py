@@ -39,7 +39,12 @@ from nanvix_zutil.buildroot import (
     RefKind,
 )
 from nanvix_zutil.cli import build_parser
-from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
+from nanvix_zutil.config import (
+    CFG_DOCKER_IMAGE,
+    CFG_GH_TOKEN,
+    CFG_SYSROOT,
+    Config,
+)
 from nanvix_zutil.docker import (
     SYSROOT_CONTAINER_PATH,
     WORKSPACE_CONTAINER_PATH,
@@ -175,6 +180,7 @@ class ZScript:
         self.docker: DockerConfig | None = None
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
+        self._with_deps: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -308,6 +314,22 @@ class ZScript:
         if nanvix_local:
             self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
+        # Resolve --with-deps overrides. Names not in the manifest are
+        # warned about and ignored — we cannot compute the archive name
+        # without a Dependency entry.
+        local_deps = dict(self._with_deps)
+        if local_deps:
+            manifest_names = {d.name for d in self.manifest.dependencies}
+            unknown = sorted(set(local_deps) - manifest_names)
+            for name in unknown:
+                log.warning(
+                    f"--with-deps: ignoring '{name}' — not in"
+                    f" nanvix.toml [[dependencies]]"
+                )
+                del local_deps[name]
+        if local_deps:
+            log.info(f"Using {len(local_deps)} local dep override(s).")
+
         self.sysroot.verify(self.sysroot_required_files())
 
         deps: list[Dependency] = list(self.manifest.dependencies)
@@ -337,6 +359,11 @@ class ZScript:
                     continue
                 package = packages.get(name)
                 if package is None:
+                    if name in local_deps:
+                        # Locally overridden — the user's word is final;
+                        # do not require SDK-lock presence and skip
+                        # transitive walk (unknowable without a package).
+                        continue
                     log.fatal(
                         f"Strict SDK lock has no package '{name}'",
                         code=EXIT_MISSING_DEP,
@@ -371,6 +398,18 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create()
             for dep in deps:
+                # --with-deps: install from a sibling consumer's dev archive.
+                if dep.name in local_deps:
+                    self.buildroot.install_local_archive(
+                        dep,
+                        Path(local_deps[dep.name]),
+                        host=self.config.host,
+                        target=self.config.target,
+                        machine=self.config.machine,
+                        deployment_mode=self.config.deployment_mode,
+                        memory_size=self.config.memory_size,
+                    )
+                    continue
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
@@ -602,6 +641,10 @@ class ZScript:
             instance._offline = True
         if getattr(args, "with_nanvix", None):
             instance._with_nanvix_path = args.with_nanvix
+
+        with_deps: dict[str, str] | None = getattr(args, "with_deps", None)
+        if with_deps:
+            instance._with_deps = with_deps
 
         # ------------------------------------------------------------------
         # Docker: resolve image from CLI or persisted config, then check availability.

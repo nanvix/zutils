@@ -108,6 +108,7 @@ Additional references:
 | ---------- | ------------- |
 | [Manifest Reference](docs/manifest.md) | `nanvix.toml` format and options |
 | [Local Development (`--with-nanvix`)](docs/with-nanvix.md) | Using local Nanvix builds |
+| [Local Deps (`--with-deps`)](docs/with-deps.md) | One-shot local dep overrides |
 | [Contributing](CONTRIBUTING.md) | Contribution guidelines and release process |
 
 SDK manifests pin a verified GitHub Release contract and immutable OCI digest.
