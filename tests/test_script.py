@@ -39,6 +39,7 @@ from tests.testutils import (
     MANIFEST_WITH_DEPS,
     make_sdk_provenance,
     make_toml,
+    toolchain_toml,
     write_manifest,
 )
 
@@ -1212,6 +1213,123 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
 
         mock_ila.assert_called_once()
         mock_id.assert_not_called()
+
+
+class TestZScriptWithDepsForwardCheck(unittest.TestCase):
+    """setup() enforces that released parents of an override are also overridden."""
+
+    def setUp(self) -> None:
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    @staticmethod
+    def _pkg(name: str, deps: list[str] | None = None) -> ResolvedPackage:
+        return ResolvedPackage(
+            name=name,
+            repo=f"nanvix/{name}",
+            kind="dependency",
+            ref=Ref(kind=RefKind.VERSION, value="1.0"),
+            resolved_tag="v1.0",
+            resolved_commitish="c" * 40,
+            release_id=1,
+            dependencies=deps or [],
+            assets=[
+                ResolvedAsset(
+                    name=f"{name}-microvm-standalone-256mb.tar.bz2",
+                    url=f"https://example.invalid/{name}.tar.bz2",
+                )
+            ],
+        )
+
+    def _run(self, manifest: str, lock: Lockfile, with_deps: dict[str, str]) -> None:
+        write_manifest(manifest)
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive"),
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+        ):
+            script = ZScript()
+            script._with_deps = with_deps
+            script.setup()
+
+    def _manifest(self, *dep_names: str) -> str:
+        deps = "\n".join(f'{name} = "1.0"' for name in dep_names)
+        return (
+            "[package]\n"
+            'name = "test"\n'
+            'version = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            + toolchain_toml()
+            + "\n[dependencies]\n"
+            + deps
+            + "\n"
+        )
+
+    def _lock(self, *pkgs: ResolvedPackage) -> Lockfile:
+        return Lockfile(
+            LockfileMetadata("sha256:x", "0.20.0", sdk=make_sdk_provenance("0.20.0")),
+            packages=list(pkgs),
+        )
+
+    def test_fatals_when_released_parent_depends_on_overridden_leaf(self) -> None:
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        lock = self._lock(
+            self._pkg("zlib"),
+            self._pkg("sqlite", deps=["zlib"]),
+        )
+        with self.assertRaises(SystemExit):
+            self._run(
+                self._manifest("zlib", "sqlite"),
+                lock,
+                {"zlib": str(local)},
+            )
+
+    def test_passes_when_all_transitives_overridden(self) -> None:
+        local_z = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local_s = Path.cwd() / "sqlite_ws" / ".nanvix" / "nanvix.toml"
+        for p in (local_z, local_s):
+            p.parent.mkdir(parents=True)
+            p.write_text("")
+        lock = self._lock(
+            self._pkg("zlib"),
+            self._pkg("sqlite", deps=["zlib"]),
+        )
+        self._run(
+            self._manifest("zlib", "sqlite"),
+            lock,
+            {"zlib": str(local_z), "sqlite": str(local_s)},
+        )  # must not raise
+
+    def test_fatals_on_multi_hop_transitive(self) -> None:
+        """cpython -> sqlite -> zlib; overriding just zlib is inconsistent."""
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        lock = self._lock(
+            self._pkg("zlib"),
+            self._pkg("sqlite", deps=["zlib"]),
+            self._pkg("cpython", deps=["sqlite"]),
+        )
+        with self.assertRaises(SystemExit):
+            self._run(self._manifest("cpython"), lock, {"zlib": str(local)})
+
+    def test_passes_when_override_has_no_released_parent(self) -> None:
+        """Overriding a leaf whose only parent is also overridden is fine."""
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        lock = self._lock(self._pkg("zlib"))
+        self._run(self._manifest("zlib"), lock, {"zlib": str(local)})  # must not raise
 
 
 class TestHelpersMakeInitrd(unittest.TestCase):

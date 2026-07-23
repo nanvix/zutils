@@ -44,10 +44,16 @@ Paths are expanded (`~`) and canonicalised at parse time.
 
 ## Errors
 
-- Name not in the manifest's `[dependencies]`: warned and ignored.
-  Without a manifest entry we cannot know which files are wanted.
+- Name not in the resolved dep tree (neither a manifest direct dep
+  nor an SDK-resolved transitive): warned and ignored.
 - Staged dev tree not present under `<path>/../out/staging/dev/`:
   fatal, with a hint to build the sibling first.
+- Released package transitively depends on an overridden dep, and
+  the released package is not itself overridden: fatal.  The
+  released `.a` embeds calls against the pre-override version of
+  the transitive; mixing at link time drifts ABI silently.  Either
+  add the parent to `--with-deps` too, or drop the leaf override.
+  See nanvix/zutils#332 for the broader diamond-dep story.
 
 ## Precedence
 

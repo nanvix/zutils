@@ -314,25 +314,19 @@ class ZScript:
         if nanvix_local:
             self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
-        # Resolve --with-deps overrides. Names not in the manifest are
-        # warned about and ignored — we cannot compute the archive name
-        # without a Dependency entry.
+        # Snapshot --with-deps overrides. Names not present in the
+        # resolved tree (below) are warned about and ignored.
         local_deps = dict(self._with_deps)
-        if local_deps:
-            manifest_names = {d.name for d in self.manifest.dependencies}
-            unknown = sorted(set(local_deps) - manifest_names)
-            for name in unknown:
-                log.warning(
-                    f"--with-deps: ignoring '{name}' — not in"
-                    f" nanvix.toml [[dependencies]]"
-                )
-                del local_deps[name]
         if local_deps:
             log.info(f"Using {len(local_deps)} local dep override(s).")
 
         self.sysroot.verify(self.sysroot_required_files())
 
         deps: list[Dependency] = list(self.manifest.dependencies)
+        # ``known`` is the set of names we understand at install time.
+        # In offline mode this is just the manifest's direct deps;
+        # online mode extends it with SDK-resolved transitives below.
+        known: set[str] = {dep.name for dep in deps}
 
         sdk_releases: dict[str, dict[str, object]] = {}
         if not self._offline:
@@ -370,6 +364,47 @@ class ZScript:
                     )
                 selected.append(name)
                 pending.extend(package.dependencies)
+            known.update(selected)
+
+            # Forward diamond check: any released package that transitively
+            # depends on a --with-deps override must itself be overridden.
+            # A released ``.a`` embeds calls against the pre-override version
+            # of its transitives; mixing it with a local override at link
+            # time silently drifts ABI.
+            if local_deps:
+                mismatches: list[tuple[str, str]] = []
+                for name in selected:
+                    if name in local_deps:
+                        continue
+                    stack = list(packages[name].dependencies)
+                    seen: set[str] = set()
+                    while stack:
+                        n = stack.pop()
+                        if n in seen:
+                            continue
+                        seen.add(n)
+                        if n in local_deps:
+                            mismatches.append((name, n))
+                        pkg = packages.get(n)
+                        if pkg is not None:
+                            stack.extend(pkg.dependencies)
+                if mismatches:
+                    lines = "\n".join(
+                        f"  - '{parent}' (released) transitively depends on"
+                        f" '{child}' (locally overridden)"
+                        for parent, child in sorted(set(mismatches))
+                    )
+                    log.fatal(
+                        "Inconsistent --with-deps overrides:\n" + lines,
+                        code=EXIT_MISSING_DEP,
+                        hint=(
+                            "Released packages built against the original"
+                            " version of an overridden dep will silently"
+                            " mismatch at link time. Either override the"
+                            " parent(s) too via --with-deps, or drop the"
+                            " leaf override."
+                        ),
+                    )
             direct = {dep.name for dep in deps}
             for name in selected:
                 package = packages[name]
@@ -394,6 +429,20 @@ class ZScript:
                             ref=package.ref,
                         )
                     )
+
+        # Warn+drop --with-deps overrides that are not part of the
+        # known dep set.  Deferred until after SDK resolution so that
+        # overriding a valid transitive dep (present in the SDK lock
+        # but not in the manifest's direct [[dependencies]]) is not
+        # spuriously rejected.
+        if local_deps:
+            unknown = sorted(set(local_deps) - known)
+            for name in unknown:
+                log.warning(
+                    f"--with-deps: ignoring '{name}' \u2014 not in the"
+                    f" resolved dep tree"
+                )
+                del local_deps[name]
 
         if deps:
             self.buildroot = Buildroot.create()
