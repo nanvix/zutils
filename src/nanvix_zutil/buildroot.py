@@ -35,6 +35,27 @@ from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 # ---------------------------------------------------------------------------
 
 
+def _member_target(member_path: Path, dep: Dependency) -> tuple[str, str] | None:
+    """Return ``(anchor_subdir, path_below_anchor)`` for a dep member, or ``None``.
+
+    Centralises the ``.a``/``.h`` routing and ``install_libs`` /
+    ``install_headers`` filtering shared by the archive-extraction
+    paths and the local-copy path.
+    """
+    if member_path.suffix == ".a":
+        if dep.install_libs is not None and member_path.name not in dep.install_libs:
+            return None
+        return "lib", _relative_to_segment(member_path, "lib")
+    if member_path.suffix == ".h":
+        if (
+            dep.install_headers is not None
+            and member_path.name not in dep.install_headers
+        ):
+            return None
+        return "include", _relative_to_segment(member_path, "include")
+    return None
+
+
 def _relative_to_segment(member_path: Path, segment: str) -> str:
     """Return the path portion after *segment* in *member_path*.
 
@@ -313,24 +334,14 @@ class Buildroot:
         """Extract libraries and headers from a tarball."""
         with tarfile.open(asset_path, "r:*") as tf:
             for member in tf.getmembers():
-                member_path = Path(member.name)
-                if member.isfile():
-                    if member_path.suffix == ".a":
-                        if dep.install_libs is None or member_path.name in (
-                            dep.install_libs
-                        ):
-                            member.name = _relative_to_segment(member_path, "lib")
-                            tf.extract(member, path=sysroot() / "lib", filter="data")
-                    elif member_path.suffix == ".h":
-                        if dep.install_headers is None or member_path.name in (
-                            dep.install_headers
-                        ):
-                            member.name = _relative_to_segment(member_path, "include")
-                            tf.extract(
-                                member,
-                                path=sysroot() / "include",
-                                filter="data",
-                            )
+                if not member.isfile():
+                    continue
+                target = _member_target(Path(member.name), dep)
+                if target is None:
+                    continue
+                anchor, rel = target
+                member.name = rel
+                tf.extract(member, path=sysroot() / anchor, filter="data")
 
     def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
         """Extract libraries and headers from a zip archive."""
@@ -342,24 +353,14 @@ class Buildroot:
                 # Reject absolute paths and directory traversal.
                 if member_path.is_absolute() or ".." in member_path.parts:
                     continue
-                if member_path.suffix == ".a":
-                    if dep.install_libs is None or member_path.name in (
-                        dep.install_libs
-                    ):
-                        rel = _relative_to_segment(member_path, "lib")
-                        dest = sysroot() / "lib" / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        with zf.open(info) as src, dest.open("wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                elif member_path.suffix == ".h":
-                    if dep.install_headers is None or member_path.name in (
-                        dep.install_headers
-                    ):
-                        rel = _relative_to_segment(member_path, "include")
-                        dest = sysroot() / "include" / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        with zf.open(info) as src, dest.open("wb") as dst:
-                            shutil.copyfileobj(src, dst)
+                target = _member_target(member_path, dep)
+                if target is None:
+                    continue
+                anchor, rel = target
+                dest = sysroot() / anchor / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, dest.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
 
     def install_local_nanvix(
         self,
@@ -421,52 +422,40 @@ class Buildroot:
         self,
         dep: Dependency,
         manifest_path: Path,
-        *,
-        host: str,
-        target: str,
-        machine: str,
-        deployment_mode: str,
-        memory_size: str,
     ) -> None:
-        """Install a dependency from a sibling consumer's dev archive.
+        """Install a dependency from a sibling consumer's staged dev tree.
 
-        Looks for the pre-built dev archive under
-        ``<manifest_path>/../out/dist/`` matching the current build
-        parameters, then extracts it into the sysroot via the same
-        routine used by :meth:`install_dep`.
+        Walks ``<manifest_path>/../out/staging/dev/`` — the tree the
+        sibling's ``release`` step packs into the dev archive,
+        byte-identical to the archive contents — and copies matching
+        files into the sysroot, applying the same routing and filter
+        rules used when extracting the released archive.
 
-        Fatal (``EXIT_MISSING_DEP``) if the archive is not present;
+        Fatal (``EXIT_MISSING_DEP``) if the staging tree is absent;
         callers should run ``./z build`` against *manifest_path* first.
         """
-        asset_name = dep.artifact_pattern.format(
-            name=dep.name,
-            host=host,
-            arch=target,
-            machine=machine,
-            mode=deployment_mode,
-            mem=memory_size,
-        )
-        dist_dir = manifest_path.parent / "out" / "dist"
-        # Match the online path's extension preference (github.py).
-        asset_path: Path | None = None
-        for ext in (".tar.bz2", ".tar.gz", ".zip"):
-            candidate = dist_dir / f"{asset_name}{ext}"
-            if candidate.is_file():
-                asset_path = candidate
-                break
-        if asset_path is None:
+        dev_dir = manifest_path.parent / "out" / "staging" / "dev"
+        if not dev_dir.is_dir():
             log.fatal(
-                f"local dep '{dep.name}': no archive matching"
-                f" {asset_name}.(tar.bz2|tar.gz|zip) in {dist_dir}",
+                f"local dep '{dep.name}': no staged dev tree at {dev_dir}",
                 code=EXIT_MISSING_DEP,
                 hint=f"Run `./z build` for {manifest_path} first.",
             )
-        log.info(f"Extracting local dep {dep.name} from {asset_path}...")
-        if zipfile.is_zipfile(asset_path):
-            self._extract_dep_zip(asset_path, dep)
-        else:
-            self._extract_dep_tar(asset_path, dep)
-        log.success(f"Installed {dep.name} from local manifest: {manifest_path}")
+
+        copied = 0
+        for src in dev_dir.rglob("*"):
+            if not src.is_file():
+                continue
+            target = _member_target(src.relative_to(dev_dir), dep)
+            if target is None:
+                continue
+            anchor, rel = target
+            dest = sysroot() / anchor / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            copied += 1
+
+        log.success(f"Copied {copied} file(s) for {dep.name} from {dev_dir}")
 
     # ------------------------------------------------------------------
     # Verification

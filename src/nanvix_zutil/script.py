@@ -398,16 +398,11 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create()
             for dep in deps:
-                # --with-deps: install from a sibling consumer's dev archive.
+                # --with-deps: copy from a sibling consumer's staged dev tree.
                 if dep.name in local_deps:
                     self.buildroot.install_local_archive(
                         dep,
                         Path(local_deps[dep.name]),
-                        host=self.config.host,
-                        target=self.config.target,
-                        machine=self.config.machine,
-                        deployment_mode=self.config.deployment_mode,
-                        memory_size=self.config.memory_size,
                     )
                     continue
                 # When --with-nanvix is active, try local artifacts first.

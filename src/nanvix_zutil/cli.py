@@ -245,10 +245,10 @@ def build_parser(
                 dest="with_deps",
                 help="Comma-separated map of local dep overrides. Each"
                 " PATH is a sibling consumer's manifest file (typically"
-                " .nanvix/nanvix.toml); its pre-built dev archive under"
-                " <PATH>/../out/dist/ is installed in place of the"
-                " released dep. One-time; pass again on each setup to"
-                " reapply.",
+                " .nanvix/nanvix.toml); its staged dev tree under"
+                " <PATH>/../out/staging/dev/ is copied into the sysroot"
+                " in place of the released dep. One-time; pass again on"
+                " each setup to reapply.",
             )
         if name == "install":
             sub.add_argument(
