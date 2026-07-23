@@ -35,6 +35,48 @@ from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 # ---------------------------------------------------------------------------
 
 
+def _member_target(member_path: Path, dep: "Dependency") -> tuple[str, str] | None:
+    """Return ``(anchor_subdir, path_below_anchor)`` for a dep member, or ``None``.
+
+    Centralises the ``.a``/``.h`` routing and ``install_libs`` /
+    ``install_headers`` filtering shared by the archive-extraction
+    paths and the local-copy path.
+    """
+    if member_path.suffix == ".a":
+        if dep.install_libs is not None and member_path.name not in dep.install_libs:
+            return None
+        return "lib", _relative_to_segment(member_path, "lib")
+    if member_path.suffix == ".h":
+        if (
+            dep.install_headers is not None
+            and member_path.name not in dep.install_headers
+        ):
+            return None
+        return "include", _relative_to_segment(member_path, "include")
+    return None
+
+
+def _copy_local_dep_tree(dep: "Dependency", source_dir: Path) -> int:
+    """Copy ``.a``/``.h`` files from *source_dir* into the sysroot.
+
+    Files are routed via :func:`_member_target` (same rules as archive
+    extraction).  Returns the number of files copied.
+    """
+    copied = 0
+    for src in source_dir.rglob("*"):
+        if not src.is_file():
+            continue
+        target = _member_target(src.relative_to(source_dir), dep)
+        if target is None:
+            continue
+        anchor, rel = target
+        dest = sysroot() / anchor / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        copied += 1
+    return copied
+
+
 def _relative_to_segment(member_path: Path, segment: str) -> str:
     """Return the path portion after *segment* in *member_path*.
 
@@ -313,24 +355,14 @@ class Buildroot:
         """Extract libraries and headers from a tarball."""
         with tarfile.open(asset_path, "r:*") as tf:
             for member in tf.getmembers():
-                member_path = Path(member.name)
-                if member.isfile():
-                    if member_path.suffix == ".a":
-                        if dep.install_libs is None or member_path.name in (
-                            dep.install_libs
-                        ):
-                            member.name = _relative_to_segment(member_path, "lib")
-                            tf.extract(member, path=sysroot() / "lib", filter="data")
-                    elif member_path.suffix == ".h":
-                        if dep.install_headers is None or member_path.name in (
-                            dep.install_headers
-                        ):
-                            member.name = _relative_to_segment(member_path, "include")
-                            tf.extract(
-                                member,
-                                path=sysroot() / "include",
-                                filter="data",
-                            )
+                if not member.isfile():
+                    continue
+                target = _member_target(Path(member.name), dep)
+                if target is None:
+                    continue
+                anchor, rel = target
+                member.name = rel
+                tf.extract(member, path=sysroot() / anchor, filter="data")
 
     def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
         """Extract libraries and headers from a zip archive."""
@@ -342,24 +374,14 @@ class Buildroot:
                 # Reject absolute paths and directory traversal.
                 if member_path.is_absolute() or ".." in member_path.parts:
                     continue
-                if member_path.suffix == ".a":
-                    if dep.install_libs is None or member_path.name in (
-                        dep.install_libs
-                    ):
-                        rel = _relative_to_segment(member_path, "lib")
-                        dest = sysroot() / "lib" / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        with zf.open(info) as src, dest.open("wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                elif member_path.suffix == ".h":
-                    if dep.install_headers is None or member_path.name in (
-                        dep.install_headers
-                    ):
-                        rel = _relative_to_segment(member_path, "include")
-                        dest = sysroot() / "include" / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        with zf.open(info) as src, dest.open("wb") as dst:
-                            shutil.copyfileobj(src, dst)
+                target = _member_target(member_path, dep)
+                if target is None:
+                    continue
+                anchor, rel = target
+                dest = sysroot() / anchor / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, dest.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
 
     def install_local_nanvix(
         self,
@@ -369,8 +391,9 @@ class Buildroot:
         """Install a dependency from a local Nanvix build directory.
 
         Looks for ``<local_path>/deps/<dep.name>/`` containing ``lib/``
-        and/or ``include/`` subdirectories.  If found, copies the
-        matching artifacts into the buildroot.
+        and/or ``include/`` subdirectories.  If found, copies matching
+        artifacts into the sysroot using the same routing and filter
+        rules as archive extraction.
 
         Args:
             dep: The :class:`Dependency` descriptor.
@@ -380,42 +403,13 @@ class Buildroot:
             ``True`` if local artifacts were found and installed,
             ``False`` otherwise (caller should fall back to GitHub).
         """
-        import shutil
-
         dep_dir = local_path / "deps" / dep.name
         if not dep_dir.is_dir():
             return False
-
-        installed = False
-        lib_dir = dep_dir / "lib"
-        if lib_dir.is_dir():
-            dst_lib = sysroot() / "lib"
-            dst_lib.mkdir(parents=True, exist_ok=True)
-            for src_file in lib_dir.iterdir():
-                if src_file.is_file() and src_file.suffix == ".a":
-                    if dep.install_libs is None or src_file.name in dep.install_libs:
-                        shutil.copy2(src_file, dst_lib / src_file.name)
-                        installed = True
-
-        include_dir = dep_dir / "include"
-        if include_dir.is_dir():
-            dst_inc = sysroot() / "include"
-            dst_inc.mkdir(parents=True, exist_ok=True)
-            for src_file in include_dir.rglob("*"):
-                if src_file.is_file() and src_file.suffix == ".h":
-                    if (
-                        dep.install_headers is None
-                        or src_file.name in dep.install_headers
-                    ):
-                        rel = src_file.relative_to(include_dir)
-                        dst_file = dst_inc / rel
-                        dst_file.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(src_file, dst_file)
-                        installed = True
-
-        if installed:
+        copied = _copy_local_dep_tree(dep, dep_dir)
+        if copied:
             log.info(f"Installed {dep.name} from local path: {dep_dir}")
-        return installed
+        return copied > 0
 
     # ------------------------------------------------------------------
     # Verification
