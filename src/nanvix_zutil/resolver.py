@@ -202,6 +202,7 @@ def resolve(
     verified_sdk_release: SdkRelease | None = None,
     verify_sdk_image: bool = True,
     manifest_content: bytes | None = None,
+    local_overrides: dict[str, str] | None = None,
 ) -> Lockfile | BlockedResolution:
     """Resolve a manifest into a fully pinned lockfile.
 
@@ -230,13 +231,17 @@ def resolve(
             contract. Enabled by default.
         manifest_content: Candidate manifest bytes used to hash an atomic
             update before the target file is written.
+        local_overrides: Names the caller will replace with local builds
+            (``setup --with-deps``).  Resolution is unchanged, but a
+            released package that depends on an overridden name is fatal
+            (diamond hazard) unless that package is itself overridden.
 
     Returns:
         The fully resolved :class:`Lockfile`.
 
     Raises:
-        SystemExit: On cycle detection, version conflicts, or network
-            errors.
+        SystemExit: On cycle detection, version conflicts, local-override
+            diamond hazards, or network errors.
     """
     tmp_dir = (
         Path(cache_dir)
@@ -255,6 +260,7 @@ def resolve(
             verified_sdk_release=verified_sdk_release,
             verify_sdk_image=verify_sdk_image,
             manifest_content=manifest_content,
+            local_overrides=local_overrides,
         )
     finally:
         if owns_tmp and tmp_dir.exists():
@@ -270,8 +276,17 @@ def _resolve_inner(
     verified_sdk_release: SdkRelease | None,
     verify_sdk_image: bool,
     manifest_content: bytes | None,
+    local_overrides: dict[str, str] | None = None,
 ) -> Lockfile | BlockedResolution:
     """Inner resolver logic (separated for cleanup in ``resolve()``)."""
+    # Names the caller will replace with local builds (``--with-deps``).
+    # Resolution proceeds normally (every dep is pinned to its released
+    # version), but a released package that depends on an overridden name
+    # is a diamond hazard: its prebuilt ``.a`` is frozen against the
+    # released version of that dep, so swapping in a local build drifts
+    # ABI at link time.  Such an edge is fatal unless the depending
+    # package is *itself* overridden.
+    overrides: set[str] = set(local_overrides or {})
     resolved: dict[str, ResolvedPackage] = {}
     releases: dict[str, dict[str, object]] = {}
 
@@ -466,6 +481,22 @@ def _resolve_inner(
         for trans_pkg in inner_lock.packages:
             if trans_pkg.kind == "sysroot":
                 continue
+            # Diamond hazard: a released package (``dep``) depends on a
+            # locally overridden name.  Fatal unless ``dep`` is itself
+            # overridden (in which case its provenance is the caller's
+            # responsibility, verified separately).
+            if trans_pkg.name in overrides and dep.name not in overrides:
+                log.fatal(
+                    f"Local override '{trans_pkg.name}' is required by"
+                    f" released package '{dep.name}'.",
+                    code=EXIT_INVALID_ARGS,
+                    hint=(
+                        f"'{dep.name}' was built against the released"
+                        f" '{trans_pkg.name}' and will silently mismatch at"
+                        f" link time. Override '{dep.name}' too, or drop the"
+                        f" '{trans_pkg.name}' override."
+                    ),
+                )
             if trans_pkg.name not in resolved:
                 pkg.dependencies.append(trans_pkg.name)
                 queue.append(

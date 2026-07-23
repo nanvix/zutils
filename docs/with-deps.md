@@ -46,8 +46,15 @@ composition.
 
 ## Errors
 
+- Override names not in the resolved dep tree (neither a manifest
+  direct dep nor an SDK-resolved transitive) are warned and dropped.
 - Staged dev tree not present under `<path>/../out/staging/dev/`:
   fatal, with a hint to build the sibling first.
+- Released package transitively depends on an overridden dep and
+  is not itself overridden: fatal.  The released `.a` embeds calls
+  against the pre-override version of the transitive; mixing at link
+  time drifts ABI silently.  Either add the parent to `--with-deps`
+  too, or drop the leaf override.
 
 ## Public API
 
