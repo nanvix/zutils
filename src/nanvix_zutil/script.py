@@ -371,28 +371,46 @@ class ZScript:
             # A released ``.a`` embeds calls against the pre-override version
             # of its transitives; mixing it with a local override at link
             # time silently drifts ABI.
+            #
+            # Note the interaction with the ``if name in local_deps: continue``
+            # branch above: when an override T is *in* the SDK lock, T falls
+            # through to the normal walk and its transitives are enqueued, so
+            # any released grand-descendant of T that itself depends on
+            # another override L is discovered here.  When T is *not* in the
+            # lock, T's transitives are unknowable and this check silently
+            # skips them.
             if local_deps:
+                # Memoised reachability: for each node, the set of local_dep
+                # names reachable from it in the SDK graph.  Seed each entry
+                # to an empty set before recursing so cycles terminate.
+                reachable: dict[str, set[str]] = {}
+
+                def _reach(node: str) -> set[str]:
+                    cached = reachable.get(node)
+                    if cached is not None:
+                        return cached
+                    out: set[str] = set()
+                    reachable[node] = out
+                    pkg = packages.get(node)
+                    if pkg is None:
+                        return out
+                    for d in pkg.dependencies:
+                        if d in local_deps:
+                            out.add(d)
+                        out |= _reach(d)
+                    return out
+
                 mismatches: list[tuple[str, str]] = []
                 for name in selected:
                     if name in local_deps:
                         continue
-                    stack = list(packages[name].dependencies)
-                    seen: set[str] = set()
-                    while stack:
-                        n = stack.pop()
-                        if n in seen:
-                            continue
-                        seen.add(n)
-                        if n in local_deps:
-                            mismatches.append((name, n))
-                        pkg = packages.get(n)
-                        if pkg is not None:
-                            stack.extend(pkg.dependencies)
+                    for child in sorted(_reach(name)):
+                        mismatches.append((name, child))
                 if mismatches:
                     lines = "\n".join(
                         f"  - '{parent}' (released) transitively depends on"
                         f" '{child}' (locally overridden)"
-                        for parent, child in sorted(set(mismatches))
+                        for parent, child in mismatches
                     )
                     log.fatal(
                         "Inconsistent --with-deps overrides:\n" + lines,
@@ -439,8 +457,7 @@ class ZScript:
             unknown = sorted(set(local_deps) - known)
             for name in unknown:
                 log.warning(
-                    f"--with-deps: ignoring '{name}' \u2014 not in the"
-                    f" resolved dep tree"
+                    f"--with-deps: ignoring '{name}' — not in the resolved dep tree"
                 )
                 del local_deps[name]
 

@@ -1331,6 +1331,94 @@ class TestZScriptWithDepsForwardCheck(unittest.TestCase):
         lock = self._lock(self._pkg("zlib"))
         self._run(self._manifest("zlib"), lock, {"zlib": str(local)})  # must not raise
 
+    def test_override_of_transitive_only_dep_installs(self) -> None:
+        """Overriding a name only present as a transitive (not a direct dep)
+        routes through install_local_archive; the deferred filter admits it."""
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        # cpython (direct) → sqlite (transitive) → zlib (transitive, overridden).
+        # Also override sqlite so the forward check passes.
+        local_s = Path.cwd() / "sqlite_ws" / ".nanvix" / "nanvix.toml"
+        local_s.parent.mkdir(parents=True)
+        local_s.write_text("")
+        local_c = Path.cwd() / "cpython_ws" / ".nanvix" / "nanvix.toml"
+        local_c.parent.mkdir(parents=True)
+        local_c.write_text("")
+        lock = self._lock(
+            self._pkg("zlib"),
+            self._pkg("sqlite", deps=["zlib"]),
+            self._pkg("cpython", deps=["sqlite"]),
+        )
+        write_manifest(self._manifest("cpython"))
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+        ):
+            script = ZScript()
+            script._with_deps = {
+                "zlib": str(local),
+                "sqlite": str(local_s),
+                "cpython": str(local_c),
+            }
+            script.setup()
+
+        called_names = {c.args[0].name for c in mock_ila.call_args_list}
+        self.assertIn("zlib", called_names)  # transitive-only, overridden
+
+    def test_warns_and_drops_unknown_name_online(self) -> None:
+        """An override name absent from both manifest and lock is warned+dropped."""
+        local = Path.cwd() / "ghost_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        lock = self._lock(self._pkg("zlib"))
+        write_manifest(self._manifest("zlib"))
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+            patch("nanvix_zutil.script.log.warning") as mock_warn,
+        ):
+            script = ZScript()
+            script._with_deps = {"ghost": str(local)}
+            script.setup()  # must not raise
+
+        mock_ila.assert_not_called()
+        self.assertTrue(
+            any("ghost" in c.args[0] for c in mock_warn.call_args_list),
+            f"expected warning mentioning 'ghost', got {mock_warn.call_args_list!r}",
+        )
+
+    def test_cycle_in_lock_does_not_infinite_loop(self) -> None:
+        """The DFS terminates even if the SDK lock has a cycle.
+
+        In practice ``resolve()`` runs ``_detect_cycles`` and would
+        fatal first, but the memoisation guard here is defensive.
+        Test by patching in a cyclic lock directly.
+        """
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        # zlib ↔ libcrc cycle, cpython pulls both.
+        lock = self._lock(
+            self._pkg("zlib", deps=["libcrc"]),
+            self._pkg("libcrc", deps=["zlib"]),
+            self._pkg("cpython", deps=["zlib"]),
+        )
+        with self.assertRaises(SystemExit):
+            # Fatals on the forward check (cpython transitively depends on
+            # overridden zlib), not on hang.
+            self._run(self._manifest("cpython"), lock, {"zlib": str(local)})
+
 
 class TestHelpersMakeInitrd(unittest.TestCase):
     """helpers.make_initrd() builds the correct mkimage command."""

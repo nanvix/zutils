@@ -53,7 +53,6 @@ Paths are expanded (`~`) and canonicalised at parse time.
   released `.a` embeds calls against the pre-override version of
   the transitive; mixing at link time drifts ABI silently.  Either
   add the parent to `--with-deps` too, or drop the leaf override.
-  See nanvix/zutils#332 for the broader diamond-dep story.
 
 ## Precedence
 
@@ -72,6 +71,3 @@ entries.
 copies a sibling consumer's staged dev tree instead, honouring
 `install_libs` / `install_headers` filtering from the manifest.
 Both flags are one-shot.
-
-Live-edit dev loops (edit sibling → immediately visible without
-re-running `./z setup`) are tracked in nanvix/zutils#332.
