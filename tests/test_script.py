@@ -1104,6 +1104,61 @@ class TestZScriptSetupWithNanvix(unittest.TestCase):
         fake_sysroot.overlay_local_nanvix.assert_not_called()
 
 
+class TestZScriptSetupWithDeps(unittest.TestCase):
+    """setup() installs local dev archives for names in ``local_deps``."""
+
+    def setUp(self) -> None:
+        write_manifest()
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    def test_setup_calls_install_local_archive_for_persisted_names(self) -> None:
+        """Names in ``local_deps`` route through install_local_archive."""
+        write_manifest(MANIFEST_WITH_DEPS)
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Buildroot.install_dep") as mock_id,
+        ):
+            script = ZScript()
+            script._offline = True  # skip resolve() network path
+            script.local_deps = {"zlib": str(local)}
+            script.setup()
+
+        mock_ila.assert_called_once()
+        called_dep = mock_ila.call_args.args[0]
+        called_path = mock_ila.call_args.args[1]
+        self.assertEqual(called_dep.name, "zlib")
+        self.assertEqual(called_path, local)
+        mock_id.assert_not_called()
+
+    def test_setup_no_action_when_map_empty(self) -> None:
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+        ):
+            script = ZScript()
+            script.setup()
+
+        mock_ila.assert_not_called()
+
+
 class TestHelpersMakeInitrd(unittest.TestCase):
     """helpers.make_initrd() builds the correct mkimage command."""
 

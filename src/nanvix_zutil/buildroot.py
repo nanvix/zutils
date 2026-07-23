@@ -411,6 +411,33 @@ class Buildroot:
             log.info(f"Installed {dep.name} from local path: {dep_dir}")
         return copied > 0
 
+    def install_local_archive(
+        self,
+        dep: Dependency,
+        manifest_path: Path,
+    ) -> None:
+        """Install a dependency from a sibling consumer's staged dev tree.
+
+        Walks ``<manifest_path>/../out/staging/dev/`` — the tree the
+        sibling's ``release`` step packs into the dev archive,
+        byte-identical to the archive contents — and copies matching
+        files into the sysroot, applying the same routing and filter
+        rules used when extracting the released archive.
+
+        Fatal (``EXIT_MISSING_DEP``) if the staging tree is absent;
+        callers should run ``./z build`` against *manifest_path* first.
+        """
+        dev_dir = manifest_path.parent / "out" / "staging" / "dev"
+        if not dev_dir.is_dir():
+            log.fatal(
+                f"local dep '{dep.name}': no staged dev tree at {dev_dir}",
+                code=EXIT_MISSING_DEP,
+                hint=f"Run `./z build` for {manifest_path} first.",
+            )
+
+        copied = _copy_local_dep_tree(dep, dev_dir)
+        log.success(f"Copied {copied} file(s) for {dep.name} from {dev_dir}")
+
     # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------

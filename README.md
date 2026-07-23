@@ -74,6 +74,7 @@ uv run tasks.py setup
 | [Test](docs/test.md)                            | How to run tests                           |
 | [Manifest Reference](docs/manifest.md)          | `nanvix.toml` format and options           |
 | [Local Development](docs/with-nanvix.md)        | Using local Nanvix builds (`--with-nanvix`)|
+| [Local Deps](docs/with-deps.md)                 | One-shot local dep overrides (`--with-deps`)|
 | [Troubleshooting](docs/troubleshooting.md)      | Solutions to common problems               |
 | [Contributing](CONTRIBUTING.md)                 | Contribution guidelines and release process|
 
