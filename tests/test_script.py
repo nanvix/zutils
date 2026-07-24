@@ -39,6 +39,7 @@ from tests.testutils import (
     MANIFEST_WITH_DEPS,
     make_sdk_provenance,
     make_toml,
+    toolchain_toml,
     write_manifest,
 )
 
@@ -1144,6 +1145,31 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
         self.assertEqual(called_path, local)
         mock_id.assert_not_called()
 
+    def test_setup_warns_and_ignores_unknown_dep_name(self) -> None:
+        """Names not in the resolved dep tree are warned about and ignored."""
+        local = Path.cwd() / "nope_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.log.warning") as mock_warn,
+        ):
+            script = ZScript()
+            script.local_deps = {"not_a_real_dep": str(local)}
+            script.setup()  # must not raise
+
+        mock_ila.assert_not_called()
+        self.assertTrue(
+            any("not_a_real_dep" in c.args[0] for c in mock_warn.call_args_list),
+            f"expected warning mentioning 'not_a_real_dep', got {mock_warn.call_args_list!r}",
+        )
+
     def test_setup_no_action_when_map_empty(self) -> None:
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
@@ -1157,6 +1183,147 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
             script.setup()
 
         mock_ila.assert_not_called()
+
+
+class TestZScriptWithDepsSetupRouting(unittest.TestCase):
+    """setup() routes overrides to install_local_archive and warns on unknowns.
+
+    The diamond-hazard check itself now lives in the resolver; see
+    ``tests/test_sdk_resolver.py::TestResolverLocalOverrides``.
+    """
+
+    def setUp(self) -> None:
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    @staticmethod
+    def _pkg(name: str, deps: list[str] | None = None) -> ResolvedPackage:
+        return ResolvedPackage(
+            name=name,
+            repo=f"nanvix/{name}",
+            kind="dependency",
+            ref=Ref(kind=RefKind.VERSION, value="1.0"),
+            resolved_tag="v1.0",
+            resolved_commitish="c" * 40,
+            release_id=1,
+            dependencies=deps or [],
+            assets=[
+                ResolvedAsset(
+                    name=f"{name}-microvm-standalone-256mb.tar.bz2",
+                    url=f"https://example.invalid/{name}.tar.bz2",
+                )
+            ],
+        )
+
+    def _run(self, manifest: str, lock: Lockfile, with_deps: dict[str, str]) -> None:
+        write_manifest(manifest)
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive"),
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+        ):
+            script = ZScript()
+            script.local_deps = with_deps
+            script.setup()
+
+    def _manifest(self, *dep_names: str) -> str:
+        deps = "\n".join(f'{name} = "1.0"' for name in dep_names)
+        return (
+            "[package]\n"
+            'name = "test"\n'
+            'version = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            + toolchain_toml()
+            + "\n[dependencies]\n"
+            + deps
+            + "\n"
+        )
+
+    def _lock(self, *pkgs: ResolvedPackage) -> Lockfile:
+        return Lockfile(
+            LockfileMetadata("sha256:x", "0.20.0", sdk=make_sdk_provenance("0.20.0")),
+            packages=list(pkgs),
+        )
+
+    def test_override_of_transitive_only_dep_installs(self) -> None:
+        """Overriding a name only present as a transitive (not a direct dep)
+        routes through install_local_archive; the deferred filter admits it."""
+        local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        (local.parent / "local_deps.json").write_text("{}")
+        # cpython (direct) → sqlite (transitive) → zlib (transitive, overridden).
+        # Also override sqlite so the direct check passes.
+        local_s = Path.cwd() / "sqlite_ws" / ".nanvix" / "nanvix.toml"
+        local_s.parent.mkdir(parents=True)
+        local_s.write_text("")
+        (local_s.parent / "local_deps.json").write_text("{}")
+        local_c = Path.cwd() / "cpython_ws" / ".nanvix" / "nanvix.toml"
+        local_c.parent.mkdir(parents=True)
+        local_c.write_text("")
+        (local_c.parent / "local_deps.json").write_text("{}")
+        lock = self._lock(
+            self._pkg("zlib"),
+            self._pkg("sqlite", deps=["zlib"]),
+            self._pkg("cpython", deps=["sqlite"]),
+        )
+        write_manifest(self._manifest("cpython"))
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+        ):
+            script = ZScript()
+            script.local_deps = {
+                "zlib": str(local),
+                "sqlite": str(local_s),
+                "cpython": str(local_c),
+            }
+            script.setup()
+
+        called_names = {c.args[0].name for c in mock_ila.call_args_list}
+        self.assertIn("zlib", called_names)  # transitive-only, overridden
+
+    def test_warns_and_drops_unknown_name_online(self) -> None:
+        """An override name absent from both manifest and lock is warned+dropped."""
+        local = Path.cwd() / "ghost_ws" / ".nanvix" / "nanvix.toml"
+        local.parent.mkdir(parents=True)
+        local.write_text("")
+        lock = self._lock(self._pkg("zlib"))
+        write_manifest(self._manifest("zlib"))
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=lock),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+            patch("nanvix_zutil.script.log.warning") as mock_warn,
+        ):
+            script = ZScript()
+            script.local_deps = {"ghost": str(local)}
+            script.setup()  # must not raise
+
+        mock_ila.assert_not_called()
+        self.assertTrue(
+            any("ghost" in c.args[0] for c in mock_warn.call_args_list),
+            f"expected warning mentioning 'ghost', got {mock_warn.call_args_list!r}",
+        )
+        # Public map reflects the effective (pruned) override set.
+        self.assertEqual(script.local_deps, {})
 
 
 class TestHelpersMakeInitrd(unittest.TestCase):

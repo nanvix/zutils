@@ -324,6 +324,10 @@ class ZScript:
         self.sysroot.verify(self.sysroot_required_files())
 
         deps: list[Dependency] = list(self.manifest.dependencies)
+        # ``known`` is the set of names we understand at install time.
+        # In offline mode this is just the manifest's direct deps;
+        # online mode extends it with SDK-resolved transitives below.
+        known: set[str] = {dep.name for dep in deps}
 
         sdk_releases: dict[str, dict[str, object]] = {}
         if not self._offline:
@@ -333,6 +337,7 @@ class ZScript:
                 self.manifest,
                 gh_token=self.config.get(CFG_GH_TOKEN),
                 verify_sdk_image=not is_windows(),
+                local_overrides=local_deps,
             )
             if isinstance(resolution, BlockedResolution):
                 log.fatal(
@@ -356,6 +361,8 @@ class ZScript:
                     )
                 selected.append(name)
                 pending.extend(package.dependencies)
+            known.update(selected)
+
             direct = {dep.name for dep in deps}
             for name in selected:
                 package = packages[name]
@@ -380,6 +387,23 @@ class ZScript:
                             ref=package.ref,
                         )
                     )
+
+        # Warn+drop --with-deps overrides that are not part of the
+        # known dep set.  Deferred until after SDK resolution so that
+        # overriding a valid transitive dep (present in the SDK lock
+        # but not in the manifest's direct [[dependencies]]) is not
+        # spuriously rejected.
+        if local_deps:
+            unknown = sorted(set(local_deps) - known)
+            for name in unknown:
+                log.warning(
+                    f"--with-deps: ignoring '{name}' — not in the resolved dep tree"
+                )
+                del local_deps[name]
+            # Keep the public map in sync with the effective override set
+            # so consumer hooks reading ``self.local_deps`` never see a
+            # name that was warned-and-dropped.
+            self.local_deps = dict(local_deps)
 
         if deps:
             self.buildroot = Buildroot.create()
