@@ -330,6 +330,9 @@ class ZScript:
         known: set[str] = {dep.name for dep in deps}
 
         sdk_releases: dict[str, dict[str, object]] = {}
+        # Consumer's resolved version per package name (online only), used
+        # to verify overridden siblings' build provenance below.
+        consumer_versions: dict[str, str] = {}
         if not self._offline:
             # Windows resolves the digest-bound release tuple but cannot execute the
             # Linux provider image; CI verifies that image on its Linux job.
@@ -347,6 +350,9 @@ class ZScript:
                     hint=resolution.reason,
                 )
             packages = {pkg.name: pkg for pkg in resolution.packages}
+            consumer_versions = {
+                pkg.name: pkg.resolved_tag for pkg in resolution.packages
+            }
             selected: list[str] = []
             pending = [dep.name for dep in deps]
             while pending:
@@ -404,6 +410,44 @@ class ZScript:
             # so consumer hooks reading ``self.local_deps`` never see a
             # name that was warned-and-dropped.
             self.local_deps = dict(local_deps)
+
+        # Transitive diamond check: each overridden sibling records the
+        # versions it was built against in its own committed nanvix.lock.
+        # Every dep shared with our resolution must agree, else the
+        # sibling's prebuilt ``.a`` is frozen against a different version
+        # of that dep than we will link.  (A sibling built with its own
+        # --with-deps is not reflected in its lock; that nested case is
+        # out of scope.)
+        if local_deps and consumer_versions:
+            mismatches: list[tuple[str, str, str, str]] = []
+            for name, sibling_manifest in local_deps.items():
+                sibling_lock = read_lockfile(
+                    Path(sibling_manifest).parent / "nanvix.lock"
+                )
+                sib_versions = {
+                    pkg.name: pkg.resolved_tag for pkg in sibling_lock.packages
+                }
+                for key in sorted(set(sib_versions) & set(consumer_versions)):
+                    if sib_versions[key] != consumer_versions[key]:
+                        mismatches.append(
+                            (name, key, sib_versions[key], consumer_versions[key])
+                        )
+            if mismatches:
+                lines = "\n".join(
+                    f"  - via '{via}': '{key}' was built against {sib!r},"
+                    f" but this build resolves it to {con!r}"
+                    for via, key, sib, con in mismatches
+                )
+                log.fatal(
+                    "Inconsistent local dep provenance:\n" + lines,
+                    code=EXIT_MISSING_DEP,
+                    hint=(
+                        "The sibling was built against different dependency"
+                        " versions than this build resolves. Rebuild the"
+                        " sibling against a matching SDK, or drop the"
+                        " conflicting override."
+                    ),
+                )
 
         if deps:
             self.buildroot = Buildroot.create()

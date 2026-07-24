@@ -55,6 +55,15 @@ composition.
   against the pre-override version of the transitive; mixing at link
   time drifts ABI silently.  Either add the parent to `--with-deps`
   too, or drop the leaf override.
+- Overridden sibling was itself built against a different version of a
+  shared dependency than this build resolves: fatal.  Detected by
+  reading the sibling's committed `nanvix.lock` (its build provenance)
+  and comparing shared entries against this build's resolution.
+  Rebuild the sibling against a matching SDK, or drop the override.
+  (A sibling built with its *own* `--with-deps` is not reflected in
+  its lock; that nested case is out of scope.)
+- Overridden sibling has no committed `nanvix.lock`: fatal.  Run
+  `./z lock` (or a full setup) for the sibling first.
 
 ## Public API
 
