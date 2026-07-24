@@ -358,12 +358,22 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         self.assertIn("-c", cmd)
 
     def test_contains_tar_in_shell_script(self) -> None:
-        """The shell script should include tar commands."""
+        """The shell script should include tar commands (rsync fallback)."""
         cfg = self._make_config()
         cmd = cfg.build_windows_run_cmd("make", "all")
         shell_script = cmd[-1]  # Last arg after sh -c
         self.assertIn("tar -cf", shell_script)
         self.assertIn("tar -xf", shell_script)
+
+    def test_prefers_rsync_with_tar_fallback(self) -> None:
+        """Sync prefers rsync and falls back to tar."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        shell_script = cmd[-1]
+        self.assertIn("command -v rsync", shell_script)
+        self.assertIn("rsync -a --exclude", shell_script)
+        self.assertNotIn("--delete", shell_script)
+        self.assertIn("else tar -cf", shell_script)
 
     def test_output_files_copied_back(self) -> None:
         """Output files are copied from container to host."""

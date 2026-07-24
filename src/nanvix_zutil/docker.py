@@ -275,8 +275,10 @@ class DockerConfig:
 
         1. Uses the configured container mounts as provided, typically including
            the host workspace at ``/mnt/workspace``.
-        2. Copies sources via ``tar`` from the mounted workspace into a
-           container-local build dir.
+        2. Copies sources from the mounted workspace into a container-local
+           build dir, preferring ``rsync`` (preserves mtimes; keeps a
+           persistent build dir incremental) and falling back to ``tar``
+           when rsync is unavailable.
         3. Runs the inner command from the container-local build dir.
         4. Copies configured output files back to the mounted workspace.
 
@@ -308,11 +310,24 @@ class DockerConfig:
                 )
             output_script = "; " + "; ".join(copy_cmds)
 
+        # Prefer rsync (preserves mtimes, syncs only changed files so a
+        # persistent build dir stays incremental); fall back to tar when rsync
+        # is not present in the image. No --delete: it would wipe build
+        # artifacts and the .build-inputs-hash from a persistent volume. The
+        # excludes string is shared: rsync and tar interpret --exclude=
+        # slightly differently (rsync anchors leading-/ patterns), so keep
+        # excludes to basename patterns to stay branch-agnostic.
+        rsync_cmd = f"rsync -a {excludes} {ws_mount}/ {build_dir}/"
+        tar_cmd = f"tar -cf - -C {ws_mount} {excludes} . | tar -xf - -C {build_dir}"
+        sync_cmd = (
+            f"if command -v rsync >/dev/null 2>&1; then {rsync_cmd}; "
+            f"else {tar_cmd}; fi"
+        )
+
         inner_cmd = " ".join(shlex.quote(c) for c in cmd)
         shell_script = (
             f"mkdir -p {build_dir} && "
-            f"tar -cf - -C {ws_mount} {excludes} . "
-            f"| tar -xf - -C {build_dir} && "
+            f"{sync_cmd} && "
             f"cd {build_dir} && "
             f"{inner_cmd}; rc=$?{output_script}; exit $rc"
         )
