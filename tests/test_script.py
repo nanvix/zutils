@@ -31,6 +31,7 @@ from nanvix_zutil.lockfile import (
     LockfileMetadata,
     ResolvedAsset,
     ResolvedPackage,
+    write_lockfile,
 )
 from nanvix_zutil.manifest import Manifest
 from nanvix_zutil.resolver import BlockedResolution
@@ -1259,17 +1260,17 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
         local = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
         local.parent.mkdir(parents=True)
         local.write_text("")
-        (local.parent / "local_deps.json").write_text("{}")
+        write_lockfile(self._lock(), local.parent / "nanvix.lock")
         # cpython (direct) → sqlite (transitive) → zlib (transitive, overridden).
         # Also override sqlite so the direct check passes.
         local_s = Path.cwd() / "sqlite_ws" / ".nanvix" / "nanvix.toml"
         local_s.parent.mkdir(parents=True)
         local_s.write_text("")
-        (local_s.parent / "local_deps.json").write_text("{}")
+        write_lockfile(self._lock(), local_s.parent / "nanvix.lock")
         local_c = Path.cwd() / "cpython_ws" / ".nanvix" / "nanvix.toml"
         local_c.parent.mkdir(parents=True)
         local_c.write_text("")
-        (local_c.parent / "local_deps.json").write_text("{}")
+        write_lockfile(self._lock(), local_c.parent / "nanvix.lock")
         lock = self._lock(
             self._pkg("zlib"),
             self._pkg("sqlite", deps=["zlib"]),
@@ -1324,6 +1325,128 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
         )
         # Public map reflects the effective (pruned) override set.
         self.assertEqual(script.local_deps, {})
+
+
+class TestZScriptTransitiveCheck(unittest.TestCase):
+    """setup() verifies overridden siblings' build provenance (nanvix.lock).
+
+    Each override's sibling records the versions it was built against in
+    its own committed nanvix.lock; shared deps must agree with our
+    resolution.
+    """
+
+    def setUp(self) -> None:
+        for key in (
+            "NANVIX_MACHINE",
+            "NANVIX_DEPLOYMENT_MODE",
+            "NANVIX_MEMORY_SIZE",
+        ):
+            os.environ.pop(key, None)
+
+    @staticmethod
+    def _pkg(name: str, tag: str = "v1.0") -> ResolvedPackage:
+        return ResolvedPackage(
+            name=name,
+            repo=f"nanvix/{name}",
+            kind="dependency",
+            ref=Ref(kind=RefKind.VERSION, value=tag.lstrip("v")),
+            resolved_tag=tag,
+            resolved_commitish="c" * 40,
+            release_id=1,
+            assets=[
+                ResolvedAsset(
+                    name=f"{name}-microvm-standalone-256mb.tar.bz2",
+                    url=f"https://example.invalid/{name}.tar.bz2",
+                )
+            ],
+        )
+
+    def _lock(self, *pkgs: ResolvedPackage) -> Lockfile:
+        return Lockfile(
+            LockfileMetadata("sha256:x", "0.20.0", sdk=make_sdk_provenance("0.20.0")),
+            packages=list(pkgs),
+        )
+
+    def _manifest(self, *dep_names: str) -> str:
+        deps = "\n".join(f'{name} = "1.0"' for name in dep_names)
+        return (
+            "[package]\n"
+            'name = "test"\n'
+            'version = "0.1.0"\n'
+            'nanvix-version = "0.1.0"\n'
+            + toolchain_toml()
+            + "\n[dependencies]\n"
+            + deps
+            + "\n"
+        )
+
+    def _sibling(self, name: str, lock: Lockfile | None) -> str:
+        """Create a sibling worktree; optionally write its nanvix.lock."""
+        manifest = Path.cwd() / f"{name}_ws" / ".nanvix" / "nanvix.toml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text("")
+        if lock is not None:
+            write_lockfile(lock, manifest.parent / "nanvix.lock")
+        return str(manifest)
+
+    def _run(
+        self, manifest: str, resolution: Lockfile, with_deps: dict[str, str]
+    ) -> None:
+        write_manifest(manifest)
+        fake_sysroot = MagicMock()
+        fake_sysroot.path = Path("/fake/sysroot")
+        with (
+            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
+            patch("nanvix_zutil.script.Sysroot.verify"),
+            patch("nanvix_zutil.script.resolve", return_value=resolution),
+            patch("nanvix_zutil.script.Buildroot.install_local_archive"),
+            patch("nanvix_zutil.script.Buildroot.install_dep"),
+        ):
+            script = ZScript()
+            script.local_deps = with_deps
+            script.setup()
+
+    def test_fatals_on_version_mismatch(self) -> None:
+        """Sibling built against a different shared-dep version fatals."""
+        # Consumer resolves libcrc v1.2; sibling zlib was built vs v0.9.
+        resolution = self._lock(
+            self._pkg("zlib", "v1.0"),
+            self._pkg("libcrc", "v1.2"),
+        )
+        sib = self._sibling("zlib", self._lock(self._pkg("libcrc", "v0.9")))
+        with self.assertRaises(SystemExit):
+            self._run(
+                self._manifest("zlib", "libcrc"),
+                resolution,
+                {"zlib": sib},
+            )
+
+    def test_passes_when_versions_agree(self) -> None:
+        resolution = self._lock(
+            self._pkg("zlib", "v1.0"),
+            self._pkg("libcrc", "v1.2"),
+        )
+        sib = self._sibling("zlib", self._lock(self._pkg("libcrc", "v1.2")))
+        self._run(  # must not raise
+            self._manifest("zlib", "libcrc"),
+            resolution,
+            {"zlib": sib},
+        )
+
+    def test_passes_when_no_shared_deps(self) -> None:
+        resolution = self._lock(self._pkg("zlib", "v1.0"))
+        sib = self._sibling("zlib", self._lock(self._pkg("unrelated", "v9")))
+        self._run(  # must not raise
+            self._manifest("zlib"),
+            resolution,
+            {"zlib": sib},
+        )
+
+    def test_fatals_on_missing_sibling_lock(self) -> None:
+        resolution = self._lock(self._pkg("zlib", "v1.0"))
+        sib = self._sibling("zlib", None)  # no nanvix.lock written
+        with self.assertRaises(SystemExit):
+            self._run(self._manifest("zlib"), resolution, {"zlib": sib})
 
 
 class TestHelpersMakeInitrd(unittest.TestCase):
