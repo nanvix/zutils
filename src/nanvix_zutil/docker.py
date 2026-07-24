@@ -163,6 +163,9 @@ class DockerConfig:
     output_files: list[str] = field(default_factory=lambda: [])
     """Build output files to copy back from the container to the host."""
 
+    crlf_files: list[str] = field(default_factory=lambda: [])
+    """Files (relative to the build dir) to normalize from CRLF to LF after sync."""
+
     tar_excludes: list[str] = field(
         default_factory=lambda: [
             ".git",
@@ -324,11 +327,30 @@ class DockerConfig:
             f"else {tar_cmd}; fi"
         )
 
+        # Normalize CRLF -> LF on caller-supplied files after sync. Avoids
+        # autotools/shell-script breakage on Windows checkouts without
+        # core.autocrlf=input. Uses tr (POSIX \r escape); the normalized
+        # content is written back with `cat tmp > file` so the file's mode is
+        # preserved (a plain `mv` would drop the execute bit off configure).
+        crlf_cmd = ""
+        if self.crlf_files:
+            norms: list[str] = []
+            for f in self.crlf_files:
+                path = shlex.quote(f"{self.container_build_dir}/{f}")
+                tmp = shlex.quote(f"{self.container_build_dir}/{f}.crlf.tmp")
+                norms.append(
+                    f"if [ -f {path} ]; then "
+                    f"tr -d '\\r' < {path} > {tmp} && cat {tmp} > {path} "
+                    f"&& rm -f {tmp}; fi"
+                )
+            crlf_cmd = " && ".join(norms) + " && "
+
         inner_cmd = " ".join(shlex.quote(c) for c in cmd)
         shell_script = (
             f"mkdir -p {build_dir} && "
             f"{sync_cmd} && "
             f"cd {build_dir} && "
+            f"{crlf_cmd}"
             f"{inner_cmd}; rc=$?{output_script}; exit $rc"
         )
 
