@@ -430,6 +430,111 @@ class TestBuildrootInstallDep(unittest.TestCase):
         self.assertTrue((sysroot() / "include" / "zlib.h").exists())
 
 
+class TestInstallLocalArchive(unittest.TestCase):
+    """Buildroot.install_local_archive() copies a sibling's staged dev tree."""
+
+    def _dep(self, **overrides: object) -> Dependency:
+        return Dependency(
+            name=str(overrides.pop("name", "zlib")),
+            repo=str(overrides.pop("repo", "nanvix/zlib")),
+            ref=Ref(kind=RefKind.TAG, value="v1.0.0"),
+            install_libs=overrides.pop("install_libs", None),  # type: ignore[arg-type]
+            install_headers=overrides.pop("install_headers", None),  # type: ignore[arg-type]
+        )
+
+    def _stage(self, files: dict[str, bytes]) -> Path:
+        """Write *files* under a sibling's staging tree; return its manifest path."""
+        manifest = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        dev = manifest.parent / "out" / "staging" / "dev"
+        for rel, data in files.items():
+            dst = dev / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(data)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("")
+        return manifest
+
+    def test_copies_lib_and_header(self) -> None:
+        br = Buildroot.create()
+        manifest = self._stage(
+            {
+                "lib/libz.a": b"lib-content",
+                "include/zlib.h": b"header-content",
+            }
+        )
+
+        br.install_local_archive(self._dep(), manifest)
+
+        lib = sysroot() / "lib" / "libz.a"
+        hdr = sysroot() / "include" / "zlib.h"
+        self.assertTrue(lib.is_file() and not lib.is_symlink())
+        self.assertTrue(hdr.is_file() and not hdr.is_symlink())
+        self.assertEqual(lib.read_bytes(), b"lib-content")
+        self.assertEqual(hdr.read_bytes(), b"header-content")
+
+    def test_selective_libs_and_headers(self) -> None:
+        br = Buildroot.create()
+        manifest = self._stage(
+            {
+                "lib/libz.a": b"z",
+                "lib/libextra.a": b"extra",
+                "include/zlib.h": b"wanted",
+                "include/internal.h": b"nope",
+            }
+        )
+        dep = self._dep(install_libs=["libz.a"], install_headers=["zlib.h"])
+
+        br.install_local_archive(dep, manifest)
+
+        self.assertTrue((sysroot() / "lib" / "libz.a").is_file())
+        self.assertFalse((sysroot() / "lib" / "libextra.a").exists())
+        self.assertTrue((sysroot() / "include" / "zlib.h").is_file())
+        self.assertFalse((sysroot() / "include" / "internal.h").exists())
+
+    def test_preserves_header_subdirectory(self) -> None:
+        br = Buildroot.create()
+        manifest = self._stage(
+            {
+                "include/openssl/ssl.h": b"ssl",
+                "include/openssl/crypto.h": b"crypto",
+                "lib/libssl.a": b"lib",
+            }
+        )
+
+        br.install_local_archive(
+            self._dep(name="openssl", repo="nanvix/openssl"), manifest
+        )
+
+        self.assertTrue((sysroot() / "include" / "openssl" / "ssl.h").is_file())
+        self.assertTrue((sysroot() / "include" / "openssl" / "crypto.h").is_file())
+        self.assertTrue((sysroot() / "lib" / "libssl.a").is_file())
+
+    def test_preserves_lib_subdirectory(self) -> None:
+        """Nested libs (e.g. ``lib/engines/libcapi.a``) are copied intact."""
+        br = Buildroot.create()
+        manifest = self._stage(
+            {
+                "lib/engines/libcapi.a": b"engine",
+                "lib/libssl.a": b"lib",
+            }
+        )
+
+        br.install_local_archive(
+            self._dep(name="openssl", repo="nanvix/openssl"), manifest
+        )
+
+        self.assertTrue((sysroot() / "lib" / "engines" / "libcapi.a").is_file())
+        self.assertTrue((sysroot() / "lib" / "libssl.a").is_file())
+
+    def test_fatals_when_staging_missing(self) -> None:
+        br = Buildroot.create()
+        manifest_path = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
+        manifest_path.parent.mkdir(parents=True)
+        manifest_path.write_text("")
+        with self.assertRaises(SystemExit):
+            br.install_local_archive(self._dep(), manifest_path)
+
+
 class TestSuffixDep(unittest.TestCase):
     """Tests for suffix_dep()."""
 

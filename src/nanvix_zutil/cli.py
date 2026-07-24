@@ -45,6 +45,57 @@ def _abs_dir(raw: str) -> str:
     return str(resolved)
 
 
+def _abs_file(raw: str) -> str:
+    """argparse ``type=`` callable: resolve ``raw`` to an absolute file.
+
+    Expands ``~``, resolves symlinks, and requires the target to exist
+    and be a regular file.
+    """
+    if not raw:
+        raise argparse.ArgumentTypeError("path is empty")
+    p = Path(raw).expanduser()
+    try:
+        resolved = p.resolve(strict=True)
+    except (OSError, RuntimeError) as e:
+        raise argparse.ArgumentTypeError(
+            f"path does not exist: {raw}",
+        ) from e
+    if not resolved.is_file():
+        raise argparse.ArgumentTypeError(
+            f"path is not a file: {raw}",
+        )
+    return str(resolved)
+
+
+def _dep_map(raw: str) -> dict[str, str]:
+    """argparse ``type=`` callable: parse ``name=path,name=path`` into a dict.
+
+    Each path is expanded (``~``) and canonicalised via :func:`_abs_file`.
+    Paths must point at a sibling consumer's manifest file (typically
+    ``.nanvix/nanvix.toml``).  Empty entries (trailing/adjacent commas)
+    are skipped; missing ``=``, empty names, and empty paths are errors.
+    """
+    if not raw:
+        raise argparse.ArgumentTypeError("--with-deps value is empty")
+    out: dict[str, str] = {}
+    for entry in raw.split(","):
+        if not entry.strip():
+            continue
+        if "=" not in entry:
+            raise argparse.ArgumentTypeError(
+                f"expected 'name=path', got {entry!r}",
+            )
+        name, _, path = entry.partition("=")
+        name = name.strip()
+        path = path.strip()
+        if not name:
+            raise argparse.ArgumentTypeError(f"empty dep name in {entry!r}")
+        if not path:
+            raise argparse.ArgumentTypeError(f"empty path for dep {name!r}")
+        out[name] = _abs_file(path)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Parser factory
 # ---------------------------------------------------------------------------
@@ -188,6 +239,18 @@ def build_parser(
                 " deps/<name>/{lib,include}/ artifacts."
                 " Relative paths and ~ are accepted; the path is"
                 " canonicalised to an absolute directory.",
+            )
+            sub.add_argument(
+                "--with-deps",
+                type=_dep_map,
+                metavar="NAME=PATH,...",
+                dest="with_deps",
+                help="Comma-separated map of local dep overrides. Each"
+                " PATH is a sibling consumer's manifest file (typically"
+                " .nanvix/nanvix.toml); its staged dev tree under"
+                " <PATH>/../out/staging/dev/ is copied into the sysroot"
+                " in place of the released dep. One-time; pass again on"
+                " each setup to reapply.",
             )
         if name == "install":
             sub.add_argument(

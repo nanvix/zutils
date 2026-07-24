@@ -175,6 +175,14 @@ class ZScript:
         self.docker: DockerConfig | None = None
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
+        self.local_deps: dict[str, str] = {}
+        """Map of dep name → sibling manifest path from ``--with-deps``.
+
+        Populated at CLI parse time; empty when the flag was not passed.
+        Read-only from consumer hooks (mutations after ``setup()`` returns
+        have no effect).  Consumers that want to be override-aware can
+        branch on ``if name in self.local_deps: ...``.
+        """
 
     # ------------------------------------------------------------------
     # Hook classification helpers
@@ -308,6 +316,11 @@ class ZScript:
         if nanvix_local:
             self.sysroot.overlay_local_nanvix(Path(nanvix_local))
 
+        # Snapshot --with-deps overrides for the install loop below.
+        local_deps = dict(self.local_deps)
+        if local_deps:
+            log.info(f"Using {len(local_deps)} local dep override(s).")
+
         self.sysroot.verify(self.sysroot_required_files())
 
         deps: list[Dependency] = list(self.manifest.dependencies)
@@ -371,6 +384,13 @@ class ZScript:
         if deps:
             self.buildroot = Buildroot.create()
             for dep in deps:
+                # --with-deps: copy from a sibling consumer's staged dev tree.
+                if dep.name in local_deps:
+                    self.buildroot.install_local_archive(
+                        dep,
+                        Path(local_deps[dep.name]),
+                    )
+                    continue
                 # When --with-nanvix is active, try local artifacts first.
                 # In offline mode, try for ALL deps (not just nanvix-owned).
                 # In online mode, only try for nanvix-owned deps.
@@ -602,6 +622,10 @@ class ZScript:
             instance._offline = True
         if getattr(args, "with_nanvix", None):
             instance._with_nanvix_path = args.with_nanvix
+
+        with_deps: dict[str, str] | None = getattr(args, "with_deps", None)
+        if with_deps:
+            instance.local_deps = with_deps
 
         # ------------------------------------------------------------------
         # Docker: resolve image from CLI or persisted config, then check availability.
