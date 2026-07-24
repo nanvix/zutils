@@ -20,6 +20,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
+    remove_build_volume,
 )
 
 
@@ -336,6 +337,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         self,
         output_files: list[str] | None = None,
         crlf_files: list[str] | None = None,
+        persistent_volume: bool | str = False,
     ) -> DockerConfig:
         return DockerConfig(
             image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
@@ -350,6 +352,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             gid=1000,
             output_files=output_files or [],
             crlf_files=crlf_files or [],
+            persistent_volume=persistent_volume,
         )
 
     def test_tar_copy_command_structure(self) -> None:
@@ -471,6 +474,26 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self._make_config(output_files=[bad]).build_windows_run_cmd("make")
 
+    def test_no_named_volume_by_default(self) -> None:
+        """Without persistent_volume, no named volume is mounted."""
+        cmd = self._make_config().build_windows_run_cmd("make")
+        vols = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
+        self.assertFalse(any(v.endswith(":/tmp/build") for v in vols))
+
+    def test_persistent_volume_mounted_at_build_dir(self) -> None:
+        """An auto-named volume is mounted at the build dir."""
+        cmd = self._make_config(persistent_volume=True).build_windows_run_cmd("make")
+        vols = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
+        self.assertIn(f"{self._workspace.name}-build-", " ".join(vols))
+        self.assertTrue(any(v.endswith(":/tmp/build") for v in vols))
+
+    def test_persistent_volume_string_used_verbatim(self) -> None:
+        """A string persistent_volume is used as the volume name."""
+        cmd = self._make_config(persistent_volume="my-vol").build_windows_run_cmd(
+            "make"
+        )
+        self.assertIn("my-vol:/tmp/build", cmd)
+
     def test_inner_command_in_script(self) -> None:
         """The inner command appears in the shell script."""
         cfg = self._make_config()
@@ -556,6 +579,59 @@ class TestTranslateWindowsPath(unittest.TestCase):
 
         result = _translate_windows_path(Path("ab"))
         self.assertIsInstance(result, str)
+
+
+class TestVolumeLifecycle(unittest.TestCase):
+    """Tests for persistent-volume naming and removal."""
+
+    def _config(self, host: Path, persistent_volume: bool | str) -> DockerConfig:
+        return DockerConfig(
+            image="img",
+            mounts=[Mount(host_path=host, container_path=WORKSPACE_CONTAINER_PATH)],
+            persistent_volume=persistent_volume,
+        )
+
+    def test_volume_name_none_when_disabled(self) -> None:
+        self.assertIsNone(self._config(Path("/ws"), False).volume_name())
+
+    def test_volume_name_is_deterministic(self) -> None:
+        a = self._config(Path("/repos/cpython"), True).volume_name()
+        b = self._config(Path("/repos/cpython"), True).volume_name()
+        self.assertEqual(a, b)
+        self.assertIsNotNone(a)
+        assert a is not None
+        self.assertTrue(a.startswith("cpython-build-"))
+
+    def test_volume_name_differs_per_workspace(self) -> None:
+        a = self._config(Path("/repos/cpython"), True).volume_name()
+        b = self._config(Path("/repos/sqlite"), True).volume_name()
+        self.assertNotEqual(a, b)
+
+    def test_volume_name_string_verbatim(self) -> None:
+        self.assertEqual(self._config(Path("/ws"), "pinned").volume_name(), "pinned")
+
+    def test_volume_name_requires_workspace_mount(self) -> None:
+        cfg = DockerConfig(image="img", mounts=[], persistent_volume=True)
+        with self.assertRaises(ValueError):
+            cfg.volume_name()
+
+    @patch("nanvix_zutil.docker.subprocess.run")
+    @patch("nanvix_zutil.docker.shutil.which", return_value="/usr/bin/docker")
+    def test_remove_build_volume_invokes_docker(
+        self, _which: object, mock_run: object
+    ) -> None:
+        remove_build_volume("my-vol")
+        mock_run.assert_called_once_with(  # type: ignore[attr-defined]
+            ["docker", "volume", "rm", "--force", "my-vol"], check=False
+        )
+
+    @patch("nanvix_zutil.docker.subprocess.run")
+    @patch("nanvix_zutil.docker.shutil.which", return_value=None)
+    def test_remove_build_volume_noop_without_docker(
+        self, _which: object, mock_run: object
+    ) -> None:
+        remove_build_volume("my-vol")
+        mock_run.assert_not_called()  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

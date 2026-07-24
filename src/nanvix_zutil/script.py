@@ -46,6 +46,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
+    remove_build_volume,
 )
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
 from nanvix_zutil.helpers import (
@@ -610,6 +611,13 @@ class ZScript:
         invoking the build system (which would require Docker).  Override
         to customise the files cleaned.
         """
+        # Drop the persistent build volume, if one is configured.
+        if self.docker is not None:
+            volume = self.docker.volume_name()
+            if volume is not None:
+                remove_build_volume(volume)
+                log.info(f"Removed build volume {volume}")
+
         if is_windows():
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.

@@ -353,6 +353,33 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
     def test_clean_noop(self) -> None:
         self._make_script().clean()
 
+    @patch("nanvix_zutil.script.remove_build_volume")
+    def test_clean_removes_persistent_volume(self, mock_remove: MagicMock) -> None:
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH)
+            ],
+            persistent_volume="pinned-vol",
+        )
+        script.clean()
+        mock_remove.assert_called_once_with("pinned-vol")
+
+    @patch("nanvix_zutil.script.remove_build_volume")
+    def test_clean_skips_volume_when_not_persistent(
+        self, mock_remove: MagicMock
+    ) -> None:
+        script = self._make_script()
+        script.docker = DockerConfig(
+            image="img",
+            mounts=[
+                Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH)
+            ],
+        )
+        script.clean()
+        mock_remove.assert_not_called()
+
 
 class TestZScriptAvailableSubcommands(unittest.TestCase):
     """available_subcommands() reflects hook overrides."""
