@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path, PurePosixPath
@@ -400,15 +402,74 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         )
         self.assertLess(shell_script.index("tr -d"), shell_script.index("make"))
 
-    def test_output_files_copied_back(self) -> None:
-        """Output files are copied from container to host."""
+    def test_file_outputs_copied_back(self) -> None:
+        """File outputs are copied to the mirrored path on the host."""
         cfg = self._make_config(output_files=["build/output.elf", "result.bin"])
         cmd = cfg.build_windows_run_cmd("make", "all")
         shell_script = cmd[-1]
-        self.assertIn("build/output.elf", shell_script)
-        self.assertIn("result.bin", shell_script)
+        self.assertIn("/tmp/build/build/output.elf", shell_script)
+        self.assertIn("/mnt/workspace/build/output.elf", shell_script)
+        self.assertIn("/mnt/workspace/result.bin", shell_script)
         self.assertIn("cp -f", shell_script)
         self.assertIn("mkdir -p", shell_script)
+
+    def test_no_output_files_by_default(self) -> None:
+        """Without output_files, no copy-back is emitted."""
+        shell_script = self._make_config().build_windows_run_cmd("make")[-1]
+        self.assertNotIn("rm -rf", shell_script)
+        self.assertNotIn("cp -f", shell_script)
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=False)
+    def test_output_dir_copied_back_with_wipe(self, _mock: object) -> None:
+        """A directory output is wiped then copied back with cp -a (Linux host)."""
+        cfg = self._make_config(output_files=["_install_staging"])
+        shell_script = cfg.build_windows_run_cmd("make")[-1]
+        self.assertIn("if [ -d /tmp/build/_install_staging ]", shell_script)
+        self.assertIn("rm -rf /mnt/workspace/_install_staging", shell_script)
+        self.assertIn("mkdir -p /mnt/workspace/_install_staging", shell_script)
+        self.assertIn(
+            "cp -a /tmp/build/_install_staging/. /mnt/workspace/_install_staging/",
+            shell_script,
+        )
+        # Same entry also handles the file case via elif.
+        self.assertIn("elif [ -f /tmp/build/_install_staging ]", shell_script)
+        # Copied-back outputs are chown'd to host uid:gid.
+        self.assertIn(
+            "chown -R 1000:1000 /mnt/workspace/_install_staging", shell_script
+        )
+
+    @patch("nanvix_zutil.docker.is_windows", return_value=True)
+    def test_no_chown_on_windows_host(self, _mock: object) -> None:
+        """On a Windows host, copy-back does not chown (would force root:root)."""
+        cfg = self._make_config(output_files=["a.elf", ".nanvix/out/x"])
+        shell_script = cfg.build_windows_run_cmd("make")[-1]
+        self.assertNotIn("chown", shell_script)
+        # Symlinks are dereferenced (cp -aL) so no Windows reparse points.
+        self.assertIn(
+            "cp -aL /tmp/build/.nanvix/out/x/. /mnt/workspace/.nanvix/out/x/",
+            shell_script,
+        )
+        # Still valid shell without the chowns.
+        if shutil.which("sh"):
+            proc = subprocess.run(["sh", "-n", "-c", shell_script], capture_output=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+    @unittest.skipUnless(shutil.which("sh"), "POSIX sh not on PATH")
+    def test_generated_script_is_valid_shell(self) -> None:
+        """The full generated script parses under POSIX sh (guards `;;` etc.)."""
+        cfg = self._make_config(
+            crlf_files=["configure"],
+            output_files=["a.elf", ".nanvix/out/staging/x"],
+        )
+        script = cfg.build_windows_run_cmd("sh", "-c", "make build")[-1]
+        proc = subprocess.run(["sh", "-n", "-c", script], capture_output=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+    def test_invalid_output_path_rejected(self) -> None:
+        """Absolute paths and paths at/above the workspace root are rejected."""
+        for bad in ("", ".", "..", "../escape", "/out", "/"):
+            with self.assertRaises(ValueError):
+                self._make_config(output_files=[bad]).build_windows_run_cmd("make")
 
     def test_inner_command_in_script(self) -> None:
         """The inner command appears in the shell script."""
