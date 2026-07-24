@@ -218,6 +218,11 @@ class ZScript:
         * sysroot path from :attr:`config` → ``/mnt/sysroot`` (writable),
           if the sysroot has been configured
 
+        Default :attr:`~nanvix_zutil.DockerConfig.invalidation_inputs` cover
+        ``Makefile.nanvix`` and ``nanvix.lock`` (missing ones are skipped), so
+        a persistent-volume build is cleaned when the build recipe or resolved
+        toolchain/deps change.  Consumers only need to set ``clean_cmd``.
+
         Override in a subclass to add extra mounts or environment variables.
 
         Args:
@@ -248,6 +253,10 @@ class ZScript:
             image=image,
             mounts=mounts,
             workdir=WORKSPACE_CONTAINER_PATH,
+            invalidation_inputs=[
+                repo_root() / "Makefile.nanvix",
+                nanvix_root() / "nanvix.lock",
+            ],
         )
 
     # ------------------------------------------------------------------

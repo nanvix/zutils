@@ -967,6 +967,13 @@ class TestZScriptDockerConfig(unittest.TestCase):
         for m in cfg.mounts:
             self.assertNotEqual(str(m.container_path), "/mnt/buildroot")
 
+    def test_docker_config_default_invalidation_inputs(self) -> None:
+        """Default invalidation inputs cover Makefile.nanvix and nanvix.lock."""
+        script = self._make_script()
+        cfg = script.docker_config("test-image")
+        names = {p.name for p in cfg.invalidation_inputs}
+        self.assertEqual(names, {"Makefile.nanvix", "nanvix.lock"})
+
 
 class TestZScriptAutoDocker(unittest.TestCase):
     """Docker is always enabled for setup/build/release/clean (hard fail)."""

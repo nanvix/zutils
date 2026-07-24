@@ -338,6 +338,8 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         output_files: list[str] | None = None,
         crlf_files: list[str] | None = None,
         persistent_volume: bool | str = False,
+        invalidation_inputs: list[Path] | None = None,
+        clean_cmd: str = "",
     ) -> DockerConfig:
         return DockerConfig(
             image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
@@ -353,6 +355,8 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             output_files=output_files or [],
             crlf_files=crlf_files or [],
             persistent_volume=persistent_volume,
+            invalidation_inputs=invalidation_inputs or [],
+            clean_cmd=clean_cmd,
         )
 
     def test_tar_copy_command_structure(self) -> None:
@@ -461,8 +465,11 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
     def test_generated_script_is_valid_shell(self) -> None:
         """The full generated script parses under POSIX sh (guards `;;` etc.)."""
         cfg = self._make_config(
+            persistent_volume=True,
             crlf_files=["configure"],
             output_files=["a.elf", ".nanvix/out/staging/x"],
+            invalidation_inputs=[self._workspace],
+            clean_cmd="make clean || true",
         )
         script = cfg.build_windows_run_cmd("sh", "-c", "make build")[-1]
         proc = subprocess.run(["sh", "-n", "-c", script], capture_output=True)
@@ -493,6 +500,90 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             "make"
         )
         self.assertIn("my-vol:/tmp/build", cmd)
+
+    def test_invalidation_requires_persistent_volume(self) -> None:
+        """Without a persistent volume, no invalidation block is emitted."""
+        inp = self._workspace / "cfg.json"
+        inp.write_text("a")
+        script = self._make_config(
+            invalidation_inputs=[inp], clean_cmd="make clean"
+        ).build_windows_run_cmd("make")[-1]
+        self.assertNotIn(".build-inputs-hash", script)
+
+    def test_invalidation_block_emitted(self) -> None:
+        """With volume + inputs + clean_cmd, the compare/clean/record block runs."""
+        inp = self._workspace / "cfg.json"
+        inp.write_text("a")
+        cfg = self._make_config(
+            persistent_volume=True,
+            invalidation_inputs=[inp],
+            clean_cmd="make clean || true",
+        )
+        script = cfg.build_windows_run_cmd("make")[-1]
+        digest = cfg.invalidation_hash()
+        self.assertIn("/tmp/build/.build-inputs-hash", script)
+        self.assertIn("make clean || true", script)
+        self.assertIn(digest, script)
+        # Runs after sync/cd, before the build command.
+        self.assertLess(script.index(".build-inputs-hash"), script.index("; rc=$?"))
+        # Hash recorded only on successful clean (guards stale rebuilds).
+        self.assertIn(
+            f"|| true && printf %s {digest} > /tmp/build/.build-inputs-hash", script
+        )
+
+    def test_invalidation_strict_clean_records_on_success(self) -> None:
+        """A strict clean_cmd records the hash only when it exits 0."""
+        inp = self._workspace / "cfg.json"
+        inp.write_text("a")
+        cfg = self._make_config(
+            persistent_volume=True, invalidation_inputs=[inp], clean_cmd="make clean"
+        )
+        script = cfg.build_windows_run_cmd("make")[-1]
+        self.assertIn("make clean && printf %s", script)
+
+    def test_no_invalidation_block_without_clean_cmd(self) -> None:
+        """Inputs without a clean_cmd emit no invalidation block."""
+        inp = self._workspace / "cfg.json"
+        inp.write_text("a")
+        script = self._make_config(
+            persistent_volume=True, invalidation_inputs=[inp]
+        ).build_windows_run_cmd("make")[-1]
+        self.assertNotIn(".build-inputs-hash", script)
+
+    def test_invalidation_hash_changes_with_content(self) -> None:
+        """The input hash tracks file content."""
+        inp = self._workspace / "cfg.json"
+        inp.write_text("a")
+        cfg = self._make_config(invalidation_inputs=[inp])
+        first = cfg.invalidation_hash()
+        inp.write_text("b")
+        self.assertNotEqual(first, cfg.invalidation_hash())
+
+    def test_invalidation_hash_covers_dir_trees(self) -> None:
+        """Directory inputs are hashed and track added files."""
+        tree = self._workspace / "buildroot"
+        (tree / "sub").mkdir(parents=True)
+        (tree / "sub" / "a.txt").write_text("one")
+        cfg = self._make_config(invalidation_inputs=[tree])
+        first = cfg.invalidation_hash()
+        (tree / "sub" / "b.txt").write_text("two")
+        self.assertNotEqual(first, cfg.invalidation_hash())
+
+    def test_invalidation_hash_skips_missing_and_resists_aliasing(self) -> None:
+        """Missing paths are skipped; length-framing prevents boundary aliasing."""
+        missing = self._workspace / "nope"
+        self.assertEqual(
+            self._make_config(invalidation_inputs=[missing]).invalidation_hash(),
+            self._make_config(invalidation_inputs=[]).invalidation_hash(),
+        )
+        ab = self._workspace / "ab"
+        ab.write_text("c")
+        a = self._workspace / "a"
+        a.write_text("bc")
+        self.assertNotEqual(
+            self._make_config(invalidation_inputs=[ab]).invalidation_hash(),
+            self._make_config(invalidation_inputs=[a]).invalidation_hash(),
+        )
 
     def test_inner_command_in_script(self) -> None:
         """The inner command appears in the shell script."""
