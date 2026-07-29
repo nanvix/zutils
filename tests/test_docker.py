@@ -333,6 +333,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
     def _make_config(
         self,
         output_files: list[str] | None = None,
+        crlf_files: list[str] | None = None,
     ) -> DockerConfig:
         return DockerConfig(
             image="ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f",
@@ -346,6 +347,7 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
             uid=1000,
             gid=1000,
             output_files=output_files or [],
+            crlf_files=crlf_files or [],
         )
 
     def test_tar_copy_command_structure(self) -> None:
@@ -358,12 +360,45 @@ class TestDockerConfigBuildWindowsRunCmd(unittest.TestCase):
         self.assertIn("-c", cmd)
 
     def test_contains_tar_in_shell_script(self) -> None:
-        """The shell script should include tar commands."""
+        """The shell script should include tar commands (rsync fallback)."""
         cfg = self._make_config()
         cmd = cfg.build_windows_run_cmd("make", "all")
         shell_script = cmd[-1]  # Last arg after sh -c
         self.assertIn("tar -cf", shell_script)
         self.assertIn("tar -xf", shell_script)
+
+    def test_prefers_rsync_with_tar_fallback(self) -> None:
+        """Sync prefers rsync and falls back to tar."""
+        cfg = self._make_config()
+        cmd = cfg.build_windows_run_cmd("make", "all")
+        shell_script = cmd[-1]
+        self.assertIn("command -v rsync", shell_script)
+        self.assertIn("rsync -a --exclude", shell_script)
+        self.assertNotIn("--delete", shell_script)
+        self.assertIn("else tar -cf", shell_script)
+
+    def test_no_crlf_normalization_by_default(self) -> None:
+        """Without crlf_files, no normalization is emitted."""
+        cfg = self._make_config()
+        shell_script = cfg.build_windows_run_cmd("make")[-1]
+        self.assertNotIn("tr -d", shell_script)
+
+    def test_crlf_normalization_guarded_per_file(self) -> None:
+        """Each crlf file gets a guarded, portable normalization after sync."""
+        cfg = self._make_config(crlf_files=["configure", "Makefile.in"])
+        shell_script = cfg.build_windows_run_cmd("make")[-1]
+        self.assertIn("if [ -f", shell_script)
+        self.assertIn(r"tr -d '\r'", shell_script)
+        # Written back with cat (not mv) to preserve the file's mode.
+        self.assertIn(
+            "cat /tmp/build/configure.crlf.tmp > /tmp/build/configure", shell_script
+        )
+        self.assertIn("/tmp/build/Makefile.in", shell_script)
+        # Normalization runs after cd into the build dir, before the command.
+        self.assertLess(
+            shell_script.index("cd /tmp/build"), shell_script.index("tr -d")
+        )
+        self.assertLess(shell_script.index("tr -d"), shell_script.index("make"))
 
     def test_output_files_copied_back(self) -> None:
         """Output files are copied from container to host."""
