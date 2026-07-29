@@ -74,7 +74,7 @@ def translate_path(mounts: list[Mount], host_path: Path) -> PurePosixPath:
     paths (e.g. ``/opt/nanvix``) keep forward slashes on Windows.
 
     Args:
-        mounts: Volume mounts to scan (typically ``docker_config.mounts``).
+        mounts: Volume mounts to scan (i.e. the build ``DockerConfig.mounts``).
         host_path: An absolute host path to translate.
 
     Returns:

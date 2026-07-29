@@ -35,7 +35,7 @@ from nanvix_zutil.lockfile import (
 )
 from nanvix_zutil.manifest import Manifest
 from nanvix_zutil.resolver import BlockedResolution
-from nanvix_zutil.script import ZScript
+from nanvix_zutil.script import ZScript, _build_docker_config
 from tests.testutils import (
     MANIFEST_WITH_DEPS,
     make_sdk_provenance,
@@ -326,7 +326,7 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
         return ZScript()
 
     def test_build_noop(self) -> None:
-        self._make_script().build()
+        self._make_script().build(DockerConfig(image="test-image"))
 
     def test_test_noop(self) -> None:
         self._make_script().test()
@@ -338,9 +338,12 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
         self._make_script().clean()
 
     @patch("nanvix_zutil.script.remove_build_volume")
-    def test_clean_removes_persistent_volume(self, mock_remove: MagicMock) -> None:
+    @patch("nanvix_zutil.script._build_docker_config")
+    def test_clean_removes_persistent_volume(
+        self, mock_config: MagicMock, mock_remove: MagicMock
+    ) -> None:
         script = self._make_script()
-        script.docker = DockerConfig(
+        mock_config.return_value = DockerConfig(
             image="img",
             mounts=[
                 Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH)
@@ -351,11 +354,12 @@ class TestZScriptLifecycleHooks(unittest.TestCase):
         mock_remove.assert_called_once_with("pinned-vol")
 
     @patch("nanvix_zutil.script.remove_build_volume")
+    @patch("nanvix_zutil.script._build_docker_config")
     def test_clean_skips_volume_when_not_persistent(
-        self, mock_remove: MagicMock
+        self, mock_config: MagicMock, mock_remove: MagicMock
     ) -> None:
         script = self._make_script()
-        script.docker = DockerConfig(
+        mock_config.return_value = DockerConfig(
             image="img",
             mounts=[
                 Mount(host_path=Path("/ws"), container_path=WORKSPACE_CONTAINER_PATH)
@@ -383,7 +387,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
 
     def test_subclass_exposes_overridden_hooks(self) -> None:
         class _Sub(ZScript):
-            def build(self) -> None:
+            def build(self, docker: DockerConfig) -> None:
                 pass
 
             def test(self) -> None:
@@ -396,7 +400,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
 
     def test_subclass_hides_non_overridden_hooks(self) -> None:
         class _Sub(ZScript):
-            def build(self) -> None:
+            def build(self, docker: DockerConfig) -> None:
                 pass
 
         script = _Sub()
@@ -406,7 +410,7 @@ class TestZScriptAvailableSubcommands(unittest.TestCase):
 
     def test_all_hooks_overridden(self) -> None:
         class _FullSub(ZScript):
-            def build(self) -> None:
+            def build(self, docker: DockerConfig) -> None:
                 pass
 
             def test(self) -> None:
@@ -909,7 +913,7 @@ class TestZScriptSysrootRequiredFiles(unittest.TestCase):
 
 
 class TestZScriptDockerConfig(unittest.TestCase):
-    """Tests for ZScript.docker / ZScript.docker_config()."""
+    """Tests for the module-level _build_docker_config()."""
 
     def setUp(self) -> None:
         write_manifest()
@@ -917,19 +921,15 @@ class TestZScriptDockerConfig(unittest.TestCase):
     def _make_script(self) -> ZScript:
         return ZScript()
 
-    def test_docker_not_active_by_default(self) -> None:
-        script = self._make_script()
-        self.assertIsNone(script.docker)
-
     def test_docker_config_returns_dockerconfig(self) -> None:
         script = self._make_script()
-        cfg = script.docker_config("test-image")
+        cfg = _build_docker_config("test-image", script.config)
         self.assertIsInstance(cfg, DockerConfig)
         self.assertEqual(cfg.image, "test-image")
 
     def test_docker_config_mounts_workspace(self) -> None:
         script = self._make_script()
-        cfg = script.docker_config("test-image")
+        cfg = _build_docker_config("test-image", script.config)
         workspace_mount = next(
             (m for m in cfg.mounts if m.container_path == WORKSPACE_CONTAINER_PATH),
             None,
@@ -941,20 +941,20 @@ class TestZScriptDockerConfig(unittest.TestCase):
     def test_docker_config_no_buildroot_mount(self) -> None:
         """Buildroot mount was removed after buildroot/sysroot consolidation."""
         script = self._make_script()
-        cfg = script.docker_config("test-image")
+        cfg = _build_docker_config("test-image", script.config)
         for m in cfg.mounts:
             self.assertNotEqual(str(m.container_path), "/mnt/buildroot")
 
     def test_docker_config_default_invalidation_inputs(self) -> None:
         """Default invalidation inputs cover Makefile.nanvix and nanvix.lock."""
         script = self._make_script()
-        cfg = script.docker_config("test-image")
+        cfg = _build_docker_config("test-image", script.config)
         names = {p.name for p in cfg.invalidation_inputs}
         self.assertEqual(names, {"Makefile.nanvix", "nanvix.lock"})
 
 
 class TestZScriptAutoDocker(unittest.TestCase):
-    """Docker is always enabled for setup/build/release/clean (hard fail)."""
+    """Docker is constructed and passed only to the build step."""
 
     def setUp(self) -> None:
         write_manifest()
@@ -965,14 +965,13 @@ class TestZScriptAutoDocker(unittest.TestCase):
         """build on Windows uses the persisted Docker image."""
 
         class BuildScript(ZScript):
-            def build(self) -> None:
+            def build(self, docker: DockerConfig) -> None:
                 pass
 
-        docker_configured = False
+        received: list[DockerConfig | None] = []
 
-        def _fake_build(self_inner: ZScript) -> None:
-            nonlocal docker_configured
-            docker_configured = self_inner.docker is not None
+        def _fake_build(self_inner: ZScript, docker: DockerConfig) -> None:
+            received.append(docker)
 
         # Pre-persist Docker image so build can find it.
         nanvix_dir = paths.nanvix_root()
@@ -988,20 +987,20 @@ class TestZScriptAutoDocker(unittest.TestCase):
         ):
             BuildScript.main()
 
-        self.assertTrue(docker_configured)
+        self.assertEqual(len(received), 1)
+        self.assertIsInstance(received[0], DockerConfig)
 
     def test_build_auto_enables_docker_on_linux(self) -> None:
         """build on Linux uses the persisted Docker image."""
 
         class BuildScript(ZScript):
-            def build(self) -> None:
+            def build(self, docker: DockerConfig) -> None:
                 pass
 
-        docker_configured = False
+        received: list[DockerConfig | None] = []
 
-        def _fake_build(self_inner: ZScript) -> None:
-            nonlocal docker_configured
-            docker_configured = self_inner.docker is not None
+        def _fake_build(self_inner: ZScript, docker: DockerConfig) -> None:
+            received.append(docker)
 
         # Pre-persist Docker image so build can find it.
         nanvix_dir = paths.nanvix_root()
@@ -1022,7 +1021,8 @@ class TestZScriptAutoDocker(unittest.TestCase):
         ):
             BuildScript.main()
 
-        self.assertTrue(docker_configured)
+        self.assertEqual(len(received), 1)
+        self.assertIsInstance(received[0], DockerConfig)
 
 
 class TestZScriptCleanWindows(unittest.TestCase):

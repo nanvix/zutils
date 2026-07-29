@@ -15,17 +15,15 @@ Demonstrates the full lifecycle with a real Nanvix build.  Run with
 
 import dataclasses
 import shutil
-from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
-    CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
     ZScript,
     log,
 )
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
-from nanvix_zutil.helpers import run, translate_path
+from nanvix_zutil.exitcodes import EXIT_TEST_FAILURE
+from nanvix_zutil.helpers import run
 from nanvix_zutil.paths import dev_out, repo_root
 
 
@@ -33,35 +31,13 @@ class LibHello(ZScript):
     """Build script for the lib-hello static library example."""
 
     # ------------------------------------------------------------------
-    # Docker configuration
-    # ------------------------------------------------------------------
-
-    def docker_config(self, image: str) -> DockerConfig:
-        """Add output_files so libhello.a is copied back on Windows."""
-        cfg = super().docker_config(image)
-        return dataclasses.replace(cfg, output_files=["libhello.a"])
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _sysroot(self) -> PurePosixPath | Path:
-        """Return the sysroot path, translated for Docker if active."""
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return translate_path(self.docker.mounts, host) if self.docker else host
-
-    # ------------------------------------------------------------------
     # Lifecycle hooks
     # ------------------------------------------------------------------
 
-    def build(self) -> None:
+    def build(self, docker: DockerConfig) -> None:
         """Cross-compile hello.c into libhello.a for Nanvix."""
+        # output_files copies libhello.a back to the workspace on Windows.
+        docker = dataclasses.replace(docker, output_files=["libhello.a"])
         tc = TOOLCHAIN_CONTAINER_PATH
         cc = f"{tc}/bin/clang --target=i686-unknown-nanvix --sysroot={tc}"
         ar = str(tc / "bin" / "llvm-ar")
@@ -74,7 +50,7 @@ class LibHello(ZScript):
             "-c",
             f"{cc} {cflags} -c -o hello.o src/hello.c && {ar} rcs libhello.a hello.o",
             cwd=repo_root(),
-            docker=self.docker,
+            docker=docker,
         )
         # Stage artifacts into the dev tree so `release` packs a standard
         # lib/ + include/ layout.
