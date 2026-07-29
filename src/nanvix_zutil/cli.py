@@ -12,8 +12,17 @@ from __future__ import annotations
 
 import argparse
 import sys
+from enum import StrEnum
 from pathlib import Path
 
+from nanvix_zutil.config import (
+    CONFIG_DESCRIPTIONS,
+    DeploymentMode,
+    Host,
+    Machine,
+    MemorySize,
+    Target,
+)
 from nanvix_zutil.lockfile import get_zutil_version
 
 # ---------------------------------------------------------------------------
@@ -131,6 +140,40 @@ SUBCOMMAND_HELP: dict[str, str] = {
     "help": "Show help message",
 }
 
+#: CLI flags that override the matching ``NANVIX_*`` config key. These are the
+#: flag equivalents of the legacy config environment variables (``GH_TOKEN``
+#: stays an environment variable). ``dest`` is the config key itself so callers
+#: can copy provided values straight into the environment / config. The
+#: key->enum mapping mirrors :data:`nanvix_zutil.config._ENUMS`; keep them in
+#: sync when adding a config key (flag names are not derivable from the keys).
+_CONFIG_FLAGS: dict[str, tuple[str, type[StrEnum]]] = {
+    "--host": ("NANVIX_HOST", Host),
+    "--target": ("NANVIX_TARGET", Target),
+    "--machine": ("NANVIX_MACHINE", Machine),
+    "--mode": ("NANVIX_DEPLOYMENT_MODE", DeploymentMode),
+    "--memory-size": ("NANVIX_MEMORY_SIZE", MemorySize),
+}
+
+#: Config keys settable via :data:`_CONFIG_FLAGS`.
+CONFIG_FLAG_KEYS: tuple[str, ...] = tuple(key for key, _ in _CONFIG_FLAGS.values())
+
+
+def add_config_flags(parser: argparse.ArgumentParser) -> None:
+    """Register the ``NANVIX_*`` config override flags on *parser*.
+
+    Each flag stores into a ``dest`` equal to its config key (e.g.
+    ``--machine`` -> ``NANVIX_MACHINE``) so callers can read the provided
+    value back by key.
+    """
+    for flag, (key, enum_cls) in _CONFIG_FLAGS.items():
+        parser.add_argument(
+            flag,
+            dest=key,
+            default=None,
+            choices=[member.value for member in enum_cls],
+            help=CONFIG_DESCRIPTIONS.get(key, ""),
+        )
+
 
 def build_parser(
     prog: str | None = None,
@@ -189,6 +232,7 @@ def build_parser(
 
     for name in cmds:
         sub = subparsers.add_parser(name, help=SUBCOMMAND_HELP[name])
+        add_config_flags(sub)
         if name == "lock":
             lock_group = sub.add_mutually_exclusive_group()
             lock_group.add_argument(

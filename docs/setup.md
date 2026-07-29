@@ -44,19 +44,24 @@ contains:
 | `pre-commit` | Runs `tasks.py lint` (black, shfmt, shellcheck, PSScriptAnalyzer, yamllint) + `tasks.py typecheck` (pyright) |
 | `pre-push` | Runs `tasks.py lint` + `tasks.py typecheck` (same checks as pre-commit) |
 
-## Environment Variables
+## Configuration Flags
 
-These are used by the library at runtime (in consumer repos), not during
-development of `nanvix-zutil` itself:
+The build configuration knobs are set with CLI flags, passed after the
+subcommand (e.g. `./z build --machine microvm`). `setup` persists them to
+`.nanvix/env.json`; other subcommands apply them in-memory for that invocation.
+Values fall back to `.nanvix/env.json` and then built-in defaults. `GH_TOKEN` is
+the only remaining environment variable.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NANVIX_TARGET` | `x86` | Target architecture |
-| `NANVIX_MACHINE` | `microvm` | Target machine |
-| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
-| `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
-| `NANVIX_SYSROOT` | *(set by setup)* | Path to runtime sysroot |
-| `GH_TOKEN` | *(none)* | GitHub token for API rate limits |
+| Flag | Config key | Default | Purpose |
+| --- | --- | --- | --- |
+| `--host` | `NANVIX_HOST` | *(platform)* | Development host |
+| `--target` | `NANVIX_TARGET` | `x86` | Target architecture |
+| `--machine` | `NANVIX_MACHINE` | `microvm` | Target machine |
+| `--mode` | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Deployment mode |
+| `--memory-size` | `NANVIX_MEMORY_SIZE` | `256mb` | Memory size for artifact naming |
+
+`NANVIX_SYSROOT` is written to `.nanvix/env.json` by `setup`. `GH_TOKEN`
+(GitHub token for API rate limits) is read from the environment.
 
 ## Project Layout
 
