@@ -622,11 +622,14 @@ class ZScript:
         """
         # Drop the persistent build volume, if one is configured.
         if self.docker is not None:
-            volume = self.docker.volume_name()
-            if volume is not None:
-                remove_build_volume(volume)
-                log.info(f"Removed build volume {volume}")
-
+            try:
+                volume = self.docker.volume_name()
+            except ValueError as exc:
+                log.warning(f"Skipping build-volume removal: {exc}")
+            else:
+                if volume is not None:
+                    remove_build_volume(volume)
+                    log.info(f"Requested removal of build volume {volume}")
         if is_windows():
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.
