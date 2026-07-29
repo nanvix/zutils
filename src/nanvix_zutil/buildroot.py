@@ -11,6 +11,7 @@ describes a single library fetched from a GitHub release.
 from __future__ import annotations
 
 import shutil
+import stat
 import tarfile
 import zipfile
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ from nanvix_zutil.config import (
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 from nanvix_zutil.paths import nanvix_root, sysroot
 from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
+
+# zipfile packs the Unix file mode into the high 16 bits of external_attr,
+# a region the zip format itself leaves undefined. Shift to read/write it.
+ZIP_MODE_SHIFT = 16
 
 # ---------------------------------------------------------------------------
 # Verbatim copy helper
@@ -318,7 +323,7 @@ class Buildroot:
                     shutil.copyfileobj(src, dst)
                 # zipfile does not restore Unix permission bits; carry over
                 # the stored mode (e.g. executable bin/ scripts) verbatim.
-                mode = (info.external_attr >> 16) & 0o777
+                mode = stat.S_IMODE(info.external_attr >> ZIP_MODE_SHIFT)
                 if mode:
                     dest.chmod(mode)
 
@@ -391,7 +396,13 @@ class Buildroot:
         """
         root = sysroot()
         for rel in required_files:
-            if not (root / rel).exists():
+            path = Path(rel)
+            if path.is_absolute() or ".." in path.parts:
+                log.fatal(
+                    f"Required file '{rel}' must be a sysroot-relative path",
+                    code=EXIT_MISSING_DEP,
+                )
+            if not (root / path).exists():
                 log.fatal(
                     f"Required file '{rel}' not found in sysroot at {root}",
                     code=EXIT_MISSING_DEP,

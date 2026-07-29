@@ -67,12 +67,21 @@ class BinHello(ZScript):
     # ------------------------------------------------------------------
 
     def setup(self) -> bool:
-        """Download the Nanvix sysroot and lib-hello dependency, then verify."""
+        """Set up the sysroot, then install lib-hello from its staged dev tree.
+
+        lib-hello is not a published GitHub package, so it is pulled
+        directly from a sibling checkout's staged dev tree instead of
+        being declared in ``nanvix.toml``.  Build lib-hello first
+        (``./z build`` in ../lib-hello) so its ``out/staging/dev`` exists.
+        """
         used_fallback = super().setup()
+        manifest = repo_root().parent / "lib-hello" / ".nanvix" / "nanvix.toml"
         self.buildroot = Buildroot.create()
         self.buildroot.install_local_archive(
-            Dependency("lib-hello", "nanvix/zutils", Ref(RefKind.LOCAL, "lib-hello")),
-            repo_root().parent / "lib-hello" / ".nanvix" / "nanvix.toml",
+            Dependency(
+                "lib-hello", "nanvix/lib-hello", Ref(RefKind.LOCAL, str(manifest))
+            ),
+            manifest,
         )
         self.buildroot.verify(["lib/libhello.a", "include/hello.h"])
         return used_fallback

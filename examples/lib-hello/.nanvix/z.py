@@ -23,11 +23,10 @@ from nanvix_zutil import (
     DockerConfig,
     ZScript,
     log,
-    paths,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import run
-from nanvix_zutil.paths import out_dir, regular_out, repo_root
+from nanvix_zutil.paths import dev_out, repo_root
 
 
 class LibHello(ZScript):
@@ -77,13 +76,14 @@ class LibHello(ZScript):
             cwd=repo_root(),
             docker=self.docker,
         )
-        out = paths.dev_out()
-        libout = out / "lib"
-        inclout = out / "include"
+        # Stage artifacts into the dev tree so `release` packs a standard
+        # lib/ + include/ layout.
+        libout = dev_out() / "lib"
+        inclout = dev_out() / "include"
         libout.mkdir(parents=True, exist_ok=True)
         inclout.mkdir(parents=True, exist_ok=True)
-        shutil.copy(paths.repo_root() / "libhello.a", libout)
-        shutil.copy(paths.repo_root() / "src" / "hello.h", inclout)
+        shutil.copy(repo_root() / "libhello.a", libout)
+        shutil.copy(repo_root() / "src" / "hello.h", inclout)
 
     def test(self) -> None:
         """Run the test suite (smoke + integration).

@@ -5,6 +5,7 @@
 
 import io
 import stat
+import sys
 import tarfile
 import unittest
 import zipfile
@@ -16,6 +17,7 @@ from nanvix_zutil.buildroot import (
     Dependency,
     Ref,
     RefKind,
+    ZIP_MODE_SHIFT,
     extract_nanvix_version,
     extract_nanvix_version_base,
     parse_semver_tuple,
@@ -128,6 +130,12 @@ class TestBuildrootVerify(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             br.verify(required_files=["lib/libposix.a"])
         self.assertEqual(ctx.exception.code, 3)
+
+    def test_verify_rejects_absolute_and_traversal(self) -> None:
+        br = Buildroot.create()
+        for bad in ("/etc/passwd", "../escape.a"):
+            with self.assertRaises(SystemExit):
+                br.verify(required_files=[bad])
 
     def test_verify_empty_list_passes(self) -> None:
         br = Buildroot.create()
@@ -693,13 +701,14 @@ class TestBuildrootInstallDepZip(unittest.TestCase):
         self.assertTrue((sysroot() / "include" / "openssl" / "crypto.h").exists())
         self.assertTrue((sysroot() / "lib" / "libssl.a").exists())
 
+    @unittest.skipIf(sys.platform == "win32", "no Unix mode bits on Windows")
     def test_install_dep_zip_preserves_executable_bit(self) -> None:
         """zipfile drops Unix modes on extract; install must restore them."""
         br = self._setup_buildroot()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             info = zipfile.ZipInfo("bin/hello")
-            info.external_attr = 0o755 << 16
+            info.external_attr = 0o755 << ZIP_MODE_SHIFT
             zf.writestr(info, b"#!/bin/sh\n")
         archive_path = Path.cwd() / "tool.zip"
         archive_path.write_bytes(buf.getvalue())
