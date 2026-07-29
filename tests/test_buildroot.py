@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Tests for nanvix_zutil.buildroot."""
+"""Tests for nanvix_zutil.buildroot descriptors and Sysroot dep install."""
 
 import io
 import stat
@@ -13,11 +13,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from nanvix_zutil.buildroot import (
-    Buildroot,
     Dependency,
     Ref,
     RefKind,
-    ZIP_MODE_SHIFT,
     extract_nanvix_version,
     extract_nanvix_version_base,
     parse_semver_tuple,
@@ -25,6 +23,7 @@ from nanvix_zutil.buildroot import (
 )
 from nanvix_zutil.paths import sysroot
 from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
+from nanvix_zutil.sysroot import Sysroot, ZIP_MODE_SHIFT
 
 
 def _make_tar_bz2(members: dict[str, bytes]) -> bytes:
@@ -89,64 +88,44 @@ class TestDependency(unittest.TestCase):
         self.assertEqual(dep.artifact_pattern, "{name}.tar.bz2")
 
 
-class TestBuildrootCreate(unittest.TestCase):
-    """Buildroot.create() sets up the expected directory layout."""
-
-    def test_creates_lib_dir(self) -> None:
-        Buildroot.create()
-        self.assertTrue((sysroot() / "lib").is_dir())
-
-    def test_creates_include_dir(self) -> None:
-        Buildroot.create()
-        self.assertTrue((sysroot() / "include").is_dir())
-
-    def test_path_is_absolute(self) -> None:
-        Buildroot.create()
-        self.assertTrue(sysroot().is_absolute())
-
-    def test_idempotent(self) -> None:
-        Buildroot.create()
-        Buildroot.create()
-        self.assertTrue((sysroot() / "lib").is_dir())
-
-
 class TestBuildrootVerify(unittest.TestCase):
-    """Buildroot.verify() checks that required files exist."""
+    """Sysroot.verify() checks that required files exist."""
 
     def test_verify_passes_when_file_present(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
+        (sysroot() / "lib").mkdir(parents=True, exist_ok=True)
         (sysroot() / "lib" / "libz.a").write_bytes(b"")
         # Should not raise.
         br.verify(required_files=["lib/libz.a"])
 
     def test_verify_passes_for_non_lib_path(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         (sysroot() / "include" / "zlib.h").parent.mkdir(parents=True, exist_ok=True)
         (sysroot() / "include" / "zlib.h").write_bytes(b"")
         br.verify(required_files=["include/zlib.h"])
 
     def test_verify_exits_3_when_file_missing(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         with self.assertRaises(SystemExit) as ctx:
             br.verify(required_files=["lib/libposix.a"])
         self.assertEqual(ctx.exception.code, 3)
 
     def test_verify_rejects_absolute_and_traversal(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         for bad in ("/etc/passwd", "../escape.a"):
             with self.assertRaises(SystemExit):
                 br.verify(required_files=[bad])
 
     def test_verify_empty_list_passes(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         br.verify(required_files=[])
 
 
 class TestBuildrootInstallDep(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers correctly."""
 
-    def _setup_buildroot(self) -> Buildroot:
-        return Buildroot.create()
+    def _setup_buildroot(self) -> Sysroot:
+        return Sysroot(sysroot())
 
     def test_install_dep_extracts_lib(self) -> None:
         br = self._setup_buildroot()
@@ -220,7 +199,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             return archive_path
 
         with patch(
-            "nanvix_zutil.buildroot.github.download_release_asset",
+            "nanvix_zutil.sysroot.github.download_release_asset",
             side_effect=fake_download,
         ):
             br.install_dep(
@@ -266,7 +245,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             return archive_path
 
         with patch(
-            "nanvix_zutil.buildroot.github.download_release_asset",
+            "nanvix_zutil.sysroot.github.download_release_asset",
             side_effect=fake_download,
         ):
             br.install_dep(dep, host="windows", target="arm")
@@ -289,7 +268,7 @@ class TestBuildrootInstallDep(unittest.TestCase):
             log.fatal("Asset 'zlib-...-dev' not found in release nanvix/zlib@v1.0.0")
 
         with patch(
-            "nanvix_zutil.buildroot.github.download_release_asset",
+            "nanvix_zutil.sysroot.github.download_release_asset",
             side_effect=fake_download,
         ):
             with self.assertRaises(SystemExit):
@@ -388,6 +367,35 @@ class TestBuildrootInstallDep(unittest.TestCase):
         )
         self.assertTrue((sysroot() / "bin" / "zlib-config").exists())
 
+    def test_install_dep_resolves_symlink_member(self) -> None:
+        """A symlinked tar member lands as a real file copy of its target."""
+        br = self._setup_buildroot()
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:bz2") as tf:
+            data = b"real-lib"
+            info = tarfile.TarInfo("lib/libz.so.1")
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo("lib/libz.so")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "libz.so.1"
+            tf.addfile(link)
+        archive_path = Path.cwd() / "zlib.tar.bz2"
+        archive_path.write_bytes(buf.getvalue())
+        dep = Dependency(
+            name="zlib", repo="nanvix/zlib", ref=Ref(kind=RefKind.TAG, value="v1.0.0")
+        )
+
+        with patch(
+            "nanvix_zutil.github.download_release_asset",
+            return_value=archive_path,
+        ):
+            br.install_dep(dep)
+
+        link_path = sysroot() / "lib" / "libz.so"
+        self.assertTrue(link_path.is_file() and not link_path.is_symlink())
+        self.assertEqual(link_path.read_bytes(), b"real-lib")
+
 
 class TestInstallLocalArchive(unittest.TestCase):
     """Buildroot.install_local_archive() copies a sibling's staged dev tree."""
@@ -412,7 +420,7 @@ class TestInstallLocalArchive(unittest.TestCase):
         return manifest
 
     def test_copies_lib_and_header(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         manifest = self._stage(
             {
                 "lib/libz.a": b"lib-content",
@@ -430,7 +438,7 @@ class TestInstallLocalArchive(unittest.TestCase):
         self.assertEqual(hdr.read_bytes(), b"header-content")
 
     def test_preserves_header_subdirectory(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         manifest = self._stage(
             {
                 "include/openssl/ssl.h": b"ssl",
@@ -449,7 +457,7 @@ class TestInstallLocalArchive(unittest.TestCase):
 
     def test_preserves_lib_subdirectory(self) -> None:
         """Nested libs (e.g. ``lib/engines/libcapi.a``) are copied intact."""
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         manifest = self._stage(
             {
                 "lib/engines/libcapi.a": b"engine",
@@ -465,7 +473,7 @@ class TestInstallLocalArchive(unittest.TestCase):
         self.assertTrue((sysroot() / "lib" / "libssl.a").is_file())
 
     def test_fatals_when_staging_missing(self) -> None:
-        br = Buildroot.create()
+        br = Sysroot(sysroot())
         manifest_path = Path.cwd() / "zlib_ws" / ".nanvix" / "nanvix.toml"
         manifest_path.parent.mkdir(parents=True)
         manifest_path.write_text("")
@@ -541,8 +549,8 @@ class TestParseSemverTuple(unittest.TestCase):
 class TestInstallDepPreResolvedRelease(unittest.TestCase):
     """Buildroot.install_dep with _release pre-resolved."""
 
-    def _setup_buildroot(self) -> Buildroot:
-        return Buildroot.create()
+    def _setup_buildroot(self) -> Sysroot:
+        return Sysroot(sysroot())
 
     def _make_archive(self) -> bytes:
         return _make_tar_bz2(
@@ -584,7 +592,7 @@ class TestInstallDepPreResolvedRelease(unittest.TestCase):
             return archive_path
 
         with patch(
-            "nanvix_zutil.buildroot.github.download_release_asset",
+            "nanvix_zutil.sysroot.github.download_release_asset",
             side_effect=fake_download,
         ):
             br.install_dep(dep, _release=fake_release)
@@ -623,8 +631,8 @@ class TestRefKindLocal(unittest.TestCase):
 class TestBuildrootInstallDepZip(unittest.TestCase):
     """Buildroot.install_dep() extracts libs and headers from .zip archives."""
 
-    def _setup_buildroot(self) -> Buildroot:
-        return Buildroot.create()
+    def _setup_buildroot(self) -> Sysroot:
+        return Sysroot(sysroot())
 
     def test_install_dep_zip_extracts_lib(self) -> None:
         br = self._setup_buildroot()

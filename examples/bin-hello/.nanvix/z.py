@@ -21,7 +21,6 @@ import _test
 from nanvix_zutil import (
     CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
-    Buildroot,
     DockerConfig,
     ZScript,
     log,
@@ -76,14 +75,14 @@ class BinHello(ZScript):
         """
         used_fallback = super().setup()
         manifest = repo_root().parent / "lib-hello" / ".nanvix" / "nanvix.toml"
-        self.buildroot = Buildroot.create()
-        self.buildroot.install_local_archive(
+        assert self.sysroot is not None
+        self.sysroot.install_local_archive(
             Dependency(
                 "lib-hello", "nanvix/lib-hello", Ref(RefKind.LOCAL, str(manifest))
             ),
             manifest,
         )
-        self.buildroot.verify(["lib/libhello.a", "include/hello.h"])
+        self.sysroot.verify(["lib/libhello.a", "include/hello.h"])
         return used_fallback
 
     def build(self) -> None:
