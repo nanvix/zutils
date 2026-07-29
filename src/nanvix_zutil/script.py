@@ -46,6 +46,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
+    remove_build_volume,
 )
 from nanvix_zutil.exitcodes import EXIT_INVALID_ARGS, EXIT_MISSING_DEP
 from nanvix_zutil.helpers import (
@@ -217,6 +218,11 @@ class ZScript:
         * sysroot path from :attr:`config` → ``/mnt/sysroot`` (writable),
           if the sysroot has been configured
 
+        Default :attr:`~nanvix_zutil.DockerConfig.invalidation_inputs` cover
+        ``Makefile.nanvix`` and ``nanvix.lock`` (missing ones are skipped), so
+        a persistent-volume build is cleaned when the build recipe or resolved
+        toolchain/deps change.  Consumers only need to set ``clean_cmd``.
+
         Override in a subclass to add extra mounts or environment variables.
 
         Args:
@@ -247,6 +253,10 @@ class ZScript:
             image=image,
             mounts=mounts,
             workdir=WORKSPACE_CONTAINER_PATH,
+            invalidation_inputs=[
+                repo_root() / "Makefile.nanvix",
+                nanvix_root() / "nanvix.lock",
+            ],
         )
 
     # ------------------------------------------------------------------
@@ -610,6 +620,16 @@ class ZScript:
         invoking the build system (which would require Docker).  Override
         to customise the files cleaned.
         """
+        # Drop the persistent build volume, if one is configured.
+        if self.docker is not None:
+            try:
+                volume = self.docker.volume_name()
+            except ValueError as exc:
+                log.warning(f"Skipping build-volume removal: {exc}")
+            else:
+                if volume is not None:
+                    remove_build_volume(volume)
+                    log.info(f"Requested removal of build volume {volume}")
         if is_windows():
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.

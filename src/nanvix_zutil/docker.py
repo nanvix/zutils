@@ -16,9 +16,12 @@ Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 
 from __future__ import annotations
 
+import hashlib
 import os
 import posixpath
 import shlex
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -189,6 +192,33 @@ class DockerConfig:
     container_build_dir: str = "/tmp/build"
     """Working directory inside the container for Windows tar-copy mode."""
 
+    persistent_volume: bool | str = False
+    """Persist the build dir in a named Docker volume across ``run`` calls.
+
+    When ``True`` a deterministic volume name is derived from the workspace
+    (``<workspace-name>-build-<md5[:8]>``); a string is used verbatim as the
+    volume name.  The volume is mounted at :attr:`container_build_dir` so the
+    source sync becomes incremental instead of re-copying every call.  Only
+    affects the Windows tar-copy path (:meth:`build_windows_run_cmd`).
+    """
+
+    invalidation_inputs: list[Path] = field(default_factory=lambda: [])
+    """Host files/dirs whose content, when changed, forces a clean rebuild.
+
+    With a :attr:`persistent_volume` the build dir survives across calls, so
+    config drift (SDK, build flags, …) that the source sync would not catch
+    needs an explicit trigger.  Their combined hash is stored in the volume;
+    on mismatch :attr:`clean_cmd` runs.  Only used when both are set.
+    """
+
+    clean_cmd: str = ""
+    """Raw shell fragment run inside the container when :attr:`invalidation_inputs` change.
+
+    Interpolated unquoted (like the build command).  The stored hash is only
+    recorded when it exits successfully, so a lenient clean should use
+    ``"... || true"`` explicitly.
+    """
+
     # ------------------------------------------------------------------
     # Path translation
     # ------------------------------------------------------------------
@@ -236,6 +266,54 @@ class DockerConfig:
     # ------------------------------------------------------------------
     # Mount helpers
     # ------------------------------------------------------------------
+
+    def _workspace_host_path(self) -> Path:
+        """Return the host path mounted at the workspace, or raise."""
+        for mount in self.mounts:
+            if mount.container_path == WORKSPACE_CONTAINER_PATH:
+                return mount.host_path
+        raise ValueError("no workspace mount configured")
+
+    def volume_name(self) -> str | None:
+        """Return the persistent build volume name, or ``None`` when disabled.
+
+        A string :attr:`persistent_volume` is used verbatim.  ``True`` derives
+        a deterministic name from the workspace host path:
+        ``<workspace-name>-build-<md5[:8]>``.
+        """
+        if not self.persistent_volume:
+            return None
+        if isinstance(self.persistent_volume, str):
+            return self.persistent_volume
+        ws = self._workspace_host_path().resolve()
+        digest = hashlib.md5(ws.as_posix().encode(), usedforsecurity=False).hexdigest()[
+            :8
+        ]
+        return f"{ws.name}-build-{digest}"
+
+    def invalidation_hash(self) -> str:
+        """Hash :attr:`invalidation_inputs` (files and dir trees) deterministically.
+
+        Each path and content chunk is length-framed so adjacent inputs cannot
+        alias.  Missing paths are skipped so an absent optional input does not
+        error.
+        """
+        h = hashlib.sha256()
+
+        def feed(chunk: bytes) -> None:
+            h.update(len(chunk).to_bytes(8, "big"))
+            h.update(chunk)
+
+        for p in self.invalidation_inputs:
+            if p.is_dir():
+                for f in sorted(p.rglob("*")):
+                    if f.is_file():
+                        feed(f.relative_to(p).as_posix().encode())
+                        feed(f.read_bytes())
+            elif p.is_file():
+                feed(p.name.encode())
+                feed(p.read_bytes())
+        return h.hexdigest()
 
     # ------------------------------------------------------------------
     # Command construction
@@ -403,11 +481,27 @@ class DockerConfig:
                 )
             crlf_cmd = " && ".join(norms) + " && "
 
+        # Build-inputs invalidation: with a persistent volume the build dir
+        # survives, so config drift the source sync can't see must force a
+        # clean rebuild. Compare a host-computed hash against one stored in
+        # the volume; on mismatch run clean_cmd and only record the new hash
+        # if it succeeds, so a failed clean re-triggers next call.
+        invalidation_cmd = ""
+        if self.volume_name() and self.invalidation_inputs and self.clean_cmd:
+            digest = shlex.quote(self.invalidation_hash())
+            hash_file = shlex.quote(f"{self.container_build_dir}/.build-inputs-hash")
+            invalidation_cmd = (
+                f"{{ _stored=$(cat {hash_file} 2>/dev/null || true); "
+                f'if [ "$_stored" != {digest} ]; then '
+                f"{self.clean_cmd} && printf %s {digest} > {hash_file}; fi; }} && "
+            )
+
         inner_cmd = " ".join(shlex.quote(c) for c in cmd)
         shell_script = (
             f"mkdir -p {build_dir} && "
             f"{sync_cmd} && "
             f"cd {build_dir} && "
+            f"{invalidation_cmd}"
             f"{crlf_cmd}"
             f"{inner_cmd}; rc=$?{output_script}; exit $rc"
         )
@@ -421,6 +515,12 @@ class DockerConfig:
                 vol += ":ro"
             docker_cmd += ["-v", vol]
 
+        # Persist the build dir in a named volume so the source sync is
+        # incremental across calls instead of a fresh tmpdir each time.
+        vol_name = self.volume_name()
+        if vol_name:
+            docker_cmd += ["-v", f"{vol_name}:{self.container_build_dir}"]
+
         docker_cmd += ["-w", self.container_build_dir]
         docker_cmd += ["-e", "HOME=/tmp"]
 
@@ -430,3 +530,19 @@ class DockerConfig:
         docker_cmd.append(self.image)
         docker_cmd += ["sh", "-c", shell_script]
         return docker_cmd
+
+
+# ---------------------------------------------------------------------------
+# Volume lifecycle
+# ---------------------------------------------------------------------------
+
+
+def remove_build_volume(name: str) -> None:
+    """Remove a persistent Docker build volume, if Docker is available.
+
+    A no-op when the ``docker`` CLI is missing.  Uses ``--force`` so a
+    non-existent volume is not an error.
+    """
+    if shutil.which("docker") is None:
+        return
+    subprocess.run(["docker", "volume", "rm", "--force", name], check=False)

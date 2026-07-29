@@ -78,6 +78,7 @@ from nanvix_zutil.docker import (
     DockerConfig,
     Mount,
     is_windows,
+    remove_build_volume,
 )
 from nanvix_zutil.exitcodes import (
     EXIT_BUILD_FAILURE,
@@ -183,6 +184,7 @@ __all__ = [
     "ToolchainKind",
     "ZScript",
     "is_windows",
+    "remove_build_volume",
     "ensure_tool_installed",
     "extract_nanvix_version",
     "extract_nanvix_version_base",
