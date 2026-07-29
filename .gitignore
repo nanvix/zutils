@@ -20,9 +20,11 @@ venv/
 .nanvix/venv/
 
 # Nanvix build artifacts (downloaded sysroot, buildroot, cache, config)
-**/.nanvix/sysroot/
+# No trailing slash on sysroot: examples may symlink it, not just dir it.
+**/.nanvix/sysroot
 **/.nanvix/buildroot/
 **/.nanvix/cache/
+**/.nanvix/out/
 **/.nanvix/env.json
 logs/
 

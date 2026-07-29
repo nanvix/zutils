@@ -17,6 +17,7 @@ Use ``--with-docker IMAGE`` during setup to specify the Docker image::
 from __future__ import annotations
 
 import os
+import posixpath
 import shlex
 import sys
 from dataclasses import dataclass, field
@@ -161,7 +162,16 @@ class DockerConfig:
     """Additional ``-e KEY=VALUE`` pairs forwarded to the container."""
 
     output_files: list[str] = field(default_factory=lambda: [])
-    """Build output files to copy back from the container to the host."""
+    """Build outputs to copy back from the container to the workspace.
+
+    Each entry is a path relative to *both* the build dir and the workspace
+    mount -- they mirror, so the source and destination share the same
+    relative path.  Directories are wiped and copied with ``cp -a`` (``cp -aL``
+    on a Windows host, to dereference symlinks); files are copied with ``cp``.
+    File-vs-directory is detected at runtime in the container.  Each path is
+    validated lexically to stay within the workspace (it must not resolve to
+    or above the workspace root).
+    """
 
     crlf_files: list[str] = field(default_factory=lambda: [])
     """Files (relative to the build dir) to normalize from CRLF to LF after sync."""
@@ -283,7 +293,10 @@ class DockerConfig:
            persistent build dir incremental) and falling back to ``tar``
            when rsync is unavailable.
         3. Runs the inner command from the container-local build dir.
-        4. Copies configured output files back to the mounted workspace.
+        4. Copies configured ``output_files`` back to the mounted workspace
+           (directories as trees, files individually).
+           Directories are wiped and copied with ``cp -a``; files are
+           copied with ``cp``.
 
         Args:
             *cmd: Inner command and arguments to wrap.
@@ -298,19 +311,64 @@ class DockerConfig:
         # Build tar exclude args.
         excludes = " ".join(f"--exclude={shlex.quote(e)}" for e in self.tar_excludes)
 
-        # Output copy-back script.
+        # Copy build outputs back to the mounted workspace. Each entry mirrors
+        # the same relative path in the build dir and the workspace mount.
+        # Directories are wiped and copied with cp -a; files are copied with
+        # cp. Joined with `;` so a missing output does not abort the others.
+        #
+        # The container runs as root (no --user), so on a real bind mount the
+        # copied-back outputs are chown'd back to uid:gid. This is skipped on a
+        # Windows host: there is no os.getuid() (uid/gid default to 0), so
+        # chowning would force root:root and lock the files away from the
+        # Windows user -- Docker Desktop maps ownership itself. Mirrors the old
+        # _restore_owner guard.
         output_script = ""
-        if self.output_files:
-            copy_cmds: list[str] = []
-            for f in self.output_files:
-                src = shlex.quote(f"{self.container_build_dir}/{f}")
-                dst = shlex.quote(f"{WORKSPACE_CONTAINER_PATH}/{f}")
-                dst_dir = shlex.quote(
-                    str(PurePosixPath(f"{WORKSPACE_CONTAINER_PATH}/{f}").parent)
+        copy_cmds: list[str] = []
+        ws = str(WORKSPACE_CONTAINER_PATH)
+        windows_host = is_windows()
+        restore_owner = not windows_host
+        # On a Windows host, dereference symlinks when copying dir trees so the
+        # bind mount receives real files. Docker Desktop's WSL2 backend renders
+        # container symlinks as LX reparse points that native Windows tools
+        # cannot follow or unlink (WinError 1920). On Linux, preserve symlinks.
+        cp_dir = "cp -aL" if windows_host else "cp -a"
+        for f in self.output_files:
+            # Guard the path: entries are relative to the workspace/build dir
+            # (they mirror), and dir outputs are wiped with ``rm -rf``. Reject
+            # absolute paths and any value (empty, ``.``, ``..``-escaping) that
+            # resolves to or above the workspace root.
+            if posixpath.isabs(f):
+                raise ValueError(f"output path {f!r} must be relative to the workspace")
+            dst_norm = posixpath.normpath(f"{ws}/{f}")
+            if dst_norm == ws or not dst_norm.startswith(f"{ws}/"):
+                raise ValueError(
+                    f"output path {f!r} must be a non-empty path "
+                    "within the workspace"
                 )
-                copy_cmds.append(
-                    f"[ -f {src} ] && mkdir -p {dst_dir} && cp -f {src} {dst}"
-                )
+            src = shlex.quote(f"{self.container_build_dir}/{f}")
+            dst = shlex.quote(f"{WORKSPACE_CONTAINER_PATH}/{f}")
+            dst_dir = shlex.quote(
+                str(PurePosixPath(f"{WORKSPACE_CONTAINER_PATH}/{f}").parent)
+            )
+            # Restore ownership of the copied-back output (and its contents
+            # for a dir tree) to the host user.
+            chown_dir = (
+                f"chown -R {self.uid}:{self.gid} {dst} 2>/dev/null || true; "
+                if restore_owner
+                else ""
+            )
+            chown_file = (
+                f"chown {self.uid}:{self.gid} {dst} 2>/dev/null || true; "
+                if restore_owner
+                else ""
+            )
+            copy_cmds.append(
+                f"if [ -d {src} ]; then rm -rf {dst} && mkdir -p {dst} "
+                f"&& {cp_dir} {src}/. {dst}/; {chown_dir}"
+                f"elif [ -f {src} ]; then mkdir -p {dst_dir} && cp -f {src} {dst}; "
+                f"{chown_file}fi"
+            )
+        if copy_cmds:
             output_script = "; " + "; ".join(copy_cmds)
 
         # Prefer rsync (preserves mtimes, syncs only changed files so a
