@@ -220,50 +220,6 @@ class DockerConfig:
     """
 
     # ------------------------------------------------------------------
-    # Path translation
-    # ------------------------------------------------------------------
-
-    def translate_path(self, host_path: Path) -> PurePosixPath:
-        """Translate a host path to its container equivalent.
-
-        Scans :attr:`mounts` and returns the container-side path for the
-        longest matching host prefix.  If no mount covers *host_path*, the
-        path is returned as a :class:`PurePosixPath` so container-internal
-        paths keep forward slashes on Windows.
-
-        Args:
-            host_path: An absolute host path to translate.
-
-        Returns:
-            Container-side :class:`~pathlib.PurePosixPath`.  When no mount
-            covers the path, the result is still a :class:`PurePosixPath`
-            so that container-internal paths (e.g. ``/opt/nanvix``) keep
-            forward slashes on Windows.
-        """
-        resolved = host_path.resolve()
-        best_mount: Mount | None = None
-        best_depth = -1
-        best_rel = Path(".")
-
-        for mount in self.mounts:
-            mount_host = mount.host_path.resolve()
-            try:
-                rel = resolved.relative_to(mount_host)
-            except ValueError:
-                continue
-            depth = len(mount_host.parts)
-            if depth > best_depth:
-                best_depth = depth
-                best_mount = mount
-                best_rel = rel
-
-        if best_mount is not None:
-            return best_mount.container_path / PurePosixPath(*best_rel.parts)
-        # No mount matched — return as PurePosixPath so container-internal
-        # paths like /opt/nanvix keep forward slashes on Windows.
-        return PurePosixPath(host_path.as_posix())
-
-    # ------------------------------------------------------------------
     # Mount helpers
     # ------------------------------------------------------------------
 

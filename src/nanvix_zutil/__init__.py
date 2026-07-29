@@ -41,6 +41,7 @@ Public re-exports:
 - :func:`~nanvix_zutil.helpers.sync_configs` — sync packaged configs into a Nanvix tree
 - :func:`~nanvix_zutil.helpers.make_initrd` — build an initrd image
 - :func:`~nanvix_zutil.helpers.run` — run a subprocess with standardized logging
+- :func:`~nanvix_zutil.helpers.translate_path` — translate a host path to its container equivalent
 """
 
 from nanvix_zutil.buildroot import (
@@ -95,6 +96,7 @@ from nanvix_zutil.helpers import (
     mkramfs,
     run,
     sync_configs,
+    translate_path,
 )
 from nanvix_zutil.lockfile import (
     Lockfile,
@@ -201,6 +203,7 @@ __all__ = [
     "suffix_dep",
     "sdk_consumer_release_tag",
     "sync_configs",
+    "translate_path",
     "write_lockfile",
     "InitRdArgs",
     "StandaloneTest",

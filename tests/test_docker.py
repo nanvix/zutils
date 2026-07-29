@@ -22,6 +22,7 @@ from nanvix_zutil.docker import (
     is_windows,
     remove_build_volume,
 )
+from nanvix_zutil.helpers import translate_path
 
 
 class TestMount(unittest.TestCase):
@@ -50,8 +51,8 @@ class TestMount(unittest.TestCase):
         self.assertEqual(m.container_path, PurePosixPath("/b"))
 
 
-class TestDockerConfigTranslatePath(unittest.TestCase):
-    """Tests for DockerConfig.translate_path."""
+class TestTranslatePath(unittest.TestCase):
+    """Tests for helpers.translate_path."""
 
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -81,35 +82,34 @@ class TestDockerConfigTranslatePath(unittest.TestCase):
 
     def test_workspace_root(self) -> None:
         cfg = self._make_config()
-        result = cfg.translate_path(self._workspace)
+        result = translate_path(cfg.mounts, self._workspace)
         self.assertEqual(result, WORKSPACE_CONTAINER_PATH)
 
     def test_workspace_child(self) -> None:
         cfg = self._make_config()
-        result = cfg.translate_path(self._workspace / "src" / "main.c")
+        result = translate_path(cfg.mounts, self._workspace / "src" / "main.c")
         self.assertEqual(result, WORKSPACE_CONTAINER_PATH / "src" / "main.c")
 
     def test_sysroot_root(self) -> None:
         cfg = self._make_config()
-        result = cfg.translate_path(self._sysroot)
+        result = translate_path(cfg.mounts, self._sysroot)
         self.assertEqual(result, SYSROOT_CONTAINER_PATH)
 
     def test_sysroot_child(self) -> None:
         cfg = self._make_config()
-        result = cfg.translate_path(self._sysroot / "lib" / "libposix.a")
+        result = translate_path(cfg.mounts, self._sysroot / "lib" / "libposix.a")
         self.assertEqual(result, SYSROOT_CONTAINER_PATH / "lib" / "libposix.a")
 
     def test_unmatched_path_returned_as_posix(self) -> None:
         cfg = self._make_config()
         unmatched = Path("/some/other/path")
-        result = cfg.translate_path(unmatched)
+        result = translate_path(cfg.mounts, unmatched)
         self.assertEqual(result, PurePosixPath("/some/other/path"))
         self.assertIsInstance(result, PurePosixPath)
 
     def test_empty_mounts_returns_posix(self) -> None:
-        cfg = DockerConfig(image="test-image", mounts=[])
         p = Path("/foo/bar")
-        result = cfg.translate_path(p)
+        result = translate_path([], p)
         self.assertEqual(result, PurePosixPath("/foo/bar"))
         self.assertIsInstance(result, PurePosixPath)
 

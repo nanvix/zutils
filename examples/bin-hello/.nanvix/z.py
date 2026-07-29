@@ -27,7 +27,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
-from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
+from nanvix_zutil.helpers import InitRdArgs, make_initrd, run, translate_path
 from nanvix_zutil.paths import regular_out, repo_root
 
 
@@ -59,7 +59,7 @@ class BinHello(ZScript):
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.docker.translate_path(host) if self.docker else host
+        return translate_path(self.docker.mounts, host) if self.docker else host
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
