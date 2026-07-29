@@ -21,10 +21,12 @@ import _test
 from nanvix_zutil import (
     CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
+    Buildroot,
     DockerConfig,
     ZScript,
     log,
 )
+from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 from nanvix_zutil.paths import regular_out, repo_root
@@ -67,15 +69,12 @@ class BinHello(ZScript):
     def setup(self) -> bool:
         """Download the Nanvix sysroot and lib-hello dependency, then verify."""
         used_fallback = super().setup()
-        if self.buildroot is None:
-            self.log.fatal(
-                "nanvix.toml must declare lib-hello as a build-time dependency.",
-                hint=(
-                    "Add lib-hello as a dependency in nanvix.toml, then "
-                    "re-run `nanvix-zutil setup`."
-                ),
-            )
-        self.buildroot.verify(["libhello.a"])
+        self.buildroot = Buildroot.create()
+        self.buildroot.install_local_archive(
+            Dependency("lib-hello", "nanvix/zutils", Ref(RefKind.LOCAL, "lib-hello")),
+            repo_root().parent / "lib-hello" / ".nanvix" / "nanvix.toml",
+        )
+        self.buildroot.verify(["lib/libhello.a", "include/hello.h"])
         return used_fallback
 
     def build(self) -> None:
