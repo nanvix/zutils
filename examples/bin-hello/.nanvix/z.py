@@ -21,10 +21,12 @@ import _test
 from nanvix_zutil import (
     CFG_SYSROOT,
     TOOLCHAIN_CONTAINER_PATH,
+    Buildroot,
     DockerConfig,
     ZScript,
     log,
 )
+from nanvix_zutil.buildroot import Dependency, Ref, RefKind
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
 from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 from nanvix_zutil.paths import regular_out, repo_root
@@ -65,17 +67,23 @@ class BinHello(ZScript):
     # ------------------------------------------------------------------
 
     def setup(self) -> bool:
-        """Download the Nanvix sysroot and lib-hello dependency, then verify."""
+        """Set up the sysroot, then install lib-hello from its staged dev tree.
+
+        lib-hello is not a published GitHub package, so it is pulled
+        directly from a sibling checkout's staged dev tree instead of
+        being declared in ``nanvix.toml``.  Build lib-hello first
+        (``./z build`` in ../lib-hello) so its ``out/staging/dev`` exists.
+        """
         used_fallback = super().setup()
-        if self.buildroot is None:
-            self.log.fatal(
-                "nanvix.toml must declare lib-hello as a build-time dependency.",
-                hint=(
-                    "Add lib-hello as a dependency in nanvix.toml, then "
-                    "re-run `nanvix-zutil setup`."
-                ),
-            )
-        self.buildroot.verify(["libhello.a"])
+        manifest = repo_root().parent / "lib-hello" / ".nanvix" / "nanvix.toml"
+        self.buildroot = Buildroot.create()
+        self.buildroot.install_local_archive(
+            Dependency(
+                "lib-hello", "nanvix/lib-hello", Ref(RefKind.LOCAL, str(manifest))
+            ),
+            manifest,
+        )
+        self.buildroot.verify(["lib/libhello.a", "include/hello.h"])
         return used_fallback
 
     def build(self) -> None:

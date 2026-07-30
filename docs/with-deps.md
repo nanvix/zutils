@@ -15,15 +15,13 @@ Each `path` points at a sibling consumer's manifest file (typically
 `.nanvix/nanvix.toml`).  Setup reads the sibling's staged dev tree:
 
 ```
-<path>/../out/staging/dev/lib/*.a
-<path>/../out/staging/dev/include/**/*.h
+<path>/../out/staging/dev/
 ```
 
 This is the same tree the sibling's `release` step packs into the
-dev archive; contents are byte-identical.  Routing (`.a` → `lib/`,
-`.h` → `include/`) and `install_libs` / `install_headers` filters
-from the current manifest are applied exactly as they are during
-archive extraction.
+dev archive; contents are byte-identical.  The whole tree is copied
+verbatim into the sysroot, preserving its layout (`lib/`, `include/`,
+`share/`, …), exactly as it is during archive extraction.
 
 If the staging tree is missing, setup fails with a hint to run
 `./z build` against that manifest first.  There is no auto-build.
@@ -74,6 +72,5 @@ branch on `if name in self.local_deps: ...` to be override-aware.
 
 `--with-nanvix PATH` overlays a Nanvix-native build's `bin/` and
 `lib/` on top of the sysroot by direct file copy.  `--with-deps`
-copies a sibling consumer's staged dev tree instead, honouring
-`install_libs` / `install_headers` filtering from the manifest.
+copies a sibling consumer's staged dev tree verbatim instead.
 Both flags are one-shot.

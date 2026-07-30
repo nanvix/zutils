@@ -14,6 +14,7 @@ Demonstrates the full lifecycle with a real Nanvix build.  Run with
 """
 
 import dataclasses
+import shutil
 from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import (
@@ -25,7 +26,7 @@ from nanvix_zutil import (
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
 from nanvix_zutil.helpers import run
-from nanvix_zutil.paths import repo_root
+from nanvix_zutil.paths import dev_out, repo_root
 
 
 class LibHello(ZScript):
@@ -75,6 +76,14 @@ class LibHello(ZScript):
             cwd=repo_root(),
             docker=self.docker,
         )
+        # Stage artifacts into the dev tree so `release` packs a standard
+        # lib/ + include/ layout.
+        libout = dev_out() / "lib"
+        inclout = dev_out() / "include"
+        libout.mkdir(parents=True, exist_ok=True)
+        inclout.mkdir(parents=True, exist_ok=True)
+        shutil.copy(repo_root() / "libhello.a", libout)
+        shutil.copy(repo_root() / "src" / "hello.h", inclout)
 
     def test(self) -> None:
         """Run the test suite (smoke + integration).

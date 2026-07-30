@@ -11,6 +11,7 @@ describes a single library fetched from a GitHub release.
 from __future__ import annotations
 
 import shutil
+import stat
 import tarfile
 import zipfile
 from dataclasses import dataclass
@@ -30,74 +31,30 @@ from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
 from nanvix_zutil.paths import nanvix_root, sysroot
 from nanvix_zutil.release import DEV_ARCHIVE_SUFFIX
 
+# zipfile packs the Unix file mode into the high 16 bits of external_attr,
+# a region the zip format itself leaves undefined. Shift to read/write it.
+ZIP_MODE_SHIFT = 16
+
 # ---------------------------------------------------------------------------
-# Tarball path helpers
+# Verbatim copy helper
 # ---------------------------------------------------------------------------
 
 
-def _member_target(member_path: Path, dep: "Dependency") -> tuple[str, str] | None:
-    """Return ``(anchor_subdir, path_below_anchor)`` for a dep member, or ``None``.
+def _copy_local_dep_tree(source_dir: Path) -> int:
+    """Copy every file under *source_dir* verbatim into the sysroot.
 
-    Centralises the ``.a``/``.h`` routing and ``install_libs`` /
-    ``install_headers`` filtering shared by the archive-extraction
-    paths and the local-copy path.
-    """
-    if member_path.suffix == ".a":
-        if dep.install_libs is not None and member_path.name not in dep.install_libs:
-            return None
-        return "lib", _relative_to_segment(member_path, "lib")
-    if member_path.suffix == ".h":
-        if (
-            dep.install_headers is not None
-            and member_path.name not in dep.install_headers
-        ):
-            return None
-        return "include", _relative_to_segment(member_path, "include")
-    return None
-
-
-def _copy_local_dep_tree(dep: "Dependency", source_dir: Path) -> int:
-    """Copy ``.a``/``.h`` files from *source_dir* into the sysroot.
-
-    Files are routed via :func:`_member_target` (same rules as archive
-    extraction).  Returns the number of files copied.
+    Relative paths are preserved, so a strict ``lib/``/``include/``/``share/``
+    layout lands intact in the sysroot.  Returns the number of files copied.
     """
     copied = 0
     for src in source_dir.rglob("*"):
         if not src.is_file():
             continue
-        target = _member_target(src.relative_to(source_dir), dep)
-        if target is None:
-            continue
-        anchor, rel = target
-        dest = sysroot() / anchor / rel
+        dest = sysroot() / src.relative_to(source_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
         copied += 1
     return copied
-
-
-def _relative_to_segment(member_path: Path, segment: str) -> str:
-    """Return the path portion after *segment* in *member_path*.
-
-    If *segment* is not found, return the bare filename.
-
-    Args:
-        member_path: Full archive member path
-            (e.g. ``sysroot/include/openssl/ssl.h``).
-        segment: Directory segment to search for
-            (e.g. ``"include"`` or ``"lib"``).
-
-    Returns:
-        Relative path after the segment, or the bare filename as
-        fallback.
-    """
-    parts = member_path.parts
-    try:
-        idx = parts.index(segment)
-        return str(Path(*parts[idx + 1 :]))
-    except ValueError:
-        return member_path.name
 
 
 # ---------------------------------------------------------------------------
@@ -151,10 +108,6 @@ class Dependency:
             ``{machine}``, ``{mode}``, ``{mem}``.  Default targets the
             standardised ``-dev`` archive produced by
             ``nanvix-zutil release``.
-        install_libs: List of ``.a`` file names to copy into
-            ``<buildroot>/lib/``.  ``None`` copies all ``.a`` files found.
-        install_headers: List of header file names to copy into
-            ``<buildroot>/include/``.  ``None`` copies all ``.h`` files found.
     """
 
     name: str
@@ -163,8 +116,6 @@ class Dependency:
     artifact_pattern: str = (
         "{name}-{host}-{arch}-{machine}-{mode}-{mem}" + DEV_ARCHIVE_SUFFIX
     )
-    install_libs: list[str] | None = None
-    install_headers: list[str] | None = None
 
 
 def suffix_dep(dep: Dependency, version: str) -> Dependency:
@@ -295,11 +246,11 @@ class Buildroot:
         gh_token: str | None = None,
         _release: dict[str, object] | None = None,
     ) -> None:
-        """Download a dependency release and install its libraries and headers.
+        """Download a dependency release and install its contents.
 
         The release asset is downloaded into ``.nanvix/cache/`` and then
-        extracted.  Selected ``.a`` and ``.h`` files are copied into
-        ``<sysroot>/lib/`` and ``<sysroot>/include/`` respectively.
+        unpacked verbatim into the sysroot, preserving the archive's
+        directory layout (``lib/``, ``include/``, ``share/``, …).
 
         Dependencies are assumed to publish a standardised ``-dev`` archive.
         A missing archive is fatal — no fallback to the legacy
@@ -341,9 +292,9 @@ class Buildroot:
 
         log.info(f"Extracting {asset_path.name}...")
         if zipfile.is_zipfile(asset_path):
-            self._extract_dep_zip(asset_path, dep)
+            self._extract_dep_zip(asset_path)
         else:
-            self._extract_dep_tar(asset_path, dep)
+            self._extract_dep_tar(asset_path)
 
         log.success(f"Installed {dep.name} into buildroot")
 
@@ -351,21 +302,13 @@ class Buildroot:
     # Archive extraction helpers
     # ------------------------------------------------------------------
 
-    def _extract_dep_tar(self, asset_path: Path, dep: Dependency) -> None:
-        """Extract libraries and headers from a tarball."""
+    def _extract_dep_tar(self, asset_path: Path) -> None:
+        """Unpack a tarball verbatim into the sysroot."""
         with tarfile.open(asset_path, "r:*") as tf:
-            for member in tf.getmembers():
-                if not member.isfile():
-                    continue
-                target = _member_target(Path(member.name), dep)
-                if target is None:
-                    continue
-                anchor, rel = target
-                member.name = rel
-                tf.extract(member, path=sysroot() / anchor, filter="data")
+            tf.extractall(sysroot(), filter="data")
 
-    def _extract_dep_zip(self, asset_path: Path, dep: Dependency) -> None:
-        """Extract libraries and headers from a zip archive."""
+    def _extract_dep_zip(self, asset_path: Path) -> None:
+        """Unpack a zip archive verbatim into the sysroot."""
         with zipfile.ZipFile(asset_path, "r") as zf:
             for info in zf.infolist():
                 if info.is_dir():
@@ -374,14 +317,15 @@ class Buildroot:
                 # Reject absolute paths and directory traversal.
                 if member_path.is_absolute() or ".." in member_path.parts:
                     continue
-                target = _member_target(member_path, dep)
-                if target is None:
-                    continue
-                anchor, rel = target
-                dest = sysroot() / anchor / rel
+                dest = sysroot() / member_path
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, dest.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
+                # zipfile does not restore Unix permission bits; carry over
+                # the stored mode (e.g. executable bin/ scripts) verbatim.
+                mode = stat.S_IMODE(info.external_attr >> ZIP_MODE_SHIFT)
+                if mode:
+                    dest.chmod(mode)
 
     def install_local_nanvix(
         self,
@@ -390,10 +334,9 @@ class Buildroot:
     ) -> bool:
         """Install a dependency from a local Nanvix build directory.
 
-        Looks for ``<local_path>/deps/<dep.name>/`` containing ``lib/``
-        and/or ``include/`` subdirectories.  If found, copies matching
-        artifacts into the sysroot using the same routing and filter
-        rules as archive extraction.
+        Looks for ``<local_path>/deps/<dep.name>/``; if present, its entire
+        tree is copied verbatim into the sysroot (same rules as archive
+        extraction).
 
         Args:
             dep: The :class:`Dependency` descriptor.
@@ -406,7 +349,7 @@ class Buildroot:
         dep_dir = local_path / "deps" / dep.name
         if not dep_dir.is_dir():
             return False
-        copied = _copy_local_dep_tree(dep, dep_dir)
+        copied = _copy_local_dep_tree(dep_dir)
         if copied:
             log.info(f"Installed {dep.name} from local path: {dep_dir}")
         return copied > 0
@@ -418,11 +361,10 @@ class Buildroot:
     ) -> None:
         """Install a dependency from a sibling consumer's staged dev tree.
 
-        Walks ``<manifest_path>/../out/staging/dev/`` — the tree the
+        Copies ``<manifest_path>/../out/staging/dev/`` — the tree the
         sibling's ``release`` step packs into the dev archive,
-        byte-identical to the archive contents — and copies matching
-        files into the sysroot, applying the same routing and filter
-        rules used when extracting the released archive.
+        byte-identical to the archive contents — verbatim into the
+        sysroot, the same way the released archive is unpacked.
 
         Fatal (``EXIT_MISSING_DEP``) if the staging tree is absent;
         callers should run ``./z build`` against *manifest_path* first.
@@ -435,29 +377,34 @@ class Buildroot:
                 hint=f"Run `./z build` for {manifest_path} first.",
             )
 
-        copied = _copy_local_dep_tree(dep, dev_dir)
+        copied = _copy_local_dep_tree(dev_dir)
         log.success(f"Copied {copied} file(s) for {dep.name} from {dev_dir}")
 
     # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------
 
-    def verify(self, required_libs: list[str]) -> None:
-        """Assert that all required build-time library files are present.
+    def verify(self, required_files: list[str]) -> None:
+        """Assert that all required build-time files are present.
 
         Args:
-            required_libs: List of ``.a`` file names that must exist under
-                ``<sysroot>/lib/``.
+            required_files: Sysroot-relative paths that must exist
+                (e.g. ``"lib/libz.a"``, ``"include/zlib.h"``).
 
         Raises:
             SystemExit: With exit code ``3`` if any required file is missing.
         """
-        for lib in required_libs:
-            br = sysroot()
-            lib_path = br / "lib" / lib
-            if not lib_path.exists():
+        root = sysroot()
+        for rel in required_files:
+            path = Path(rel)
+            if path.is_absolute() or ".." in path.parts:
                 log.fatal(
-                    f"Required library '{lib}' not found in sysroot at {br}",
+                    f"Required file '{rel}' must be a sysroot-relative path",
+                    code=EXIT_MISSING_DEP,
+                )
+            if not (root / path).exists():
+                log.fatal(
+                    f"Required file '{rel}' not found in sysroot at {root}",
                     code=EXIT_MISSING_DEP,
                     hint="Run `./z setup` to download build-time dependencies.",
                 )
