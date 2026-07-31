@@ -25,7 +25,7 @@ from nanvix_zutil import (
     log,
 )
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_TEST_FAILURE
-from nanvix_zutil.helpers import run
+from nanvix_zutil.helpers import run, translate_path
 from nanvix_zutil.paths import dev_out, repo_root
 
 
@@ -54,7 +54,7 @@ class LibHello(ZScript):
                 code=EXIT_BUILD_FAILURE,
             )
         host = Path(sysroot_str)  # type: ignore[arg-type]
-        return self.docker.translate_path(host) if self.docker else host
+        return translate_path(self.docker.mounts, host) if self.docker else host
 
     # ------------------------------------------------------------------
     # Lifecycle hooks

@@ -11,10 +11,10 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from nanvix_zutil import log
-from nanvix_zutil.docker import DockerConfig, is_windows
+from nanvix_zutil.docker import DockerConfig, Mount, is_windows
 from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE, EXIT_MISSING_DEP
 from nanvix_zutil.paths import nanvix_root, sysroot
 
@@ -63,6 +63,45 @@ def filter_container_env(env: dict[str, str]) -> dict[str, str]:
         if k not in _CONTAINER_ENV_BLOCKLIST
         and k.upper() not in _CONTAINER_ENV_BLOCKLIST
     }
+
+
+def translate_path(mounts: list[Mount], host_path: Path) -> PurePosixPath:
+    """Translate a host path to its container equivalent.
+
+    Scans *mounts* and returns the container-side path for the longest
+    matching host prefix.  If no mount covers *host_path*, the path is
+    returned as a :class:`~pathlib.PurePosixPath` so container-internal
+    paths (e.g. ``/opt/nanvix``) keep forward slashes on Windows.
+
+    Args:
+        mounts: Volume mounts to scan (typically ``docker_config.mounts``).
+        host_path: An absolute host path to translate.
+
+    Returns:
+        Container-side :class:`~pathlib.PurePosixPath`.
+    """
+    resolved = host_path.resolve()
+    best_mount: Mount | None = None
+    best_depth = -1
+    best_rel = Path(".")
+
+    for mount in mounts:
+        mount_host = mount.host_path.resolve()
+        try:
+            rel = resolved.relative_to(mount_host)
+        except ValueError:
+            continue
+        depth = len(mount_host.parts)
+        if depth > best_depth:
+            best_depth = depth
+            best_mount = mount
+            best_rel = rel
+
+    if best_mount is not None:
+        return best_mount.container_path / PurePosixPath(*best_rel.parts)
+    # No mount matched -- return as PurePosixPath so container-internal
+    # paths like /opt/nanvix keep forward slashes on Windows.
+    return PurePosixPath(host_path.as_posix())
 
 
 def check_docker(image: str) -> None:
