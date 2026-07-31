@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from nanvix_zutil import ZScript
+from nanvix_zutil.docker import DockerConfig
 from nanvix_zutil.helpers import run
 from nanvix_zutil.paths import manifest_path, nanvix_root, repo_root
 from tests.testutils import write_manifest
@@ -35,7 +36,7 @@ class _MockConsumer(ZScript):
         self.called.append("setup")
         return False
 
-    def build(self) -> None:
+    def build(self, docker: DockerConfig) -> None:
         """Record build hook invocation."""
         self.called.append("build")
 
@@ -71,9 +72,8 @@ class TestIntegrationLifecycle(unittest.TestCase):
         fake_script = str(repo_root() / ".nanvix" / "z.py")
         argv = [fake_script, subcommand] + (extra_argv or [])
 
-        # build/clean need a persisted Docker image.
-        _DOCKER_COMMANDS = {"build", "clean"}
-        if subcommand in _DOCKER_COMMANDS:
+        # build needs a persisted Docker image.
+        if subcommand == "build":
             nanvix_dir = nanvix_root()
             env_json = nanvix_dir / "env.json"
             if not env_json.exists():

@@ -14,52 +14,22 @@ Demonstrates dependency resolution with ``nanvix.toml``.  Run with
 """
 
 import dataclasses
-from pathlib import Path, PurePosixPath
 
 import _test
 
 from nanvix_zutil import (
-    CFG_SYSROOT,
+    SYSROOT_CONTAINER_PATH,
     TOOLCHAIN_CONTAINER_PATH,
     DockerConfig,
     ZScript,
-    log,
 )
 from nanvix_zutil.buildroot import Dependency, Ref, RefKind
-from nanvix_zutil.exitcodes import EXIT_BUILD_FAILURE
-from nanvix_zutil.helpers import InitRdArgs, make_initrd, run, translate_path
+from nanvix_zutil.helpers import InitRdArgs, make_initrd, run
 from nanvix_zutil.paths import regular_out, repo_root
 
 
 class BinHello(ZScript):
     """Build script for the bin-hello binary example."""
-
-    # ------------------------------------------------------------------
-    # Docker configuration
-    # ------------------------------------------------------------------
-
-    def docker_config(self, image: str) -> DockerConfig:
-        """Add output_files so hello.elf is copied back on Windows."""
-        cfg = super().docker_config(image)
-        return dataclasses.replace(cfg, output_files=["hello.elf"])
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _sysroot(self) -> PurePosixPath | Path:
-        """Return the sysroot path, translated for Docker if active.
-
-        Sysroot also holds dependency headers and static archives.
-        """
-        sysroot_str = self.config.get(CFG_SYSROOT, "")
-        if not sysroot_str:
-            log.fatal(
-                "Sysroot not configured — run 'nanvix-zutil setup' first.",
-                code=EXIT_BUILD_FAILURE,
-            )
-        host = Path(sysroot_str)  # type: ignore[arg-type]
-        return translate_path(self.docker.mounts, host) if self.docker else host
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -85,10 +55,12 @@ class BinHello(ZScript):
         self.sysroot.verify(["lib/libhello.a", "include/hello.h"])
         return used_fallback
 
-    def build(self) -> None:
+    def build(self, docker: DockerConfig) -> None:
         """Cross-compile main.c into hello.elf for Nanvix."""
+        # output_files copies hello.elf back to the workspace on Windows.
+        docker = dataclasses.replace(docker, output_files=["hello.elf"])
         tc = TOOLCHAIN_CONTAINER_PATH
-        sysroot = self._sysroot()
+        sysroot = SYSROOT_CONTAINER_PATH
         cc = f"{tc}/bin/clang --target=i686-unknown-nanvix --sysroot={tc}"
         cflags = f"-O2 -Wall -msse2 -mfpmath=sse -I{sysroot}/include"
         libs = f"{sysroot}/lib/libhello.a"
@@ -101,7 +73,7 @@ class BinHello(ZScript):
             f"{cc} {cflags} -c -o main.o src/main.c"
             f" && {cc} {cflags} -o hello.elf main.o {libs}",
             cwd=repo_root(),
-            docker=self.docker,
+            docker=docker,
         )
 
         # For standalone deployment mode, produce an initrd image

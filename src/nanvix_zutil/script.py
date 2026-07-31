@@ -7,11 +7,12 @@ Consumer repositories subclass :class:`ZScript`, implement the lifecycle
 hooks they need, and call ``ZScript.main()`` as the entry point::
 
     from nanvix_zutil import ZScript
+    from nanvix_zutil.docker import DockerConfig
     from nanvix_zutil.helpers import run
 
     class MyBuild(ZScript):
-        def build(self) -> None:
-            run("make", "-f", "Makefile.nanvix", "all", docker=self.docker)
+        def build(self, docker: DockerConfig) -> None:
+            run("make", "-f", "Makefile.nanvix", "all", docker=docker)
 
     if __name__ == "__main__":
         MyBuild.main()
@@ -54,9 +55,61 @@ from nanvix_zutil.helpers import (
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
-from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
+from nanvix_zutil.paths import (
+    manifest_path,
+    nanvix_root,
+    out_dir,
+    repo_root,
+    z_py_path,
+)
 from nanvix_zutil.resolver import BlockedResolution, is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
+
+
+def _build_docker_config(image: str, config: Config) -> DockerConfig:
+    """Build the standard :class:`~nanvix_zutil.DockerConfig` for *image*.
+
+    Mounts :func:`repo_root` at ``/mnt/workspace`` and, when configured,
+    the sysroot at ``/mnt/sysroot``.
+
+    This is a module-private function rather than a :class:`ZScript`
+    method by design: only :meth:`ZScript.main` builds it, and only for
+    the build step, so Docker never leaks into other hooks.  Consumers
+    that need extra mounts or outputs replace fields on the ``docker``
+    they receive in :meth:`ZScript.build` (e.g. via
+    :func:`dataclasses.replace`).
+    """
+    mounts: list[Mount] = [
+        Mount(
+            host_path=repo_root(),
+            container_path=WORKSPACE_CONTAINER_PATH,
+            readonly=False,
+        ),
+    ]
+
+    sysroot_str = config.get(CFG_SYSROOT)
+    if sysroot_str:
+        mounts.append(
+            Mount(
+                host_path=Path(str(sysroot_str)),
+                container_path=SYSROOT_CONTAINER_PATH,
+                readonly=False,
+            )
+        )
+
+    return DockerConfig(
+        image=image,
+        mounts=mounts,
+        workdir=WORKSPACE_CONTAINER_PATH,
+        invalidation_inputs=[
+            z_py_path(),
+            manifest_path(),
+            nanvix_root() / "nanvix.lock",
+            nanvix_root() / "src",
+            repo_root() / "Makefile.nanvix",
+            nanvix_root() / "Makefile.nanvix",
+        ],
+    )
 
 
 class ZScript:
@@ -85,8 +138,6 @@ class ZScript:
         sysroot: The :class:`~nanvix_zutil.Sysroot` downloaded by
             :meth:`setup`.  Build-time dependencies are installed into it
             via :meth:`~nanvix_zutil.Sysroot.install_dep`.
-        docker: Active :class:`~nanvix_zutil.DockerConfig`, or ``None``
-            when Docker mode is not in use.
     """
 
     SDK_RUNTIME_REQUIRED_FILES: tuple[str, ...] = (
@@ -133,9 +184,6 @@ class ZScript:
         "clean",
     )
 
-    # Subcommands that always run inside Docker.
-    DOCKER_COMMANDS: frozenset[str | None] = frozenset({"setup", "build", "clean"})
-
     def required_files_for_release(self) -> list[Path]:
         """
         Used by `package()` to verify that the release directory contains the expected files.
@@ -170,7 +218,6 @@ class ZScript:
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest()
         self.sysroot: Sysroot | None = None
-        self.docker: DockerConfig | None = None
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
         self.local_deps: dict[str, str] = {}
@@ -201,60 +248,6 @@ class ZScript:
             if getattr(type(self), name) is not getattr(ZScript, name):
                 available.append(name)
         return tuple(available)
-
-    # ------------------------------------------------------------------
-    # Docker hooks — override in subclass to customise
-    # ------------------------------------------------------------------
-
-    def docker_config(self, image: str) -> DockerConfig:
-        """Build the :class:`~nanvix_zutil.DockerConfig` for *image*.
-
-        Constructs a standard configuration that mounts:
-
-        * :func:`repo_root()` → ``/mnt/workspace`` (writable, workdir)
-        * sysroot path from :attr:`config` → ``/mnt/sysroot`` (writable),
-          if the sysroot has been configured
-
-        Default :attr:`~nanvix_zutil.DockerConfig.invalidation_inputs` cover
-        ``Makefile.nanvix`` and ``nanvix.lock`` (missing ones are skipped), so
-        a persistent-volume build is cleaned when the build recipe or resolved
-        toolchain/deps change.  Consumers only need to set ``clean_cmd``.
-
-        Override in a subclass to add extra mounts or environment variables.
-
-        Args:
-            image: Docker image name to use.
-
-        Returns:
-            A fully populated :class:`~nanvix_zutil.DockerConfig`.
-        """
-        mounts: list[Mount] = [
-            Mount(
-                host_path=repo_root(),
-                container_path=WORKSPACE_CONTAINER_PATH,
-                readonly=False,
-            ),
-        ]
-
-        sysroot_str = self.config.get(CFG_SYSROOT)
-        if sysroot_str:
-            mounts.append(
-                Mount(
-                    host_path=Path(sysroot_str),
-                    container_path=SYSROOT_CONTAINER_PATH,
-                    readonly=False,
-                )
-            )
-
-        return DockerConfig(
-            image=image,
-            mounts=mounts,
-            workdir=WORKSPACE_CONTAINER_PATH,
-            invalidation_inputs=[
-                repo_root() / "Makefile.nanvix",
-                nanvix_root() / "nanvix.lock",
-            ],
-        )
 
     # ------------------------------------------------------------------
     # Lifecycle hooks — auto-implemented
@@ -593,10 +586,13 @@ class ZScript:
     # Lifecycle hooks — override in subclass
     # ------------------------------------------------------------------
 
-    def build(self) -> None:
+    def build(self, docker: DockerConfig) -> None:
         """Build the project.
 
-        Override to invoke the project's build system.
+        Override to invoke the project's build system.  The *docker*
+        argument is the only handle to Docker in the lifecycle: pass it
+        to :func:`~nanvix_zutil.helpers.run` to wrap commands in the
+        toolchain container.
         """
 
     def test(self) -> None:
@@ -618,16 +614,20 @@ class ZScript:
         invoking the build system (which would require Docker).  Override
         to customise the files cleaned.
         """
-        # Drop the persistent build volume, if one is configured.
-        if self.docker is not None:
-            try:
-                volume = self.docker.volume_name()
-            except ValueError as exc:
-                log.warning(f"Skipping build-volume removal: {exc}")
-            else:
-                if volume is not None:
-                    remove_build_volume(volume)
-                    log.info(f"Requested removal of build volume {volume}")
+        # Drop the persistent build volume, if one is configured.  Docker is
+        # scoped to ``build``, so reconstruct the standard config to recover
+        # the deterministic volume name.
+        docker = _build_docker_config(
+            str(self.config.get(CFG_DOCKER_IMAGE) or ""), self.config
+        )
+        try:
+            volume = docker.volume_name()
+        except ValueError as exc:
+            log.warning(f"Skipping build-volume removal: {exc}")
+        else:
+            if volume is not None:
+                remove_build_volume(volume)
+                log.info(f"Requested removal of build volume {volume}")
         if is_windows():
             # Common artifacts that consumers may produce.
             # Subclasses can override to add project-specific files.
@@ -714,59 +714,37 @@ class ZScript:
             instance.local_deps = with_deps
 
         # ------------------------------------------------------------------
-        # Docker: resolve image from CLI or persisted config, then check availability.
+        # Docker image handling for ``setup``: resolve the image, persist it,
+        # and pre-pull it. ``build`` constructs its config later, where it is
+        # dispatched; no other step touches Docker.
+        #
+        # On Windows the image is still persisted, but Docker is never
+        # required to be installed (host-native binaries are used instead),
+        # so ``check_docker`` is skipped.
         # ------------------------------------------------------------------
 
-        # On Windows, setup downloads host-native binaries
-        # via the GitHub API and does not invoke Docker.  Skip Docker
-        # entirely for setup on Windows — the image is still persisted
-        # to .nanvix/env.json so that subsequent commands can use it,
-        # but we do not require Docker to be installed or the image to
-        # exist locally.
-        if args.subcommand in ZScript.DOCKER_COMMANDS:
+        if args.subcommand == "setup":
             requested_image: str | None = getattr(args, "with_docker", None)
-            persisted_image = instance.config.get(CFG_DOCKER_IMAGE)
             manifest_image = instance.manifest.toolchain.effective_build_ref
             allow_override = bool(getattr(args, "allow_local_docker_override", False))
-
-            if args.subcommand == "setup":
-                if (
-                    requested_image is not None
-                    and requested_image != manifest_image
-                    and not allow_override
-                ):
-                    log.fatal(
-                        f"--with-docker {requested_image!r} conflicts with the"
-                        f" manifest build image {manifest_image!r}",
-                        code=EXIT_INVALID_ARGS,
-                        hint="Omit --with-docker, or use"
-                        " --allow-local-docker-override for an intentional"
-                        " local-development override.",
-                    )
-                image = requested_image or manifest_image
-            else:
-                image = persisted_image
-
-            if image is None:
+            if (
+                requested_image is not None
+                and requested_image != manifest_image
+                and not allow_override
+            ):
                 log.fatal(
-                    "No Docker image configured. Run setup first.",
+                    f"--with-docker {requested_image!r} conflicts with the"
+                    f" manifest build image {manifest_image!r}",
                     code=EXIT_INVALID_ARGS,
+                    hint="Omit --with-docker, or use"
+                    " --allow-local-docker-override for an intentional"
+                    " local-development override.",
                 )
-
-            # TODO: Move into setup()
-            # https://github.com/nanvix/zutils/issues/187
-            # https://github.com/nanvix/zutils/issues/190
-            if args.subcommand == "setup":
-                instance.config.set(CFG_DOCKER_IMAGE, image)
-                instance.config.save()
-
+            image = requested_image or manifest_image
+            instance.config.set(CFG_DOCKER_IMAGE, image)
+            instance.config.save()
             if not is_windows():
-                # may exit if Docker is required but not available
                 check_docker(image)
-
-            # Persist Docker image on setup so subsequent commands
-            # automatically use the same image.
-            instance.docker = instance.docker_config(image)
 
         # ------------------------------------------------------------------
         # Dispatch to lifecycle hook
@@ -807,11 +785,27 @@ class ZScript:
 
         dispatch: dict[str, object] = {
             "setup": instance.setup,
-            "build": instance.build,
             "test": instance.test,
             "benchmark": instance.benchmark,
             "clean": instance.clean,
         }
+
+        if subcommand == "build":
+            # Build is the sole Docker-aware hook: resolve the persisted
+            # image, ensure it is available, and construct the config here,
+            # where build is dispatched. On Windows host-native binaries are
+            # used, so Docker is never required.
+            image = instance.config.get(CFG_DOCKER_IMAGE)
+            if image is None:
+                log.fatal(
+                    "No Docker image configured. Run setup first.",
+                    code=EXIT_INVALID_ARGS,
+                )
+            if not is_windows():
+                check_docker(image)
+            instance.build(_build_docker_config(image, instance.config))
+            log.success("Build complete")
+            return
 
         handler = dispatch.get(subcommand) if subcommand is not None else None
         if callable(handler) and subcommand is not None:
