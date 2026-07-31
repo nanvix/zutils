@@ -946,11 +946,20 @@ class TestZScriptDockerConfig(unittest.TestCase):
             self.assertNotEqual(str(m.container_path), "/mnt/buildroot")
 
     def test_docker_config_default_invalidation_inputs(self) -> None:
-        """Default invalidation inputs cover Makefile.nanvix and nanvix.lock."""
+        """Default invalidation inputs are the resolved build-recipe paths."""
         script = self._make_script()
         cfg = _build_docker_config("test-image", script.config)
-        names = {p.name for p in cfg.invalidation_inputs}
-        self.assertEqual(names, {"Makefile.nanvix", "nanvix.lock"})
+        self.assertEqual(
+            set(cfg.invalidation_inputs),
+            {
+                paths.z_py_path(),
+                paths.manifest_path(),
+                paths.nanvix_root() / "nanvix.lock",
+                paths.nanvix_root() / "src",
+                paths.repo_root() / "Makefile.nanvix",
+                paths.nanvix_root() / "Makefile.nanvix",
+            },
+        )
 
 
 class TestZScriptAutoDocker(unittest.TestCase):

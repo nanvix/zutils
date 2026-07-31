@@ -55,7 +55,13 @@ from nanvix_zutil.helpers import (
 )
 from nanvix_zutil.lockfile import get_zutil_version, read_lockfile, write_lockfile
 from nanvix_zutil.manifest import Manifest, load_manifest
-from nanvix_zutil.paths import nanvix_root, out_dir, repo_root
+from nanvix_zutil.paths import (
+    manifest_path,
+    nanvix_root,
+    out_dir,
+    repo_root,
+    z_py_path,
+)
 from nanvix_zutil.resolver import BlockedResolution, is_stale, resolve
 from nanvix_zutil.sysroot import Sysroot
 
@@ -96,8 +102,12 @@ def _build_docker_config(image: str, config: Config) -> DockerConfig:
         mounts=mounts,
         workdir=WORKSPACE_CONTAINER_PATH,
         invalidation_inputs=[
-            repo_root() / "Makefile.nanvix",
+            z_py_path(),
+            manifest_path(),
             nanvix_root() / "nanvix.lock",
+            nanvix_root() / "src",
+            repo_root() / "Makefile.nanvix",
+            nanvix_root() / "Makefile.nanvix",
         ],
     )
 
@@ -783,14 +793,16 @@ class ZScript:
         if subcommand == "build":
             # Build is the sole Docker-aware hook: resolve the persisted
             # image, ensure it is available, and construct the config here,
-            # where build is dispatched.
+            # where build is dispatched. On Windows host-native binaries are
+            # used, so Docker is never required.
             image = instance.config.get(CFG_DOCKER_IMAGE)
             if image is None:
                 log.fatal(
                     "No Docker image configured. Run setup first.",
                     code=EXIT_INVALID_ARGS,
                 )
-            check_docker(image)
+            if not is_windows():
+                check_docker(image)
             instance.build(_build_docker_config(image, instance.config))
             log.success("Build complete")
             return
