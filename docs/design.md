@@ -197,7 +197,7 @@ is a bug.
 
 ##### Dependency consumption
 
-Downstreams pull upstream `-dev` archives via `Buildroot.install_dep`.
+Downstreams pull upstream `-dev` archives via `Sysroot.install_dep`.
 The default `Dependency.artifact_pattern` targets exactly the `-dev`
 asset:
 

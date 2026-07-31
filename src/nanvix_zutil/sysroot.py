@@ -12,14 +12,30 @@ configuration.
 from __future__ import annotations
 
 import shutil
+import stat
 import tarfile
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
+from typing import IO
 
 from nanvix_zutil import github, log
-from nanvix_zutil.config import DEFAULT_TARGET, Config
+from nanvix_zutil.buildroot import Dependency
+from nanvix_zutil.config import (
+    DEFAULT_DEPLOYMENT_MODE,
+    DEFAULT_HOST,
+    DEFAULT_MACHINE,
+    DEFAULT_MEMORY_SIZE,
+    DEFAULT_TARGET,
+    Config,
+)
 from nanvix_zutil.exitcodes import EXIT_MISSING_DEP
+from nanvix_zutil.paths import nanvix_root
 from nanvix_zutil.paths import sysroot as _default_sysroot_dir
+
+# zipfile packs the Unix file mode into the high 16 bits of external_attr,
+# a region the zip format itself leaves undefined. Shift to read it.
+ZIP_MODE_SHIFT = 16
 
 # ---------------------------------------------------------------------------
 # Sysroot repository / tag constants
@@ -32,6 +48,76 @@ _WINDOWS_SYSROOT_ASSET_PREFIX = "nanvix-windows-{target}-{machine}-{mode}-releas
 # Host binaries needed from the Windows release to run VMs on Windows.
 # kernel.elf is a *guest* binary (i686) — nanvixd.exe loads it directly.
 WINDOWS_HOST_BINARIES = ("nanvixd.exe", "mkramfs.exe", "mkimage.exe", "kernel.elf")
+
+
+# ---------------------------------------------------------------------------
+# Verbatim install helpers
+# ---------------------------------------------------------------------------
+
+
+def _unsafe(member: Path) -> bool:
+    """Reject absolute paths and directory traversal."""
+    return member.is_absolute() or ".." in member.parts
+
+
+def _read_entries(source: Path) -> Iterator[tuple[Path, IO[bytes], int]]:
+    """Yield ``(relative_path, reader, mode)`` for each file in *source*.
+
+    *source* may be a directory tree, a tarball, or a zip archive.  Each
+    ``reader`` is a binary file object the caller must close (streaming,
+    so large members are never buffered whole).  Unsafe members (absolute
+    or ``..``) are skipped; the low 9 mode bits are carried over so
+    executables (e.g. ``bin/`` scripts) stay runnable.  Symlinks and
+    hardlinks are resolved to real file copies, so all three source kinds
+    materialise the same verbatim tree.
+    """
+    if source.is_dir():
+        for src in source.rglob("*"):
+            if src.is_file():
+                rel = src.relative_to(source)
+                yield rel, src.open("rb"), src.stat().st_mode & 0o777
+        return
+    if zipfile.is_zipfile(source):
+        with zipfile.ZipFile(source) as zf:
+            for info in zf.infolist():
+                member = Path(info.filename)
+                if info.is_dir() or _unsafe(member):
+                    continue
+                yield member, zf.open(info), stat.S_IMODE(
+                    info.external_attr >> ZIP_MODE_SHIFT
+                )
+        return
+    with tarfile.open(source, "r:*") as tf:
+        for m in tf.getmembers():
+            member = Path(m.name)
+            if _unsafe(member):
+                continue
+            # extractfile follows sym/hardlinks (resolving them to real
+            # files, matching the directory path) and returns None for
+            # directories and special files.
+            reader = tf.extractfile(m)
+            if reader is None:
+                continue
+            yield member, reader, m.mode & 0o777
+
+
+def install_contents(source: Path, root: Path) -> int:
+    """Copy a dependency's contents verbatim into *root*.
+
+    *source* may be a directory tree, a tarball, or a zip archive; the
+    relative layout (``lib/``, ``include/``, ``share/``, …) is preserved.
+    Returns the number of files written.
+    """
+    copied = 0
+    for rel, reader, mode in _read_entries(source):
+        dest = root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with reader, dest.open("wb") as out:
+            shutil.copyfileobj(reader, out)
+        if mode:
+            dest.chmod(mode)
+        copied += 1
+    return copied
 
 
 # ---------------------------------------------------------------------------
@@ -327,22 +413,138 @@ class Sysroot:
             )
 
     # ------------------------------------------------------------------
+    # Build-time dependency installation
+    # ------------------------------------------------------------------
+
+    def install_dep(
+        self,
+        dep: Dependency,
+        *,
+        host: str = DEFAULT_HOST,
+        target: str = DEFAULT_TARGET,
+        machine: str = DEFAULT_MACHINE,
+        deployment_mode: str = DEFAULT_DEPLOYMENT_MODE,
+        memory_size: str = DEFAULT_MEMORY_SIZE,
+        gh_token: str | None = None,
+        _release: dict[str, object] | None = None,
+    ) -> None:
+        """Download a dependency release and install its contents.
+
+        The release asset is downloaded into ``.nanvix/cache/`` and then
+        unpacked verbatim into the sysroot, preserving the archive's
+        directory layout (``lib/``, ``include/``, ``share/``, …).
+
+        Dependencies are assumed to publish a standardised ``-dev`` archive.
+        A missing archive is fatal — no fallback to the legacy naming.
+
+        Args:
+            dep: The :class:`~nanvix_zutil.buildroot.Dependency` descriptor.
+            host: Development host operating system.
+            target: Target CPU architecture.
+            machine: Target machine identifier.
+            deployment_mode: Deployment mode string.
+            memory_size: Memory size string.
+            gh_token: Optional GitHub token.
+            _release: Pre-resolved release metadata dictionary.  When
+                provided, the release resolution step is skipped (avoids
+                redundant GitHub API calls when the caller has already
+                resolved the release).
+        """
+        asset_name = dep.artifact_pattern.format(
+            name=dep.name,
+            host=host,
+            arch=target,
+            machine=machine,
+            mode=deployment_mode,
+            mem=memory_size,
+        )
+
+        cache_dir = nanvix_root() / "cache"
+
+        asset_path = github.download_release_asset(
+            repo=dep.repo,
+            version_specifier=dep.ref.value,
+            asset_name=asset_name,
+            dest=cache_dir,
+            gh_token=gh_token,
+            match_prefix=True,
+            _release=_release,
+        )
+
+        log.info(f"Extracting {asset_path.name}...")
+        install_contents(asset_path, self.path)
+        log.success(f"Installed {dep.name} into sysroot")
+
+    def install_local_nanvix(self, dep: Dependency, local_path: Path) -> bool:
+        """Install a dependency from a local Nanvix build directory.
+
+        Looks for ``<local_path>/deps/<dep.name>/``; if present, its entire
+        tree is copied verbatim into the sysroot (same rules as archive
+        extraction).
+
+        Args:
+            dep: The :class:`~nanvix_zutil.buildroot.Dependency` descriptor.
+            local_path: Absolute path to the local Nanvix build output.
+
+        Returns:
+            ``True`` if local artifacts were found and installed,
+            ``False`` otherwise (caller should fall back to GitHub).
+        """
+        dep_dir = local_path / "deps" / dep.name
+        if not dep_dir.is_dir():
+            return False
+        copied = install_contents(dep_dir, self.path)
+        if copied:
+            log.info(f"Installed {dep.name} from local path: {dep_dir}")
+        return copied > 0
+
+    def install_local_archive(self, dep: Dependency, manifest_path: Path) -> None:
+        """Install a dependency from a sibling consumer's staged dev tree.
+
+        Copies ``<manifest_path>/../out/staging/dev/`` — the tree the
+        sibling's ``release`` step packs into the dev archive,
+        byte-identical to the archive contents — verbatim into the
+        sysroot, the same way the released archive is unpacked.
+
+        Fatal (``EXIT_MISSING_DEP``) if the staging tree is absent;
+        callers should run ``./z build`` against *manifest_path* first.
+        """
+        dev_dir = manifest_path.parent / "out" / "staging" / "dev"
+        if not dev_dir.is_dir():
+            log.fatal(
+                f"local dep '{dep.name}': no staged dev tree at {dev_dir}",
+                code=EXIT_MISSING_DEP,
+                hint=f"Run `./z build` for {manifest_path} first.",
+            )
+
+        copied = install_contents(dev_dir, self.path)
+        log.success(f"Copied {copied} file(s) for {dep.name} from {dev_dir}")
+
+    # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------
 
     def verify(self, required_files: list[str]) -> None:
-        """Assert that all required runtime files are present in the sysroot.
+        """Assert that all required files are present in the sysroot.
+
+        Covers both runtime artifacts and build-time dependency files
+        (headers, static libraries) installed by :meth:`install_dep`.
 
         Args:
-            required_files: List of relative file paths that must exist under
-                the sysroot directory.
+            required_files: Sysroot-relative paths that must exist
+                (e.g. ``"bin/nanvixd.elf"``, ``"lib/libz.a"``).
 
         Raises:
             SystemExit: With exit code ``3`` if any required file is missing.
         """
         for rel_path in required_files:
-            full_path = self.path / rel_path
-            if not full_path.exists():
+            rel = Path(rel_path)
+            if _unsafe(rel):
+                log.fatal(
+                    f"Required file '{rel_path}' must be a sysroot-relative path",
+                    code=EXIT_MISSING_DEP,
+                )
+            if not (self.path / rel).exists():
                 log.fatal(
                     f"Required sysroot file '{rel_path}' not found at {self.path}",
                     code=EXIT_MISSING_DEP,

@@ -134,10 +134,6 @@ class TestZScriptInit(unittest.TestCase):
         script = ZScript()
         self.assertIsNone(script.sysroot)
 
-    def test_buildroot_initially_none(self) -> None:
-        script = ZScript()
-        self.assertIsNone(script.buildroot)
-
     def test_log_attribute_is_log_module(self) -> None:
         """self.log refers to the nanvix_zutil.log module."""
         import nanvix_zutil.log as log_module
@@ -185,35 +181,23 @@ class TestZScriptAutoSetup(unittest.TestCase):
         fake_sysroot.verify.assert_called_once()
         self.assertIs(script.sysroot, fake_sysroot)
 
-    def test_setup_with_deps_creates_buildroot(self) -> None:
-        """setup() with manifest dependencies creates Buildroot and installs all deps."""
+    def test_setup_with_deps_installs_all(self) -> None:
+        """setup() with manifest dependencies installs every dep into the sysroot."""
         write_manifest(MANIFEST_WITH_DEPS)
 
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
-        fake_buildroot = MagicMock()
-        with (
-            patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
-            patch(
-                "nanvix_zutil.script.Buildroot.create", return_value=fake_buildroot
-            ) as mock_create,
-        ):
+        with patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot):
             script = ZScript()
             script.setup()
 
-        # Buildroot.create called once (now takes no arguments).
-        mock_create.assert_called_once_with()
-
         # install_dep called once per dependency in the manifest.
         dep_count = len(script.manifest.dependencies)
-        self.assertEqual(fake_buildroot.install_dep.call_count, dep_count)
+        self.assertEqual(fake_sysroot.install_dep.call_count, dep_count)
 
-        # buildroot attribute is set on the instance.
-        self.assertIs(script.buildroot, fake_buildroot)
-
-    def test_setup_no_deps_skips_buildroot(self) -> None:
-        """setup() with no manifest dependencies leaves buildroot as None."""
+    def test_setup_no_deps_installs_nothing(self) -> None:
+        """setup() with no manifest dependencies installs no deps."""
         fake_sysroot = MagicMock()
         fake_sysroot.path = Path("/fake/sysroot")
 
@@ -221,7 +205,7 @@ class TestZScriptAutoSetup(unittest.TestCase):
             script = ZScript()
             result = script.setup()
 
-        self.assertIsNone(script.buildroot)
+        fake_sysroot.install_dep.assert_not_called()
         self.assertFalse(result)
 
     def test_setup_saves_config(self) -> None:
@@ -554,15 +538,10 @@ class TestSdkDockerSelection(unittest.TestCase):
             ),
             packages=[package],
         )
-        fake_buildroot = MagicMock()
         with (
             patch(
                 "nanvix_zutil.script.Sysroot.download",
                 return_value=fake_sysroot,
-            ),
-            patch(
-                "nanvix_zutil.script.Buildroot.create",
-                return_value=fake_buildroot,
             ),
             patch("nanvix_zutil.script.resolve", return_value=lock) as resolver,
         ):
@@ -573,14 +552,14 @@ class TestSdkDockerSelection(unittest.TestCase):
             resolver.call_args.kwargs["verify_sdk_image"],
             sys.platform != "win32",
         )
-        fake_buildroot.install_dep.assert_called_once()
-        release = fake_buildroot.install_dep.call_args.kwargs["_release"]
+        fake_sysroot.install_dep.assert_called_once()
+        release = fake_sysroot.install_dep.call_args.kwargs["_release"]
         self.assertEqual(
             release["tag_name"],
             "1.3.1-nanvix-0.20.0-sdk.1",
         )
 
-    def test_sdk_setup_blocked_dependency_writes_no_buildroot(self) -> None:
+    def test_sdk_setup_blocked_dependency_installs_nothing(self) -> None:
         with paths.manifest_path().open("a", encoding="utf-8") as manifest:
             manifest.write('\n[dependencies]\nzlib = "1.3.1"\n')
         fake_sysroot = MagicMock()
@@ -600,12 +579,11 @@ class TestSdkDockerSelection(unittest.TestCase):
                 return_value=fake_sysroot,
             ),
             patch("nanvix_zutil.script.resolve", return_value=blocked),
-            patch("nanvix_zutil.script.Buildroot.create") as create,
             self.assertRaises(SystemExit) as context,
         ):
             ZScript().setup()
         self.assertEqual(context.exception.code, EXIT_MISSING_DEP)
-        create.assert_not_called()
+        fake_sysroot.install_dep.assert_not_called()
 
 
 class TestHelpersRun(unittest.TestCase):
@@ -1165,8 +1143,8 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
-            patch("nanvix_zutil.script.Buildroot.install_dep") as mock_id,
+            patch("nanvix_zutil.script.Sysroot.install_local_archive") as mock_ila,
+            patch("nanvix_zutil.script.Sysroot.install_dep") as mock_id,
         ):
             script = ZScript()
             script._offline = True  # skip resolve() network path
@@ -1192,14 +1170,13 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
             patch("nanvix_zutil.script.log.warning") as mock_warn,
         ):
             script = ZScript()
             script.local_deps = {"not_a_real_dep": str(local)}
             script.setup()  # must not raise
 
-        mock_ila.assert_not_called()
+        fake_sysroot.install_local_archive.assert_not_called()
         self.assertTrue(
             any("not_a_real_dep" in c.args[0] for c in mock_warn.call_args_list),
             f"expected warning mentioning 'not_a_real_dep', got {mock_warn.call_args_list!r}",
@@ -1212,12 +1189,11 @@ class TestZScriptSetupWithDeps(unittest.TestCase):
         with (
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
         ):
             script = ZScript()
             script.setup()
 
-        mock_ila.assert_not_called()
+        fake_sysroot.install_local_archive.assert_not_called()
 
 
 class TestZScriptWithDepsSetupRouting(unittest.TestCase):
@@ -1262,8 +1238,6 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
             patch("nanvix_zutil.script.resolve", return_value=lock),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive"),
-            patch("nanvix_zutil.script.Buildroot.install_dep"),
         ):
             script = ZScript()
             script.local_deps = with_deps
@@ -1317,8 +1291,6 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
             patch("nanvix_zutil.script.resolve", return_value=lock),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
-            patch("nanvix_zutil.script.Buildroot.install_dep"),
         ):
             script = ZScript()
             script.local_deps = {
@@ -1328,7 +1300,9 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
             }
             script.setup()
 
-        called_names = {c.args[0].name for c in mock_ila.call_args_list}
+        called_names = {
+            c.args[0].name for c in fake_sysroot.install_local_archive.call_args_list
+        }
         self.assertIn("zlib", called_names)  # transitive-only, overridden
 
     def test_warns_and_drops_unknown_name_online(self) -> None:
@@ -1344,15 +1318,13 @@ class TestZScriptWithDepsSetupRouting(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
             patch("nanvix_zutil.script.resolve", return_value=lock),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive") as mock_ila,
-            patch("nanvix_zutil.script.Buildroot.install_dep"),
             patch("nanvix_zutil.script.log.warning") as mock_warn,
         ):
             script = ZScript()
             script.local_deps = {"ghost": str(local)}
             script.setup()  # must not raise
 
-        mock_ila.assert_not_called()
+        fake_sysroot.install_local_archive.assert_not_called()
         self.assertTrue(
             any("ghost" in c.args[0] for c in mock_warn.call_args_list),
             f"expected warning mentioning 'ghost', got {mock_warn.call_args_list!r}",
@@ -1433,8 +1405,6 @@ class TestZScriptTransitiveCheck(unittest.TestCase):
             patch("nanvix_zutil.script.Sysroot.download", return_value=fake_sysroot),
             patch("nanvix_zutil.script.Sysroot.verify"),
             patch("nanvix_zutil.script.resolve", return_value=resolution),
-            patch("nanvix_zutil.script.Buildroot.install_local_archive"),
-            patch("nanvix_zutil.script.Buildroot.install_dep"),
         ):
             script = ZScript()
             script.local_deps = with_deps
@@ -2088,9 +2058,9 @@ class TestOfflineMode(unittest.TestCase):
         # GitHub resolve should NOT be called in offline mode
         mock_resolve.assert_not_called()
         # Dep should be installed in sysroot
-        self.assertIsNotNone(script.buildroot)
-        buildroot_lib = paths.sysroot() / "lib" / "libz.a"  # type: ignore[union-attr]
-        self.assertTrue(buildroot_lib.exists())
+        self.assertIsNotNone(script.sysroot)
+        installed_lib = paths.sysroot() / "lib" / "libz.a"
+        self.assertTrue(installed_lib.exists())
 
 
 class TestInstallArtifacts(unittest.TestCase):

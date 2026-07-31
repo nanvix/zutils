@@ -7,9 +7,8 @@ Public re-exports:
 
 - :class:`~nanvix_zutil.script.ZScript` — base class for consumer build scripts
 - :class:`~nanvix_zutil.config.Config` — persistent build configuration
-- :class:`~nanvix_zutil.buildroot.Buildroot` — build-time dependency root
 - :class:`~nanvix_zutil.buildroot.Dependency` — library dependency descriptor
-- :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot management
+- :class:`~nanvix_zutil.sysroot.Sysroot` — runtime sysroot + build-time dependency management
 - :class:`~nanvix_zutil.manifest.Manifest` — parsed TOML manifest
 - :class:`~nanvix_zutil.manifest.Toolchain` — immutable SDK selection
 - :class:`~nanvix_zutil.manifest.SdkPin` — immutable manifest SDK coordinate
@@ -45,7 +44,6 @@ Public re-exports:
 """
 
 from nanvix_zutil.buildroot import (
-    Buildroot,
     Dependency,
     Ref,
     RefKind,
@@ -135,7 +133,6 @@ from nanvix_zutil.testing import StandaloneTest, StandaloneTestFailure
 
 __all__ = [
     "ArchiveFormat",
-    "Buildroot",
     "BlockedResolution",
     "CFG_DOCKER_IMAGE",
     "CFG_GH_TOKEN",

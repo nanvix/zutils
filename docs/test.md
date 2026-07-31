@@ -34,7 +34,7 @@ uv run pytest tests/ -k "docker" -v
 
 ```
 tests/
-├── test_buildroot.py     # Buildroot + Dependency tests
+├── test_buildroot.py     # Dependency descriptor + install tests
 ├── test_cli.py           # CLI argument parsing tests
 ├── test_cli_lock.py      # Lock subcommand CLI tests
 ├── test_config.py        # Config persistence tests
@@ -51,7 +51,7 @@ tests/
 ├── test_resolve_cmd.py   # Resolve CLI tests
 ├── test_resolver.py      # Dependency resolver tests
 ├── test_script.py        # ZScript base class tests
-├── test_sysroot.py       # Sysroot download/verify tests
+├── test_sysroot.py       # Sysroot download/verify + dep install tests
 └── testutils.py          # Shared test utilities
 ```
 

@@ -34,7 +34,6 @@ from pathlib import Path
 from nanvix_zutil import log
 from nanvix_zutil import paths as _paths
 from nanvix_zutil.buildroot import (
-    Buildroot,
     Dependency,
     RefKind,
 )
@@ -84,9 +83,8 @@ class ZScript:
             Lifecycle hooks can use these to customise behavior
             (e.g. ``nanvix-zutil test -- smoke integration``).
         sysroot: The :class:`~nanvix_zutil.Sysroot` downloaded by
-            :meth:`setup`, or ``None`` before setup runs.
-        buildroot: The :class:`~nanvix_zutil.Buildroot` populated by
-            :meth:`setup`, or ``None`` when there are no dependencies.
+            :meth:`setup`.  Build-time dependencies are installed into it
+            via :meth:`~nanvix_zutil.Sysroot.install_dep`.
         docker: Active :class:`~nanvix_zutil.DockerConfig`, or ``None``
             when Docker mode is not in use.
     """
@@ -172,7 +170,6 @@ class ZScript:
         self.targets: list[str] = []
         self.manifest: Manifest = load_manifest()
         self.sysroot: Sysroot | None = None
-        self.buildroot: Buildroot | None = None
         self.docker: DockerConfig | None = None
         self._offline: bool = False
         self._with_nanvix_path: str | None = None
@@ -460,11 +457,12 @@ class ZScript:
                 )
 
         if deps:
-            self.buildroot = Buildroot.create()
+            sysroot = self.sysroot
+            assert sysroot is not None
             for dep in deps:
                 # --with-deps: copy from a sibling consumer's staged dev tree.
                 if dep.name in local_deps:
-                    self.buildroot.install_local_archive(
+                    sysroot.install_local_archive(
                         dep,
                         Path(local_deps[dep.name]),
                     )
@@ -474,7 +472,7 @@ class ZScript:
                 # In online mode, only try for nanvix-owned deps.
                 if nanvix_local:
                     should_try_local = self._offline or dep.repo.startswith("nanvix/")
-                    if should_try_local and self.buildroot.install_local_nanvix(
+                    if should_try_local and sysroot.install_local_nanvix(
                         dep, Path(nanvix_local)
                     ):
                         continue
@@ -500,7 +498,7 @@ class ZScript:
                             code=EXIT_MISSING_DEP,
                         )
 
-                    self.buildroot.install_dep(
+                    sysroot.install_dep(
                         dep=dep,
                         host=self.config.host,
                         target=self.config.target,
