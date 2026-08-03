@@ -3,12 +3,16 @@
 
 """Persistent key-value configuration for nanvix_zutil consumers.
 
-Configuration is stored at ``.nanvix/env.json`` and overridden by environment
-variables at runtime.  The precedence order (highest to lowest) is:
+Configuration is stored at ``.nanvix/env.json``.  The config knobs
+(host/target/machine/deployment-mode/memory-size) are set via CLI flags and
+persisted here; ``GH_TOKEN`` is the sole remaining environment variable.  The
+precedence order (highest to lowest) is:
 
-1. Environment variables
+1. CLI flags (applied by :meth:`ZScript.main` via :meth:`Config.set`)
 2. Persisted ``.nanvix/env.json``
 3. Built-in defaults
+
+(``GH_TOKEN`` is read from the environment on demand and never persisted.)
 """
 
 from __future__ import annotations
@@ -111,17 +115,22 @@ CFG_GH_TOKEN: str = "GH_TOKEN"
 CFG_DOCKER_IMAGE: str = "NANVIX_DOCKER_IMAGE"
 """Docker image persisted by ``setup --with-docker``."""
 
-#: Curated mapping of the most common environment variables recognised by
-#: nanvix-zutil to human-readable descriptions.  Rendered in the ``--help``
-#: epilog.  Not exhaustive — consumers and other modules may honour additional
-#: ``NANVIX_*`` variables recognised by manifest/script modules.
-ENV_VARS: dict[str, str] = {
+#: Human-readable descriptions for the ``NANVIX_*`` config knobs.  These are
+#: set via CLI flags (see :func:`nanvix_zutil.cli.add_config_flags`); the text is
+#: reused as flag help.  Rendered nowhere as environment variables — the knobs
+#: are no longer read from the environment (see #203).
+CONFIG_DESCRIPTIONS: dict[str, str] = {
     "NANVIX_HOST": f"Development host (default: {DEFAULT_HOST}; one of: {', '.join(Host)})",
     "NANVIX_TARGET": f"Target architecture (default: {DEFAULT_TARGET}; one of: {', '.join(Target)})",
     "NANVIX_MACHINE": f"Target machine (default: {DEFAULT_MACHINE}; one of: {', '.join(Machine)})",
     "NANVIX_DEPLOYMENT_MODE": f"Deployment mode (default: {DEFAULT_DEPLOYMENT_MODE}; one of: {', '.join(DeploymentMode)})",
     "NANVIX_MEMORY_SIZE": f"Memory size for artifact naming (default: {DEFAULT_MEMORY_SIZE}; one of: {', '.join(MemorySize)})",
-    "NANVIX_SYSROOT": "Path to runtime sysroot (set by setup)",
+}
+
+#: Environment variables still honoured at runtime.  The config knobs moved to
+#: CLI flags (#203); only secrets remain env-only.  Values here are read from
+#: the environment by :meth:`Config.get`.
+ENV_VARS: dict[str, str] = {
     "GH_TOKEN": "GitHub token for API rate limits",
 }
 
@@ -139,12 +148,11 @@ class Config:
     1. Seed with built-in defaults.
     2. Override with values from the persisted ``.nanvix/env.json`` file,
        if it exists.
-    3. Override with environment variables for known keys listed in
-       :data:`ENV_VARS`, which always take precedence.
 
-    Effective precedence (highest to lowest) is therefore:
+    CLI flags are applied on top by :meth:`ZScript.main` via :meth:`set`,
+    so the effective precedence (highest to lowest) is:
 
-    1. Environment variables
+    1. CLI flags
     2. Persisted ``.nanvix/env.json``
     3. Built-in defaults
 
@@ -174,20 +182,11 @@ class Config:
         # Seed with defaults.
         self._data.update(_DEFAULTS)
 
-        # Load persisted values (environment still wins below).
+        # Load persisted values.
         if self._config_path.exists():
             self.load()
             # Never persist secrets such as GH_TOKEN; strip if present.
             self._data.pop("GH_TOKEN", None)
-
-        # Apply environment variable overrides for known keys.
-        for key in ENV_VARS:
-            # Never persist secrets such as GH_TOKEN.
-            if key == CFG_GH_TOKEN:
-                continue
-            env_val = os.environ.get(key)
-            if env_val is not None:
-                self._data[key] = env_val
 
         # Validate enum-typed keys; fatal on invalid.
         for key, enum_cls in _ENUMS.items():
@@ -249,8 +248,8 @@ class Config:
     def get(self, key: str, default: str | None = None) -> str | None:
         """Retrieve a configuration value.
 
-        Environment variables take precedence, but only for known keys
-        listed in :data:`ENV_VARS`.
+        Environment variables take precedence only for the keys in
+        :data:`ENV_VARS` (currently just ``GH_TOKEN``).
 
         Args:
             key: The configuration key.
@@ -310,7 +309,7 @@ class Config:
             persisted = cast(dict[str, object], raw)
             for k, v in persisted.items():
                 if isinstance(v, str):
-                    # Environment variables still win for known keys.
+                    # GH_TOKEN wins from the environment even if persisted.
                     if k in ENV_VARS and os.environ.get(k) is not None:
                         continue
                     self._data[k] = v

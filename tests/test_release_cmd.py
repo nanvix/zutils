@@ -9,22 +9,12 @@ import sys
 import unittest
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
 
 from nanvix_zutil import paths
 from nanvix_zutil.commands import release as release_cmd
+from nanvix_zutil.config import Config
 from nanvix_zutil.exitcodes import EXIT_GENERAL_ERROR
 from tests.testutils import write_manifest
-
-# Pin every config-level knob so archive names are deterministic
-# regardless of the developer's ambient environment.
-_PINNED_ENV = {
-    "NANVIX_HOST": "linux",
-    "NANVIX_TARGET": "x86",
-    "NANVIX_MACHINE": "microvm",
-    "NANVIX_DEPLOYMENT_MODE": "standalone",
-    "NANVIX_MEMORY_SIZE": "256mb",
-}
 
 _BASE = "test-linux-x86-microvm-standalone-256mb"
 
@@ -32,9 +22,18 @@ _BASE = "test-linux-x86-microvm-standalone-256mb"
 class _ReleaseTestBase(unittest.TestCase):
     def setUp(self) -> None:
         write_manifest()  # manifest name = "test"
-        env_patch = patch.dict("os.environ", _PINNED_ENV, clear=False)
-        env_patch.start()
-        self.addCleanup(env_patch.stop)
+        # Pin every config knob to env.json so archive names are deterministic
+        # regardless of the host platform's defaults.
+        cfg = Config()
+        for key, val in {
+            "NANVIX_HOST": "linux",
+            "NANVIX_TARGET": "x86",
+            "NANVIX_MACHINE": "microvm",
+            "NANVIX_DEPLOYMENT_MODE": "standalone",
+            "NANVIX_MEMORY_SIZE": "256mb",
+        }.items():
+            cfg.set(key, val)
+        cfg.save()
 
     def _stage(self, subdir: str) -> Path:
         d = paths.staging_dir() / subdir
@@ -92,11 +91,11 @@ class TestReleaseHostExtension(_ReleaseTestBase):
     """Extension is gated on Config.host."""
 
     def test_windows_uses_zip(self) -> None:
-        env = dict(_PINNED_ENV)
-        env["NANVIX_HOST"] = "windows"
-        with patch.dict("os.environ", env, clear=False):
-            self._stage("regular")
-            release_cmd.release()
+        cfg = Config()
+        cfg.set("NANVIX_HOST", "windows")
+        cfg.save()
+        self._stage("regular")
+        release_cmd.release()
         produced = {p.name for p in paths.dist_dir().iterdir()}
         self.assertEqual(
             produced,

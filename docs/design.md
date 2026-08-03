@@ -131,7 +131,7 @@ Bootstraps the nanvix_zutil environment by installing a python venv.
 
 #### Setup
 
-Sets up the build environment. By default, this will download the correct nanvix distribution (sourced from `nanvix.toml`) and overlay build-time dependencies into the merged `sysroot`. The particular nanvix distribution parameters (target, machine, deployment mode, and memory size) can be overridden by supplying environment variables (listed below). The settings created here are stored at `.nanvix/env.json`.
+Sets up the build environment. By default, this will download the correct nanvix distribution (sourced from `nanvix.toml`) and overlay build-time dependencies into the merged `sysroot`. The particular nanvix distribution parameters (target, machine, deployment mode, and memory size) are set with their CLI flags (`--target`, `--machine`, `--mode`, `--memory-size`). The settings created here are stored at `.nanvix/env.json`.
 
 1. Download and verify nanvix artefacts (or source locally if `--with-nanvix`)
 2. Strictly resolve and download exact SDK-revision dependency releases.
@@ -237,17 +237,17 @@ Automatically available verbs are either standalone commands
 the ``AUTO_HOOKS`` list on ``ZScript`` (``setup``); opt-in verbs are
 listed in the ``CONSUMER_HOOKS`` array.
 
-### Environment variables
+### Configuration flags
 
-In addition to flags, which modify behaviors, certain operational values can be overridden at runtime. Environment variables take precedence over `.nanvix/env.json`. If values are missing from that file, they are filled from hardcoded defaults.
+In addition to flags that modify behaviors, certain operational values are set with CLI flags (passed after the subcommand) and persisted to `.nanvix/env.json`. If values are missing from that file, they fall back to hardcoded defaults. `GH_TOKEN` is the only remaining environment variable.
 
-| Variable                 | Default      | What it does                                                                       |
-| ------------------------ | ------------ | ---------------------------------------------------------------------------------- |
-| `NANVIX_TARGET`          | `x86`        | Sets the target architecture.                                                      |
-| `NANVIX_MACHINE`         | `microvm`    | Sets the target virtual machine.                                                   |
-| `NANVIX_DEPLOYMENT_MODE` | `standalone` | Sets the deployment mode. Can be one of standalone, single-process, multi-process. |
-| `NANVIX_MEMORY_SIZE`     | `256mb`      | Sets nanvix's allocated memory. Can be one of 128mb, 256mb.                        |
-| `GH_TOKEN`               | (none)       | Used to mitigate API usage limits.                                                 |
+| Flag            | Config key               | Default      | What it does                                                                       |
+| --------------- | ------------------------ | ------------ | ---------------------------------------------------------------------------------- |
+| `--target`      | `NANVIX_TARGET`          | `x86`        | Sets the target architecture.                                                      |
+| `--machine`     | `NANVIX_MACHINE`         | `microvm`    | Sets the target virtual machine.                                                   |
+| `--mode`        | `NANVIX_DEPLOYMENT_MODE` | `standalone` | Sets the deployment mode. Can be one of standalone, single-process, multi-process. |
+| `--memory-size` | `NANVIX_MEMORY_SIZE`     | `256mb`      | Sets nanvix's allocated memory. Can be one of 128mb, 256mb.                        |
+| `GH_TOKEN` (env)| `GH_TOKEN`               | (none)       | Used to mitigate API usage limits.                                                 |
 
 ### Exit Codes
 

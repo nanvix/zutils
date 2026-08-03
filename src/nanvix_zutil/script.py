@@ -27,7 +27,6 @@ Invoke via the ``nanvix-zutil`` CLI::
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -38,7 +37,7 @@ from nanvix_zutil.buildroot import (
     Dependency,
     RefKind,
 )
-from nanvix_zutil.cli import build_parser
+from nanvix_zutil.cli import CONFIG_FLAG_KEYS, build_parser
 from nanvix_zutil.config import CFG_DOCKER_IMAGE, CFG_GH_TOKEN, CFG_SYSROOT, Config
 from nanvix_zutil.docker import (
     SYSROOT_CONTAINER_PATH,
@@ -656,18 +655,15 @@ class ZScript:
             framework_argv = argv
             targets = []
 
-        # Pre-parse --version and --mode before creating the instance so
-        # that --version can exit cleanly without requiring a valid manifest,
-        # and so that --mode can override NANVIX_DEPLOYMENT_MODE before
-        # Config.__init__ runs.
+        # Pre-parse --version before creating the instance so it can exit
+        # cleanly without requiring a valid manifest.
         pre_parser = argparse.ArgumentParser(add_help=False)
         pre_parser.add_argument(
             "--version",
             action="version",
             version=f"%(prog)s (nanvix-zutil {get_zutil_version()})",
         )
-        pre_parser.add_argument("--mode", default=None, dest="mode")
-        pre_args, _ = pre_parser.parse_known_args(framework_argv)
+        pre_parser.parse_known_args(framework_argv)
 
         # Detect --help/-h and the 'help' subcommand (or no subcommand at
         # all) BEFORE loading the manifest.  A missing nanvix.toml must not
@@ -685,14 +681,6 @@ class ZScript:
             build_parser().print_help()  # 'help' subcommand or no args
             return
 
-        # ------------------------------------------------------------------
-        # Handle --mode: override NANVIX_DEPLOYMENT_MODE before Config
-        # __init__ reads it during instance construction.
-        # ------------------------------------------------------------------
-        cli_mode = getattr(pre_args, "mode", None)
-        if cli_mode is not None:
-            os.environ["NANVIX_DEPLOYMENT_MODE"] = cli_mode
-
         instance = cls()
         instance.targets = targets
 
@@ -700,6 +688,16 @@ class ZScript:
         # consumer hooks only appear when the subclass overrides them.
         parser = build_parser(available=instance.available_subcommands())
         args = parser.parse_args(framework_argv)
+
+        # ------------------------------------------------------------------
+        # Apply NANVIX_* config flags (e.g. --machine, --mode) to the config.
+        # These replace the legacy environment variables; GH_TOKEN stays an
+        # environment variable.
+        # ------------------------------------------------------------------
+        for key in CONFIG_FLAG_KEYS:
+            val = getattr(args, key, None)
+            if val is not None:
+                instance.config.set(key, val)
 
         # ------------------------------------------------------------------
         # Handle --offline, --with-nanvix from CLI.

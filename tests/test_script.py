@@ -2136,5 +2136,33 @@ class TestInstallArtifacts(unittest.TestCase):
         self.assertTrue(target.is_dir())
 
 
+class TestZScriptConfigFlags(unittest.TestCase):
+    """NANVIX_* config flags passed on the CLI reach Config."""
+
+    def setUp(self) -> None:
+        write_manifest()
+        for key in ("NANVIX_HOST", "NANVIX_MACHINE", "NANVIX_DEPLOYMENT_MODE"):
+            os.environ.pop(key, None)
+
+    def tearDown(self) -> None:
+        os.environ.pop("NANVIX_HOST", None)
+
+    def test_host_flag_overrides_config(self) -> None:
+        """``--host`` overrides the platform default before Config reads it."""
+        captured: list[str] = []
+
+        class _Consumer(ZScript):
+            def test(self) -> None:
+                captured.append(str(self.config.host))
+
+        with (
+            patch("sys.argv", ["z.py", "test", "--host", "windows"]),
+            patch("nanvix_zutil.script.log"),
+        ):
+            _Consumer.main()
+
+        self.assertEqual(captured, ["windows"])
+
+
 if __name__ == "__main__":
     unittest.main()

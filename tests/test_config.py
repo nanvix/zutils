@@ -63,7 +63,9 @@ class TestConfigEnums(unittest.TestCase):
         import sys
 
         other = Host.linux if sys.platform == "win32" else Host.windows
-        os.environ["NANVIX_HOST"] = other.value
+        (nanvix_root() / "env.json").write_text(
+            json.dumps({"NANVIX_HOST": other.value}), encoding="utf-8"
+        )
         cfg = Config()
         self.assertIs(cfg.host, other)
 
@@ -86,10 +88,12 @@ class TestConfigValidation(unittest.TestCase):
     def test_invalid_value_is_fatal_for_every_enum_key(self) -> None:
         for key in self._KEYS:
             with self.subTest(key=key):
-                os.environ[key] = "not-a-real-value"
+                (nanvix_root() / "env.json").write_text(
+                    json.dumps({key: "not-a-real-value"}), encoding="utf-8"
+                )
                 with self.assertRaises(SystemExit):
                     Config()
-                os.environ.pop(key, None)
+        (nanvix_root() / "env.json").unlink(missing_ok=True)
 
 
 class TestConfigDefaults(unittest.TestCase):
@@ -114,14 +118,13 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(cfg.memory_size, "256mb")
 
 
-class TestConfigEnvOverride(unittest.TestCase):
-    """Environment variables override defaults and persisted values."""
+class TestConfigPersistedOverride(unittest.TestCase):
+    """Persisted env.json values override defaults."""
 
-    def tearDown(self) -> None:
-        os.environ.pop("NANVIX_MACHINE", None)
-
-    def test_env_overrides_default(self) -> None:
-        os.environ["NANVIX_MACHINE"] = "microvm"
+    def test_persisted_overrides_default(self) -> None:
+        (nanvix_root() / "env.json").write_text(
+            json.dumps({"NANVIX_MACHINE": "microvm"}), encoding="utf-8"
+        )
         cfg = Config()
         self.assertEqual(cfg.machine, "microvm")
 

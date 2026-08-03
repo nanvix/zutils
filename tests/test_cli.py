@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nanvix_zutil.cli import SUBCOMMANDS, build_parser
+from nanvix_zutil.cli import SUBCOMMANDS, CONFIG_FLAG_KEYS, build_parser
 
 
 class TestBuildParser(unittest.TestCase):
@@ -47,6 +47,26 @@ class TestBuildParser(unittest.TestCase):
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["distclean"])
+
+    def test_config_flags_parse_into_config_keys(self) -> None:
+        """Config flags store into their NANVIX_* dest on each subcommand."""
+        parser = build_parser(available=("build",))
+        args = parser.parse_args(
+            ["build", "--machine", "microvm", "--mode", "standalone"]
+        )
+        self.assertEqual(getattr(args, "NANVIX_MACHINE"), "microvm")
+        self.assertEqual(getattr(args, "NANVIX_DEPLOYMENT_MODE"), "standalone")
+
+    def test_config_flags_default_to_none(self) -> None:
+        parser = build_parser(available=("build",))
+        args = parser.parse_args(["build"])
+        for key in CONFIG_FLAG_KEYS:
+            self.assertIsNone(getattr(args, key))
+
+    def test_config_flag_rejects_invalid_choice(self) -> None:
+        parser = build_parser(available=("build",))
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["build", "--machine", "bogus"])
 
     def test_available_param_restricts_subcommands(self) -> None:
         """build_parser(available=...) registers only the given subcommands."""
