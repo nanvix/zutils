@@ -49,24 +49,30 @@ class TestBuildParser(unittest.TestCase):
             parser.parse_args(["distclean"])
 
     def test_config_flags_parse_into_config_keys(self) -> None:
-        """Config flags store into their NANVIX_* dest on each subcommand."""
-        parser = build_parser(available=("build",))
+        """Config flags are setup-only: they store into their NANVIX_* dest."""
+        parser = build_parser(available=("setup",))
         args = parser.parse_args(
-            ["build", "--machine", "microvm", "--mode", "standalone"]
+            ["setup", "--machine", "microvm", "--mode", "standalone"]
         )
         self.assertEqual(getattr(args, "NANVIX_MACHINE"), "microvm")
         self.assertEqual(getattr(args, "NANVIX_DEPLOYMENT_MODE"), "standalone")
 
     def test_config_flags_default_to_none(self) -> None:
-        parser = build_parser(available=("build",))
-        args = parser.parse_args(["build"])
+        parser = build_parser(available=("setup",))
+        args = parser.parse_args(["setup"])
         for key in CONFIG_FLAG_KEYS:
             self.assertIsNone(getattr(args, key))
 
     def test_config_flag_rejects_invalid_choice(self) -> None:
+        parser = build_parser(available=("setup",))
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["setup", "--machine", "bogus"])
+
+    def test_config_flags_not_available_outside_setup(self) -> None:
+        """build/test/etc. don't accept config flags; only setup persists them."""
         parser = build_parser(available=("build",))
         with self.assertRaises(SystemExit):
-            parser.parse_args(["build", "--machine", "bogus"])
+            parser.parse_args(["build", "--machine", "microvm"])
 
     def test_available_param_restricts_subcommands(self) -> None:
         """build_parser(available=...) registers only the given subcommands."""
