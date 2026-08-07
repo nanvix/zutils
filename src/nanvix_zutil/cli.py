@@ -164,6 +164,10 @@ def add_config_flags(parser: argparse.ArgumentParser) -> None:
     Each flag stores into a ``dest`` equal to its config key (e.g.
     ``--machine`` -> ``NANVIX_MACHINE``) so callers can read the provided
     value back by key.
+
+    Only ever registered on the ``setup`` subcommand: values are persisted
+    to ``.nanvix/env.json`` during setup, and later subcommands read them
+    back from config without repeating the flags.
     """
     for flag, (key, enum_cls) in _CONFIG_FLAGS.items():
         parser.add_argument(
@@ -232,7 +236,8 @@ def build_parser(
 
     for name in cmds:
         sub = subparsers.add_parser(name, help=SUBCOMMAND_HELP[name])
-        add_config_flags(sub)
+        if name == "setup":
+            add_config_flags(sub)
         if name == "lock":
             lock_group = sub.add_mutually_exclusive_group()
             lock_group.add_argument(

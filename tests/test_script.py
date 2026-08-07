@@ -2147,21 +2147,19 @@ class TestZScriptConfigFlags(unittest.TestCase):
     def tearDown(self) -> None:
         os.environ.pop("NANVIX_HOST", None)
 
-    def test_host_flag_overrides_config(self) -> None:
-        """``--host`` overrides the platform default before Config reads it."""
-        captured: list[str] = []
-
-        class _Consumer(ZScript):
-            def test(self) -> None:
-                captured.append(str(self.config.host))
-
+    def test_host_flag_persists_from_setup(self) -> None:
+        """``--host`` is setup-only: it persists to .nanvix/env.json there,
+        so a later Config() (as any other subcommand would construct) sees
+        it without repeating the flag.
+        """
         with (
-            patch("sys.argv", ["z.py", "test", "--host", "windows"]),
-            patch("nanvix_zutil.script.log"),
+            patch("sys.argv", ["z.py", "setup", "--host", "windows"]),
+            patch.object(ZScript, "setup", return_value=False),
+            patch("nanvix_zutil.script.check_docker"),
         ):
-            _Consumer.main()
+            ZScript.main()
 
-        self.assertEqual(captured, ["windows"])
+        self.assertEqual(Config().host, "windows")
 
 
 if __name__ == "__main__":
